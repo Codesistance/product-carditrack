@@ -32,8 +32,23 @@ namespace CardiTrack.Domain.Entities;
 /// figures in the key, every rule is safe to remember.
 /// </para>
 /// <para>
-/// Not health data on its own — a rule id, a date and a hash — but it is keyed to a member, so it
-/// is erased with them like every other member-scoped row.
+/// <b>This is derived health data, and the hash is not what makes it so.</b> The first version of
+/// these remarks called the row "a rule id, a date and a hash" and concluded it carried none,
+/// which is wrong on its own terms: <see cref="Rule"/> is stored in the clear beside the member
+/// and the day, and a row reading <c>ecg_afib</c> says the wearer's device classified a recording
+/// as atrial fibrillation for that member on that date. That is a health fact about a named
+/// person, whatever the fingerprint does.
+/// </para>
+/// <para>
+/// The fingerprint is deliberately <em>not</em> a privacy control and must not be read as one. It
+/// is unsalted and the findings behind it are low-entropy — a rule, a date and a small count —
+/// so a reader of this table could dictionary-match it back to the figures. That is acceptable
+/// only because it discloses nothing the same database does not already hold in plaintext one
+/// table over: <c>ActivityLogs</c> carries that member's readings for that day in full. Keying it
+/// with a managed secret would move the boundary nowhere and would silently empty this cache on
+/// every rotation. The control that matters is the classification: this table is governed,
+/// access-controlled and erased as derived health data, like every other member-scoped row —
+/// see the manual erasure runbook and DPIA A15.
 /// </para>
 /// </remarks>
 public class BenignJudgement : BaseEntity

@@ -270,11 +270,12 @@ try
             // and dedup, none for a member with nothing off, and one Rewrite-slot call on top in
             // the passes where at least one read clears Yellow — a pass whose findings are all
             // judged benign still costs the one call it always did. A raised alert dedups its rule
-            // for the day; a benign verdict is remembered in BenignJudgements for the rest of the
-            // member's local day, but only for the eight rules reading a period that has ended.
-            // The three reading a day still in progress — no_morning_activity and the two measured
-            // rules — are asked again every pass while their yardstick keeps tripping. See
-            // StatisticalAlertService's remarks.
+            // for the day; a benign verdict is remembered in BenignJudgements against a hash of
+            // the finding's own figures, so the same question is put to the model once rather than
+            // on all 288 passes. Every rule is remembered and none is exempt: readings that move
+            // make a different hash and are judged again, no_morning_activity names the clock in
+            // its observation and so re-judges every pass on its own, and the measured rules carry
+            // the device's counts. See StatisticalAlertService's remarks.
             var judgements = scope.ServiceProvider.GetRequiredService<IStatisticalAlertService>();
             var judged = await judgements.EvaluateAsync(DateTime.UtcNow);
             // The digest job still runs at :00/:30; this pass runs every 5 minutes, two minutes
