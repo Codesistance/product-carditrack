@@ -110,6 +110,18 @@ public static class JudgementTelemetry
     /// </summary>
     public const string OutcomeRewriteMissing = "rewrite_missing";
 
-    /// <summary>An alert was written.</summary>
+    /// <summary>
+    /// An alert was written — and persisted. Counted after the guarded save, never as each alert
+    /// is staged: eight outcomes that sum to the findings judged are only worth having if the last
+    /// one means a row exists.
+    /// </summary>
     public const string OutcomeRaised = "raised";
+
+    /// <summary>
+    /// The alerts were composed and the guarded save refused them — erasure won the race between
+    /// the model call and the write. Distinct from every other outcome here because nothing was
+    /// wrong with the judgement or the copy: both models ran, both were paid for, and the member
+    /// they were about is gone.
+    /// </summary>
+    public const string OutcomeWriteRefused = "write_refused";
 }

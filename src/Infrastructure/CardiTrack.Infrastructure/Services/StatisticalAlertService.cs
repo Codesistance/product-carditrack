@@ -725,6 +725,13 @@ public class StatisticalAlertService : IStatisticalAlertService
 
         var voice = MemberVoice.For(member);
         var created = new List<Alert>();
+
+        // Held rather than counted as each alert is staged. Nothing below is persisted until the
+        // guarded save, and a refusal there — an erasure winning the race — clears every one of
+        // them. Counting on the way past would have this counter reporting alerts that no row
+        // exists for, which defeats the one thing it is for: reconciling what the model decided
+        // against what a caregiver was actually sent.
+        var raisedRules = new List<string>();
         foreach (var judgedFinding in judged)
         {
             var finding = judgedFinding.Finding;
@@ -778,12 +785,14 @@ public class StatisticalAlertService : IStatisticalAlertService
             };
             await _unitOfWork.Alerts.AddAsync(alert);
             created.Add(alert);
-            CountVerdict(JudgementTelemetry.OutcomeRaised, finding.Rule);
+            raisedRules.Add(finding.Rule);
         }
 
-        activity?.SetTag(JudgementTelemetry.RaisedTag, created.Count);
         if (created.Count == 0)
+        {
+            activity?.SetTag(JudgementTelemetry.RaisedTag, 0);
             return 0;
+        }
 
         // Guarded like every other post-inference write: the judgement above is a MedGemma call
         // that can run for minutes, and an alert raised for an erased member is both health data
@@ -791,7 +800,19 @@ public class StatisticalAlertService : IStatisticalAlertService
         // forgotten. Refused means nothing was written, so this pass raised nothing and every
         // step below — the status line, the explanations, the notification enqueue — is skipped.
         if (!await _guard.WriteIfMemberLivesAsync(memberId, _ => _unitOfWork.SaveChangesAsync(), ct))
+        {
+            // Counted as refused, not as raised, and the span says nothing was raised. The
+            // findings were judged and the copy was written and paid for; what did not happen is
+            // the alert.
+            foreach (var rule in raisedRules)
+                CountVerdict(JudgementTelemetry.OutcomeWriteRefused, rule);
+            activity?.SetTag(JudgementTelemetry.RaisedTag, 0);
             return 0;
+        }
+
+        foreach (var rule in raisedRules)
+            CountVerdict(JudgementTelemetry.OutcomeRaised, rule);
+        activity?.SetTag(JudgementTelemetry.RaisedTag, created.Count);
 
         // A newly-raised alert moves the member's tier, and the persisted status line was
         // generated against whatever tier was current when the pipeline last wrote it. The model
