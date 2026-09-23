@@ -18,6 +18,7 @@ public class TrendInterpretationServiceTests
 {
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
@@ -243,7 +244,13 @@ public class TrendInterpretationServiceTests
         await CreateSut().InterpretMemberAsync(_memberId, Now);
 
         var prompt = CapturedPrompt();
-        Assert.Contains("Never name a condition, a diagnosis or a treatment", prompt);
+        // The condition boundary moved to the rewrite half on 2026-09-22: this read is
+        // consumed by another model, and naming the mechanism is what it is now for.
+        Assert.DoesNotContain("Never name a condition", prompt);
+        Assert.Contains(
+            "never carry the name of a condition",
+            TrendInterpretationService.RewriteInstructions,
+            StringComparison.Ordinal);
         Assert.Contains("risk level or a prediction of what will happen next", prompt);
 
         // And the boundary spelled out, because the new instruction sits right beside it.
@@ -259,7 +266,7 @@ public class TrendInterpretationServiceTests
         // outlive the brief that does. Brief 3's rolling wording is byte-for-byte brief 2's, so
         // this is the case the stamp exists for — nothing in the text would give the staleness
         // away, and only the number retires the row.
-        Assert.Equal(3, TrendInterpretationService.BriefVersion);
+        Assert.Equal(4, TrendInterpretationService.BriefVersion);
         Assert.True(
             TrendInterpretationService.CurrentPromptVersion > 200 + PinnedReferenceTable.Version,
             "the stamp must exceed everything written under brief 2, whatever the table version.");
@@ -281,7 +288,13 @@ public class TrendInterpretationServiceTests
         // quotation would fail on the newline rather than on the meaning.
         Assert.Contains("Never give a score, a probability", prompt);
         Assert.Contains("risk level or a prediction of what will happen next", prompt);
-        Assert.Contains("Never name a condition", prompt);
+        // The condition boundary moved to the rewrite half on 2026-09-22: this read is
+        // consumed by another model, and naming the mechanism is what it is now for.
+        Assert.DoesNotContain("Never name a condition", prompt);
+        Assert.Contains(
+            "never carry the name of a condition",
+            TrendInterpretationService.RewriteInstructions,
+            StringComparison.Ordinal);
 
         // And the instruction that keeps the model reading arithmetic rather than doing any. It
         // no longer forbids comparisons outright: placing a figure against a range printed beside
@@ -328,10 +341,43 @@ public class TrendInterpretationServiceTests
         Assert.Equal(through.AddDays(-(TrendInterpretationService.TrendWindowDays - 1)), from);
     }
 
-    private TrendInterpretationService CreateSut() =>
-        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+    private TrendInterpretationService CreateSut()
+    {
+        RewriteEchoesTheRead();
+        return new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
             NullLogger<TrendInterpretationService>.Instance,
             new PassThroughWriteGuard());
+    }
+
+    /// <summary>
+    /// The rewrite echoes the clinical read it was handed, so every assertion about the narrative
+    /// a family reads holds across the split — and, because it reads the prompt rather than a
+    /// captured variable, it also proves the read crossed the slot boundary.
+    /// </summary>
+    private void RewriteEchoesTheRead() =>
+        _rewriteAi.GenerateStructuredAsync<TrendInterpretationService.TrendAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var prompt = (string)call[0]!;
+                const string marker = "--- Clinical read to write from ---";
+                var body = prompt[(prompt.LastIndexOf(marker, StringComparison.Ordinal) + marker.Length)..].Trim();
+                const string findingsMarker = "key findings:";
+                var at = body.IndexOf(findingsMarker, StringComparison.Ordinal);
+                var summary = (at < 0 ? body : body[..at]).Trim();
+                var findings = at < 0
+                    ? []
+                    : body[(at + findingsMarker.Length)..]
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(line => line.TrimStart('-', ' '))
+                        .Where(line => line.Length > 0)
+                        .ToList();
+                return new TrendInterpretationService.TrendAiResponse
+                {
+                    Summary = summary,
+                    KeyFindings = findings,
+                };
+            });
 
     private void WithHistory(int days)
     {
@@ -366,4 +412,29 @@ public class TrendInterpretationServiceTests
 
     private string CapturedPrompt() =>
         (string)_medicalAi.ReceivedCalls().First().GetArguments()[0]!;
+
+    /// <summary>
+    /// NamePlaceholder.Redact hands the text straight back when there is no usable name, so a
+    /// crossing that proceeds on one sends the clinical read to Vertex unredacted — and this read
+    /// is built from the decrypted caregiver notes DemographicsContextSource serves, which can
+    /// name the member. The first sweep for this looked for `member?.Name` and so missed every
+    /// site passing a non-nullable name that is merely blank. Nothing crosses, nothing is stored.
+    /// </summary>
+    [Fact]
+    public async Task NothingCrossesToTheRewriteSlot_WhenThereIsNoNameToRedactAgainst()
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "   ",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+        });
+
+        Assert.False(await CreateSut().InterpretMemberAsync(_memberId, Now));
+
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<TrendInterpretationService.TrendAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
 }

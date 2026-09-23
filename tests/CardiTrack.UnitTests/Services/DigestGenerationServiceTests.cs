@@ -2388,8 +2388,23 @@ public class DigestGenerationServiceTests
             q.TriggerContext == null));
     }
 
+    /// <summary>
+    /// This case is now unreachable on the digest path, and the test says so rather than being
+    /// deleted quietly. It used to blank the member's name, because that is the only way a pronoun
+    /// token survives resolution: PronounPlaceholder falls back to the member's own name when sex
+    /// is not stated, so an unresolvable token needs no sex <em>and</em> no name. From 2026-09-23 a
+    /// member with no name never reaches the rewrite at all — there is nothing to redact the
+    /// clinical read against, so nothing crosses and no question is composed to drop a caption
+    /// from.
+    /// </summary>
+    /// <remarks>
+    /// The caption guard it covered is still live and still worth having — it is the same check
+    /// every other surface runs, and the next path to compose a rationale may not have this one's
+    /// earlier exit. Its sibling above, which drops a caption stating a sex the record does not
+    /// bear out, exercises the same guard on a case that is still reachable.
+    /// </remarks>
     [Fact]
-    public async Task StoresTheQuestionWithoutACaption_WhenTheRationaleCarriesAnUnresolvableToken()
+    public async Task NoQuestionIsComposedAtAll_ForAMemberWithNoNameToRedactAgainst()
     {
         var member = MemberWithNoSexOnFile();
         member.Name = string.Empty;
@@ -2400,8 +2415,7 @@ public class DigestGenerationServiceTests
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
-        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
-            q.TriggerContext == null));
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
     }
 
     /// <summary>Stored encrypted, like everything else a family says about a member.</summary>
@@ -3058,4 +3072,52 @@ public class DigestGenerationServiceTests
         Assert.NotNull(prompt);
         return prompt;
     }
+
+    /// <summary>
+    /// The family digest's crossing shipped with #507 and never redacted at all — it flattened the
+    /// clinical read and sent it, unlike the status line, the trend, the journals and both alert
+    /// paths, which all swap the name out. <c>DemographicsContextSource</c> serves
+    /// <c>PromptPurpose.All</c>, so this prompt is given the decrypted caregiver notes and MedGemma
+    /// can repeat a name out of them. It now redacts, and refuses outright when there is no name to
+    /// redact against — <c>NamePlaceholder.Redact</c> hands the text straight back in that case, so
+    /// proceeding would be the unredacted crossing wearing a guard's clothes.
+    /// </summary>
+    [Fact]
+    public async Task TheDigestDoesNotCrossToTheRewriteSlot_WhenThereIsNoNameToRedactAgainst()
+    {
+        var member = Member();
+        member.Name = "   ";
+        _members.GetByIdAsync(_memberId).Returns(member);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// And when there is one, the name does not reach the Rewrite slot: the clinical read crosses
+    /// with it swapped for the placeholder, which is the boundary DPIA A20 describes.
+    /// </summary>
+    [Fact]
+    public async Task TheDigestsClinicalRead_CrossesWithTheNameSwappedForThePlaceholder()
+    {
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestClinicalAiResponse
+            {
+                Finding = "Margaret walked less than usual today.",
+                Urgency = "watch",
+            });
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        var crossed = (string)_rewriteAi.ReceivedCalls()
+            .First(c => c.GetArguments()[0] is string)
+            .GetArguments()[0]!;
+        Assert.DoesNotContain("Margaret", crossed, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(NamePlaceholder.Token, crossed, StringComparison.Ordinal);
+    }
+
 }

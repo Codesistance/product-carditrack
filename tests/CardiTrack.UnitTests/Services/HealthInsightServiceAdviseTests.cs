@@ -18,6 +18,7 @@ namespace CardiTrack.UnitTests.Services;
 public class HealthInsightServiceAdviseTests
 {
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
     private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
@@ -69,9 +70,12 @@ public class HealthInsightServiceAdviseTests
         }]);
     }
 
-    private HealthInsightService CreateSut() =>
-        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
+    private HealthInsightService CreateSut()
+    {
+        InsightRewriteEcho.Wire(_rewriteAi);
+        return new(_medicalAi, _rewriteAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
             PromptContextFactory.Composer(_unitOfWork), new PassThroughWriteGuard());
+    }
 
     [Fact]
     public async Task ServesTheStoredRow_ForALinkedUser()

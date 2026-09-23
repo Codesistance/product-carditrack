@@ -16,7 +16,7 @@ namespace CardiTrack.Domain.Entities;
 /// how a member opts out of an inherited alarm. A member row naming nothing is an addition.
 /// </para>
 /// <para>
-/// Alarms defined here coexist with the nine built-in statistical rules rather than replacing them:
+/// Alarms defined here coexist with the eleven built-in statistical rules rather than replacing them:
 /// those stay as shipped presets, toggled per member through <see cref="AlertPreference"/>. The two
 /// mechanisms are deliberately separate because a built-in rule is keyed by a compile-time
 /// catalogue string and an alarm is keyed by a Guid, and <c>AlertRuleOverrides</c> drops ids its

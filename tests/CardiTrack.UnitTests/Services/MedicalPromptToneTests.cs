@@ -33,10 +33,12 @@ public class MedicalPromptToneTests
         typeof(DigestGenerationService),
         typeof(HealthInsightService),
         typeof(RealtimeAssessmentService),
+        typeof(StatisticalAlertService),
         typeof(StatusLineGenerationService),
         typeof(DaybookPrompt),
         typeof(WeekbookPrompt),
         typeof(MonthbookPrompt),
+        typeof(JournalRewritePrompt),
         typeof(MemberChatService),
         typeof(AdviseGenerationService),
     ];
@@ -308,6 +310,11 @@ public class MedicalPromptToneTests
     [
         "AdviseGenerationService.RewriteInstructions",
         "DigestGenerationService.FamilyDigestRewriteInstructions",
+        "HealthInsightService.AlertRewriteInstructions",
+        "HealthInsightService.BaselineRewriteInstructions",
+        "JournalRewritePrompt.Instructions",
+        "RealtimeAssessmentService.RewriteInstructions",
+        "StatisticalAlertService.RewriteInstructions",
         "StatusLineGenerationService.RewriteInstructions",
     ];
 
@@ -323,7 +330,12 @@ public class MedicalPromptToneTests
     [
         "AdviseGenerationService.RewriteInstructions",
         "DigestGenerationService.FamilyDigestRewriteInstructions",
+        "HealthInsightService.AlertRewriteInstructions",
+        "HealthInsightService.BaselineRewriteInstructions",
+        "JournalRewritePrompt.Instructions",
         "MemberChatService.RewriteInstructions",
+        "RealtimeAssessmentService.RewriteInstructions",
+        "StatisticalAlertService.RewriteInstructions",
         "StatusLineGenerationService.RewriteInstructions",
     ];
 
@@ -554,12 +566,20 @@ public class MedicalPromptToneTests
     public void The_alert_prompt_uses_caregiver_language_not_clinic_speak()
     {
         var alert = AllPrompts().Single(p => p.Field == "AlertInstructions").Prompt;
+        var rewrite = AllPrompts().Single(p => p.Field == "AlertRewriteInstructions").Prompt;
 
-        Assert.Contains("Write as a caregiver would", alert);
-        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), alert, StringComparison.Ordinal);
-        Assert.Contains("Not clinic-speak", alert);
-        Assert.Contains("enough to be informed and react, not to treat or fix", alert);
-        Assert.Contains("one specific thing the caregiver can do now that answers this", alert);
+        // The register moved to the rewrite half on 2026-09-23. The clinical half is read by
+        // another model, so telling it to write as a caregiver would is the throttle itself —
+        // but everything below about what must *not* appear still binds both halves.
+        Assert.DoesNotContain("Write as a caregiver would", alert);
+        Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), alert, StringComparison.Ordinal);
+        Assert.Contains("internal clinical read", alert);
+
+        Assert.Contains("Write as a caregiver would", rewrite);
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), rewrite, StringComparison.Ordinal);
+        Assert.Contains("Not clinic-speak", rewrite);
+        Assert.Contains("enough to be informed and react, not to treat or fix", rewrite);
+        Assert.Contains("one specific thing the caregiver can do now that answers this", rewrite);
         Assert.DoesNotContain("heart rate, sleep, quieter today, worth a look", alert);
         Assert.DoesNotContain("a bug", alert, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("poor night", alert, StringComparison.OrdinalIgnoreCase);
@@ -634,8 +654,12 @@ public class MedicalPromptToneTests
     public void The_learning_prompt_uses_caregiver_language_and_names_no_forbidden_words()
     {
         var learning = AllPrompts().Single(p => p.Field == "LearningInstructions").Prompt;
+        var rewrite = AllPrompts().Single(p => p.Field == "BaselineRewriteInstructions").Prompt;
 
-        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), learning, StringComparison.Ordinal);
+        // All three baseline-shaped briefs share one rewrite half, which is where the
+        // register went; what must never appear is still asserted on this half.
+        Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), learning, StringComparison.Ordinal);
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), rewrite, StringComparison.Ordinal);
         Assert.Contains("call nothing unusual", learning);
         Assert.Contains("not yet enough history", learning);
         Assert.DoesNotContain("medical AI assistant", learning, StringComparison.OrdinalIgnoreCase);
@@ -648,8 +672,12 @@ public class MedicalPromptToneTests
     public void The_provisional_prompt_uses_caregiver_language_and_names_no_sample_hedges()
     {
         var provisional = AllPrompts().Single(p => p.Field == "ProvisionalInstructions").Prompt;
+        var rewrite = AllPrompts().Single(p => p.Field == "BaselineRewriteInstructions").Prompt;
 
-        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), provisional, StringComparison.Ordinal);
+        // All three baseline-shaped briefs share one rewrite half, which is where the
+        // register went; what must never appear is still asserted on this half.
+        Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), provisional, StringComparison.Ordinal);
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), rewrite, StringComparison.Ordinal);
         Assert.Contains("baseline is provisional", provisional);
         Assert.Contains("Do not treat so short a window as settled", provisional);
         Assert.DoesNotContain("medical AI assistant", provisional, StringComparison.OrdinalIgnoreCase);
@@ -664,8 +692,10 @@ public class MedicalPromptToneTests
     public void The_baseline_prompt_uses_caregiver_language_not_clinic_speak()
     {
         var baseline = AllPrompts().Single(p => p.Field == "BaselineInstructions").Prompt;
+        var rewrite = AllPrompts().Single(p => p.Field == "BaselineRewriteInstructions").Prompt;
 
-        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), baseline, StringComparison.Ordinal);
+        Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), baseline, StringComparison.Ordinal);
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), rewrite, StringComparison.Ordinal);
         Assert.Contains("established baseline", baseline);
         Assert.DoesNotContain("medical AI assistant", baseline, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("flag for review", baseline, StringComparison.OrdinalIgnoreCase);
@@ -854,8 +884,14 @@ public class MedicalPromptToneTests
     public void The_assessment_prompt_uses_caregiver_language_and_names_no_sample_causes()
     {
         var assessment = AllPrompts().Single(p => p.Field == "AssessmentInstructions").Prompt;
+        var rewrite = AllPrompts()
+            .Single(p => p.Field == "RewriteInstructions" && p.Service == nameof(RealtimeAssessmentService))
+            .Prompt;
 
-        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), assessment, StringComparison.Ordinal);
+        // The register moved to the rewrite half on 2026-09-22: the assessment's own output is
+        // read by four other prompts and, on the one path a family sees it, rewritten first.
+        Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), assessment, StringComparison.Ordinal);
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), rewrite, StringComparison.Ordinal);
         Assert.Contains("scores under 3 are ordinary", assessment);
         Assert.Contains("exactly one of critical, high, medium, or low", assessment);
         Assert.DoesNotContain("heart patient", assessment, StringComparison.OrdinalIgnoreCase);

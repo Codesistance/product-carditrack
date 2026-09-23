@@ -29,6 +29,7 @@ public interface IUnitOfWork : IDisposable
     IPushDeviceTokenRepository PushDeviceTokens { get; }
     INotificationPreferenceRepository NotificationPreferences { get; }
     IAlertPreferenceRepository AlertPreferences { get; }
+    IBenignJudgementRepository BenignJudgements { get; }
     IMetricAlarmRepository MetricAlarms { get; }
     IMetricAlarmStateRepository MetricAlarmStates { get; }
     IMemberChatSessionRepository MemberChatSessions { get; }

@@ -205,9 +205,12 @@ public static class ApmExtensions
                     // AI client calls (MedGemma): one GenAI-semconv span per call, defined
                     // in CardiTrack.Infrastructure's AiTelemetry.
                     .AddSource(TelemetryNames.AiSource)
-                    // Realtime notification pipeline: one span per pulled Pub/Sub message,
-                    // linked back to the publishing webhook-receiver span. Defined in
-                    // CardiTrack.PipelineJobs' PipelineTelemetry.
+                    // Pipeline work, on two instances of one name: CardiTrack.PipelineJobs'
+                    // PipelineTelemetry (the job's root span, and one span per pulled Pub/Sub
+                    // message linked back to the publishing webhook-receiver span) and
+                    // CardiTrack.Infrastructure's JudgementTelemetry (one span per member per
+                    // pass, under that root). Without the root span the arm's AI and Npgsql spans
+                    // were parentless and its log lines carried no trace_id at all.
                     .AddSource(TelemetryNames.PipelineSource)
                     // Push delivery spine: one span per FCM send. Load-bearing, not optional —
                     // FirebaseAdmin manages its own transport outside IHttpClientFactory, so
@@ -244,7 +247,12 @@ public static class ApmExtensions
                     // Push delivery spine counters/histograms (notification.* — enqueued, sent,
                     // delivered, failed, escalated, undelivered_critical, time_to_ack) from
                     // PushTelemetry. time_to_ack is the SLO metric (§6.1).
-                    .AddMeter(TelemetryNames.PushSource);
+                    .AddMeter(TelemetryNames.PushSource)
+                    // Pipeline outcomes: what became of each verdict the judgement asked for, and
+                    // what a register guard threw away before anyone read it. Both are exits that
+                    // previously existed only as log lines — which is enough to diagnose one and
+                    // nowhere near enough to notice one.
+                    .AddMeter(TelemetryNames.PipelineSource);
                 provider.AddMetricExporter(metrics, options);
             });
 

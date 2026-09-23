@@ -133,7 +133,7 @@ This document provides an overview of the CardiTrack domain entities. The number
 - Contains: OrganizationId, **CardiMemberId (nullable)**, DerivedFromAlarmId (nullable), Name, Metric, Statistic, Operator, ThresholdKind, ThresholdValue, PeriodMinutes, EvaluationPeriods, DatapointsToAlarm, MissingDataTreatment, Severity, ContextGate, IsEnabled
 - **Scope is the nullable CardiMemberId**: null = an account-level default every member inherits; set = that member alone. A member row naming an account row in `DerivedFromAlarmId` *replaces* it for that member, and replacing it with `IsEnabled = false` is how a member opts out of an inherited alarm
 - Soft-deletable. Enums persist as **names** (`HasConversion<string>`), like the rest of the schema
-- Distinct from `AlertPreference`, which toggles CardiTrack's own nine rules: that one is keyed by compile-time catalogue strings, this one by Guid, and `AlertRuleOverrides` drops ids its catalogue does not know
+- Distinct from `AlertPreference`, which toggles CardiTrack's own built-in alert rules (the eleven statistical rules, the real-time heart-rate assessor and device silence — whatever `AlertRuleCatalogue` implements): that one is keyed by compile-time catalogue strings, this one by Guid, and `AlertRuleOverrides` drops ids its catalogue does not know
 
 #### 12. **MetricAlarmState** *(R2)*
 - Where one alarm stands for one member: State (Ok/Alarm/InsufficientData), StateSinceUtc, LastEvaluatedUtc, LastAlertId
@@ -159,6 +159,17 @@ This document provides an overview of the CardiTrack domain entities. The number
 - `TryClaimAsync` returns a **claim id** and the release is keyed on it: a takeover rewrites the row's `Id`, so a holder that overran its lease releases nothing rather than removing its successor's claim
 - Work persists as its **name** (`HasConversion<string>`), like the rest of the schema. Unique index on (CardiMemberId, Work), which is also the upsert's conflict target
 - No retention sweep by design; leaves with the member on erasure (`MemberErasureService`, manual runbook row 20a)
+
+#### 13b. **BenignJudgement** *(2026-09-23)*
+- One record that the statistical alert pass put a finding to the model and was told it was not worth the family's attention — the negative verdict, which has no alert row because a green alert is a card a caregiver can open
+- Contains: CardiMemberId, Rule, LocalDate, FindingFingerprint, JudgedAtUtc
+- **Derived health data**, and the hash is not what makes it so: `Rule` is stored in the clear beside the member and the day, so a row naming `ecg_afib` says the wearer's device classified a recording as atrial fibrillation for that member on that date. Governed, access-controlled and erased as such (DPIA A15, manual runbook row 19a). The figures themselves are not stored, and neither the severity nor the model's read is kept
+- **The fingerprint is a cache key, not a privacy control.** It is unsalted over low-entropy findings — a rule, a date and a small count — so it is dictionary-matchable by a reader of the table. That is tolerable only because it discloses nothing the same database does not already hold in plaintext: `ActivityLogs` carries that member's readings for that day in full. An HMAC with a managed secret would move the boundary nowhere and would empty the cache on every rotation
+- **Keyed on the finding, not on the day.** `FindingFingerprint` is SHA-256 over the finding's rule, observation and metric values (`StatisticalAlertRules.JudgementFingerprint`). Readings that move produce a different fingerprint and the finding is judged again; readings that do not cost one inference instead of 288. The first shape of this keyed on the local day, on the reasoning that a rule reading yesterday reads settled data — false, because `DeviceSyncService`'s repair pass re-pulls complete days and a night's readings routinely land after local midnight, so a day-keyed row could have swallowed the re-judgement of a finding that had since worsened
+- **Why the day is still in the key.** The unique index is (CardiMemberId, Rule, LocalDate, FindingFingerprint). The day is not needed to disambiguate — every rule's observation names its own date bar `no_morning_activity`, which names the clock instead — but keeping it means a question that omits its date cannot carry a verdict into tomorrow
+- **It may never cost an alert.** Every call against this table is guarded: the read falls back to "nothing remembered" and the write is best-effort, so a transient error or the lag between a deploy and its migration costs re-judgement rather than a caregiver's alert
+- Unique rather than merely indexed, because two overlapping assessor executions can both judge the same finding — the pass holds no claim — and `RecordAsync` is an `ON CONFLICT DO NOTHING` upsert so the loser is a no-op rather than a failed member
+- Retention **7 days**, swept by the pass itself; leaves with the member on erasure (`MemberErasureService`, manual runbook row 19a) — no foreign key cascades behind it, so the delete is explicit
 
 ### Business Entities
 

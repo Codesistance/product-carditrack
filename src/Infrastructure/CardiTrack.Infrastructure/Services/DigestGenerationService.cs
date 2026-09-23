@@ -13,6 +13,7 @@ using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
+using CardiTrack.Infrastructure.Diagnostics;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.Extensions.Logging;
@@ -564,16 +565,32 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// context, no readings, no monitoring section. Flattened per field, so a multi-line finding
     /// cannot forge a section heading in the prompt it is pasted into.
     /// </summary>
-    private static string RenderClinicalRead(DigestClinicalAiResponse clinical)
+    /// <remarks>
+    /// <b>Redacted, which it was not until 2026-09-23.</b> This crossing shipped with #507 and
+    /// flattened the read without ever swapping the member's name out of it — unlike the status
+    /// line, the trend, the journals and both alert paths, which all do. It is the same exposure
+    /// they guard against, and it was open on the most frequently written surface in the product:
+    /// <c>DemographicsContextSource</c> serves <c>PromptPurpose.All</c>, so the digest's clinical
+    /// prompt is given the decrypted caregiver notes, and MedGemma can repeat a name out of them
+    /// into a read that then crossed to Vertex whole. Found while sweeping this boundary after a
+    /// review flagged the blank-name variant of it on five other crossings.
+    /// </remarks>
+    private static string RenderClinicalRead(DigestClinicalAiResponse clinical, string memberName)
     {
-        var lines = new List<string> { $"finding: {MedicalPromptBlocks.Flatten(clinical.Finding)}" };
+        string Crossing(string? text)
+        {
+            var flattened = MedicalPromptBlocks.Flatten(text ?? string.Empty);
+            return NamePlaceholder.Redact(flattened, memberName) ?? flattened;
+        }
+
+        var lines = new List<string> { $"finding: {Crossing(clinical.Finding)}" };
 
         if (!string.IsNullOrWhiteSpace(clinical.ActionBasis))
-            lines.Add($"what would help: {MedicalPromptBlocks.Flatten(clinical.ActionBasis)}");
+            lines.Add($"what would help: {Crossing(clinical.ActionBasis)}");
 
         // The topic only — the scope travels in code, and the rewrite has no use for it.
         if (!string.IsNullOrWhiteSpace(clinical.QuestionTopic))
-            lines.Add($"worth asking the family about: {MedicalPromptBlocks.Flatten(clinical.QuestionTopic)}");
+            lines.Add($"worth asking the family about: {Crossing(clinical.QuestionTopic)}");
 
         return string.Join("\n", lines);
     }
@@ -911,31 +928,56 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (composed.Entry is null)
         {
             return new JournalRewriteResult(
-                composed.Outcome, null, composed.Usage, false, composed.DaysWithData, composed.DaysNeeded);
+                composed.Outcome, null, composed.Usage, false,
+                composed.DaysWithData, composed.DaysNeeded)
+            {
+                RewriteUsage = composed.RewriteUsage,
+            };
         }
 
         _logger.LogInformation(
             "Composed the {Audience} for CardiMember {CardiMemberId} dated {PeriodEnd} at a caregiver's request.",
             audience, cardiMemberId, periodEnd);
 
-        return new JournalRewriteResult(JournalRewriteOutcome.Written, composed.Entry, composed.Usage, false);
+        return new JournalRewriteResult(
+            JournalRewriteOutcome.Written, composed.Entry, composed.Usage, false)
+        {
+            RewriteUsage = composed.RewriteUsage,
+        };
     }
 
     /// <summary>
     /// What composing one book produced: the entry to store, or the reason there is none, plus the
     /// model call it cost so a caller acting for a chat turn can bill it.
     /// </summary>
+    /// <summary>
+    /// <param name="Usage">The private slot's clinical read.</param>
+    /// <param name="RewriteUsage">
+    /// The Rewrite slot's call, when one was made. Carried separately rather than folded into
+    /// <paramref name="Usage"/> because the two are different providers and different models, and
+    /// the ledger records a row per call — summing them would bill a Vertex call as MedGemma.
+    /// </param>
+    /// </summary>
     private sealed record JournalComposition(
-        JournalRewriteOutcome Outcome, DigestEntry? Entry, AiUsage? Usage, int DaysWithData = 0, int DaysNeeded = 0)
+        JournalRewriteOutcome Outcome,
+        DigestEntry? Entry,
+        AiUsage? Usage,
+        AiUsage? RewriteUsage = null,
+        int DaysWithData = 0,
+        int DaysNeeded = 0)
     {
+        // Named arguments throughout: RewriteUsage sits between Usage and the day counts, so a
+        // positional call that predates it binds a day count to a usage and still compiles.
         public static JournalComposition NoReadings(int daysWithData, int daysNeeded) =>
-            new(JournalRewriteOutcome.NoReadings, null, null, daysWithData, daysNeeded);
+            new(JournalRewriteOutcome.NoReadings, null, null,
+                DaysWithData: daysWithData, DaysNeeded: daysNeeded);
 
-        public static JournalComposition Discarded(AiUsage usage) =>
-            new(JournalRewriteOutcome.Discarded, null, usage);
+        public static JournalComposition Discarded(AiUsage usage, AiUsage? rewriteUsage = null) =>
+            new(JournalRewriteOutcome.Discarded, null, usage, rewriteUsage);
 
-        public static JournalComposition Written(DigestEntry entry, AiUsage usage) =>
-            new(JournalRewriteOutcome.Written, entry, usage);
+        public static JournalComposition Written(
+            DigestEntry entry, AiUsage usage, AiUsage? rewriteUsage = null) =>
+            new(JournalRewriteOutcome.Written, entry, usage, rewriteUsage);
     }
 
     /// <summary>
@@ -1032,14 +1074,21 @@ public partial class DigestGenerationService : IDigestGenerationService
             """;
 
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<DaybookAiResponse>(prompt, ct);
-        var aiResponse = generated.Result;
+        var read = generated.Result;
+
+        var attempt = await RewriteJournalAsync(
+            read.Finding, "day", "6-12", member, ct);
+        if (attempt.Reply is null)
+            return JournalComposition.Discarded(generated.Usage, attempt.Usage);
+
+        var (rewrite, rewriteUsage) = (attempt.Reply, attempt.Usage);
 
         // A daybook is written once, so a bad one is not replaced half an hour later; discarding
         // costs the member that day's review and nothing else.
         return FinishJournalCopy(
             memberId, reviewedDate, DigestAudience.Daybook, utcNow, member,
-            aiResponse.Summary.Trim(), aiResponse.Headline, aiResponse.Suggestion, aiResponse.Urgency,
-            generated.Usage, DaybookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: false);
+            rewrite.Summary.Trim(), rewrite.Headline, rewrite.Suggestion, read.Urgency,
+            generated.Usage, rewriteUsage, DaybookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: false);
     }
 
     /// <summary>
@@ -1108,13 +1157,20 @@ public partial class DigestGenerationService : IDigestGenerationService
             """;
 
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<WeekbookAiResponse>(prompt, ct);
-        var aiResponse = generated.Result;
+        var read = generated.Result;
+
+        var attempt = await RewriteJournalAsync(
+            read.Finding, "week", "6-12", member, ct);
+        if (attempt.Reply is null)
+            return JournalComposition.Discarded(generated.Usage, attempt.Usage);
+
+        var (rewrite, rewriteUsage) = (attempt.Reply, attempt.Usage);
 
         // A Weekbook is written once, so a bad one is not replaced next pass.
         return FinishJournalCopy(
             memberId, weekEnd, DigestAudience.Weekbook, utcNow, member,
-            aiResponse.Summary.Trim(), aiResponse.Headline, aiResponse.Suggestion, aiResponse.Urgency,
-            generated.Usage, WeekbookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: true);
+            rewrite.Summary.Trim(), rewrite.Headline, rewrite.Suggestion, read.Urgency,
+            generated.Usage, rewriteUsage, WeekbookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: true);
     }
 
     /// <summary>
@@ -1182,13 +1238,171 @@ public partial class DigestGenerationService : IDigestGenerationService
             """;
 
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<MonthbookAiResponse>(prompt, ct);
-        var aiResponse = generated.Result;
+        var read = generated.Result;
+
+        var attempt = await RewriteJournalAsync(
+            read.Finding, "month", "8-14", member, ct);
+        if (attempt.Reply is null)
+            return JournalComposition.Discarded(generated.Usage, attempt.Usage);
+
+        var (rewrite, rewriteUsage) = (attempt.Reply, attempt.Usage);
 
         return FinishJournalCopy(
             memberId, monthEnd, DigestAudience.Monthbook, utcNow, member,
-            aiResponse.Summary.Trim(), aiResponse.Headline, aiResponse.Suggestion, aiResponse.Urgency,
-            generated.Usage, MonthbookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: true);
+            rewrite.Summary.Trim(), rewrite.Headline, rewrite.Suggestion, read.Urgency,
+            generated.Usage, rewriteUsage, MonthbookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: true);
     }
+
+    /// <summary>
+    /// One of a book's short optional fields — its headline or its suggestion — held to the two
+    /// checks the body already gets, and dropped rather than stored when it fails either.
+    /// </summary>
+    /// <remarks>
+    /// Dropped rather than discarding the whole book, and that asymmetry is the point: the account
+    /// is the thing a caregiver came for, and losing it because a five-word headline carried a
+    /// leftover token would be the guard costing more than it saves. A book with no headline still
+    /// renders; the body is what could not be allowed through unchecked. Both fields are nullable
+    /// in the entity, so there is somewhere for "nothing" to go.
+    /// </remarks>
+    private string? JournalField(string? text, string bookName, string surface, Guid memberId)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        if (MemberVoice.IsUnresolvedIn(text))
+        {
+            _logger.LogWarning(
+                "Dropped a {BookName} field for CardiMember {CardiMemberId}: it carries a token the "
+                + "member's record cannot settle.",
+                bookName, memberId);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
+            return null;
+        }
+
+        if (JournalRegisterGuards.NamesACondition(text) is { } condition)
+        {
+            _logger.LogWarning(
+                "Dropped a {BookName} field for CardiMember {CardiMemberId}: it names a condition "
+                + "or a treatment ({Marker}).",
+                bookName, memberId, condition);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonNamesACondition);
+            return null;
+        }
+
+        return text;
+    }
+
+    /// <summary>
+    /// Turns a book's clinical read into the account a family reads, on the Rewrite slot. Null
+    /// when there is nothing to write from or the call failed — the caller discards the book.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Shared by all three books because all three want the same thing of it; what differs is the
+    /// period noun and the length, and both travel in the read rather than in the brief, so the
+    /// cacheable prefix stays one prefix.
+    /// </para>
+    /// <para>
+    /// Discarding on failure rather than storing the clinical read is the same call the journal
+    /// guards already make several times over: a book is written once and not replaced next pass,
+    /// so the cost is that period's account, and the apps' own "no review yet" copy is a better
+    /// thing to show a caregiver than a clinical read written for another model.
+    /// </para>
+    /// <para>
+    /// The read crosses the slot boundary flattened and redacted — MedGemma is handed the family's
+    /// own answers and the caregiver's notes, and can repeat a name out of them.
+    /// </para>
+    /// </remarks>
+    /// <summary>
+    /// The outcome of one Rewrite-slot attempt. <paramref name="Reply"/> is null when there is
+    /// nothing to store, but <paramref name="Usage"/> is set whenever a call was actually made —
+    /// including when the reply came back and was then rejected. A rejected book still cost a
+    /// billable call, and the ledger's job is to say what was spent rather than what was kept.
+    /// </summary>
+    private sealed record JournalRewriteAttempt(
+        JournalRewritePrompt.JournalRewriteAiResponse? Reply, AiUsage? Usage);
+
+    private async Task<JournalRewriteAttempt> RewriteJournalAsync(
+        string finding, string period, string sentences, CardiMember member, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(finding))
+        {
+            CopyGuardTelemetry.Count($"{period}book", CopyGuardTelemetry.ReasonReadBlank);
+            return new JournalRewriteAttempt(null, null);
+        }
+
+        // No name, nothing to redact against, and NamePlaceholder.Redact would hand the read
+        // straight back — see CanRedactAgainst. The book is discarded rather than written from a
+        // read that could carry the member's name to Vertex; the apps' own "no review yet" copy
+        // is a better thing to show a caregiver than an off-estate disclosure.
+        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        {
+            CopyGuardTelemetry.Count($"{period}book", CopyGuardTelemetry.ReasonReadBlank);
+            _logger.LogWarning(
+                "The {Period}book for CardiMember {CardiMemberId} was not rewritten: no name on "
+                + "file to redact the clinical read against.",
+                period, member.Id);
+            return new JournalRewriteAttempt(null, null);
+        }
+
+        // FlattenWhole, not Flatten: a book runs to thousands of characters and Flatten's cap is
+        // sized for a caregiver note, so it would hand the rewrite the first thousand characters
+        // of the account and nothing else.
+        var flattened = MedicalPromptBlocks.FlattenWhole(finding);
+        var read = NamePlaceholder.Redact(flattened, member.Name) ?? flattened;
+
+        try
+        {
+            var rewritten = await _rewriteAi
+                .GenerateStructuredWithUsageAsync<JournalRewritePrompt.JournalRewriteAiResponse>(
+                    JournalRewritePrompt.Build(JournalRewritePrompt.Render(period, sentences, read)), ct);
+
+            // Grounded against the read, like every other rewrite on the platform. A book is the
+            // most figure-dense thing written here, so an invented number is both the likeliest
+            // thing for a rewrite to add and the hardest for a reader to catch.
+            //
+            // The account and its headline, and deliberately not the suggestion: the same split
+            // the digest makes a few hundred lines down, for the reason the guard's own remark
+            // gives. A suggestion is an action and the brief lets it reach for a routine fact the
+            // read never measured, so holding it to the read discards sound copy.
+            var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(
+                $"{rewritten.Result.Summary} {rewritten.Result.Headline}",
+                read);
+            if (invented is not null)
+            {
+                CopyGuardTelemetry.Count($"{period}book", CopyGuardTelemetry.ReasonInventedReading);
+                _logger.LogWarning(
+                    "Discarded the {Period}book for CardiMember {CardiMemberId}: the rewrite named a "
+                    + "reading the clinical read did not ({Reading}).",
+                    period, member.Id, invented);
+                return new JournalRewriteAttempt(null, rewritten.Usage);
+            }
+
+            return new JournalRewriteAttempt(rewritten.Result, rewritten.Usage);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            CopyGuardTelemetry.Count($"{period}book", CopyGuardTelemetry.ReasonRewriteFailed);
+            _logger.LogWarning(
+                ex,
+                "The {Period}book rewrite failed for CardiMember {CardiMemberId}; nothing stored.",
+                period, member.Id);
+            return new JournalRewriteAttempt(null, null);
+        }
+    }
+
+    /// <summary>
+    /// The value a book's discarded copy is counted under: <c>daybook</c>, <c>weekbook</c> or
+    /// <c>monthbook</c>. The same three strings <see cref="RewriteJournalAsync"/> forms from its
+    /// period, so a book's rewrite failures and its register rejections land on one series.
+    /// </summary>
+    private static string JournalSurface(DigestAudience audience) => audience switch
+    {
+        DigestAudience.Daybook => "daybook",
+        DigestAudience.Weekbook => "weekbook",
+        DigestAudience.Monthbook => "monthbook",
+        _ => throw new ArgumentOutOfRangeException(nameof(audience), audience, "Not a CardiJournal book."),
+    };
 
     /// <summary>
     /// The shared accept path for a Daybook, Weekbook or Monthbook: refuse empty, instruction-echo,
@@ -1206,6 +1420,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         string? suggestion,
         string? urgency,
         AiUsage usage,
+        AiUsage? rewriteUsage,
         Func<string, bool> readsLikeInstructions,
         bool requireMinimumSentences)
     {
@@ -1217,13 +1432,20 @@ public partial class DigestGenerationService : IDigestGenerationService
             _ => throw new ArgumentOutOfRangeException(nameof(audience), audience, "Not a CardiJournal book."),
         };
 
+        // Not bookName. That one reads as prose in the log lines below it — "Discarded the daybook
+        // entry" — and a counter dimension is not prose: tagged with it, a day's discards would
+        // land under "daybook entry" here and under "daybook" where RewriteJournalAsync counts its
+        // own, splitting one surface across two series for the same book.
+        var surface = JournalSurface(audience);
+
         if (text.Length == 0 || readsLikeInstructions(text))
         {
             _logger.LogWarning(
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: the model "
                 + "returned empty text or restated its own instructions.",
                 bookName, memberId, periodPhrase);
-            return JournalComposition.Discarded(usage);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonReadsLikeInstructions);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
         if (JournalRegisterGuards.NamesACondition(text) is { } condition)
@@ -1232,7 +1454,8 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it names a "
                 + "condition or a treatment ({Marker}).",
                 bookName, memberId, periodPhrase, condition);
-            return JournalComposition.Discarded(usage);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonNamesACondition);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
         if (requireMinimumSentences
@@ -1242,7 +1465,8 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: "
                 + "its sentence count ({Sentences}) is below the minimum.",
                 bookName, memberId, periodPhrase, JournalRegisterGuards.SentenceCount(text));
-            return JournalComposition.Discarded(usage);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonTooFewSentences);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
         var (glossedText, glossed) = JournalRegisterGuards.Gloss(text);
@@ -1260,27 +1484,59 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it uses "
                 + "'{Term}' without explaining it where it is first used.",
                 bookName, memberId, periodPhrase, term);
-            return JournalComposition.Discarded(usage);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonUnglossedTerm);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
-        var name = NamePlaceholder.FirstName(member.Name);
+        // MemberVoice rather than a first name: the rewrite brief asks for PronounsByToken, so a
+        // book can come back carrying CardiTrackCardiMemberTheir as well as the name token, and
+        // resolving only the name would store the pronoun sentinel for a caregiver to read.
+        var voice = MemberVoice.For(member);
+
+        // Checked on the raw reply, across every field, before anything is resolved. The brief asks
+        // for tokens, so a natural "her" is the instruction being ignored rather than something to
+        // settle — and for a PreferNotToSay member there is no right sexed pronoun to settle it to.
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(text, voice.Gender)
+            || RewriteCopyGuards.StatesAnUnsupportedSex(headline, voice.Gender)
+            || RewriteCopyGuards.StatesAnUnsupportedSex(suggestion, voice.Gender))
+        {
+            _logger.LogWarning(
+                "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it states a "
+                + "sex the record does not bear out.",
+                bookName, memberId, periodPhrase);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonUnsupportedSex);
+            return JournalComposition.Discarded(usage, rewriteUsage);
+        }
+        var name = voice.FirstName;
         if (name is null && NamePlaceholder.IsPresentIn(text))
         {
             _logger.LogWarning(
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it names the "
                 + "member through the placeholder, but no name is on file to resolve it to.",
                 bookName, memberId, periodPhrase);
-            return JournalComposition.Discarded(usage);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
-        var storedText = NamePlaceholder.Resolve(text, name)!;
+        var storedText = voice.Resolve(text)!;
+        if (MemberVoice.IsUnresolvedIn(storedText))
+        {
+            _logger.LogWarning(
+                "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it carries a "
+                + "pronoun token the member's record cannot settle.",
+                bookName, memberId, periodPhrase);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
+            return JournalComposition.Discarded(usage, rewriteUsage);
+        }
+
         if (storedText.Length > DigestEntry.MaxTextLength)
         {
             _logger.LogWarning(
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: "
                 + "{Length} characters is over the {Max} the table holds.",
                 bookName, memberId, periodPhrase, storedText.Length, DigestEntry.MaxTextLength);
-            return JournalComposition.Discarded(usage);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonTooLong);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
         return JournalComposition.Written(new DigestEntry
@@ -1288,13 +1544,15 @@ public partial class DigestGenerationService : IDigestGenerationService
             CardiMemberId = memberId,
             LocalDate = periodEnd,
             Audience = audience,
-            Headline = NamePlaceholder.Resolve(CleanHeadline(headline, memberId, periodEnd), name),
+            Headline = JournalField(
+                voice.Resolve(CleanHeadline(headline, memberId, periodEnd)), bookName, surface, memberId),
             Text = storedText,
-            Suggestion = NamePlaceholder.Resolve(CleanSuggestion(suggestion, memberId, periodEnd), name),
+            Suggestion = JournalField(
+                voice.Resolve(CleanSuggestion(suggestion, memberId, periodEnd)), bookName, surface, memberId),
             Urgency = ParseUrgency(urgency, memberId, periodEnd),
             GeneratedAtUtc = utcNow,
             PromptVersion = CurrentPromptVersion,
-        }, usage);
+        }, usage, rewriteUsage);
     }
 
     /// <summary>
@@ -1653,9 +1911,20 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
+        // No name, nothing to redact against, and NamePlaceholder.Redact would hand the read
+        // straight back — see CanRedactAgainst. Nothing crosses; the previous summary stands.
+        if (member is null || !NamePlaceholder.CanRedactAgainst(member.Name))
+        {
+            _logger.LogWarning(
+                "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: no "
+                + "name on file to redact the clinical read against.",
+                memberId, describedDate);
+            return false;
+        }
+
         // The A20 boundary as a type: the rewrite builder takes DeidentifiedFindings and cannot be
         // handed the member context or the readings, whatever a future edit here tries to pass.
-        var read = RenderClinicalRead(clinical);
+        var read = RenderClinicalRead(clinical, member.Name);
 
         // The yardstick the copy coming back is measured against — a summary or a headline may
         // only name a reading this text named. Narrower than what the prompt is sent, on purpose:
@@ -2940,24 +3209,11 @@ public partial class DigestGenerationService : IDigestGenerationService
     internal sealed record DaybookAiResponse
     {
         [Description(
-            "6-12 sentences giving the family an account of CardiTrackCardiMember's whole day, in the past "
-            + "tense, grouped as the readings are grouped. Says what was measured, what their "
-            + "usual is, and where each reading sat against it and against any published band. "
-            + "Not a restatement of the instructions.")]
-        public required string Summary { get; init; }
-
-        [Description(
-            "A five-to-six-word qualification of the day described above, in sentence case — "
-            + "what kind of day it was, never a generic label that could title any day at all. "
-            + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
-            + "not a sentence.")]
-        public required string Headline { get; init; }
-
-        [Description(
-            "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
-            + "answering something in the day's readings. Never a diagnosis, never a medical "
-            + "condition, never a change to any treatment.")]
-        public string? Suggestion { get; init; }
+            "6-12 sentences reading CardiTrackCardiMember's whole day in clinical terms, in the past "
+            + "tense. Says what was measured, what their own usual is, and where each reading sat "
+            + "against it and against any published band, keeping every figure. Read by the model that "
+            + "writes the family's account, not by a family. Not a restatement of the instructions.")]
+        public required string Finding { get; init; }
 
         [AllowedValues(WatchTier, CheckInTier, ConcerningTier, ActNowTier)]
         [Description(
@@ -2974,24 +3230,11 @@ public partial class DigestGenerationService : IDigestGenerationService
     internal sealed record WeekbookAiResponse
     {
         [Description(
-            "6-12 sentences giving the family an account of CardiTrackCardiMember's whole week, in the past "
-            + "tense. Says what moved and what held steady across the seven days, which day stood "
-            + "apart and why, and how much of the week each reading covered. An account of the "
-            + "week as a whole, not a list of its days. Not a restatement of the instructions.")]
-        public required string Summary { get; init; }
-
-        [Description(
-            "A five-to-six-word qualification of the week described above, in sentence case — "
-            + "what kind of week it was, never a generic label that could title any week at all. "
-            + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
-            + "not a sentence.")]
-        public required string Headline { get; init; }
-
-        [Description(
-            "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
-            + "answering something in the week's readings. Never a diagnosis, never a medical "
-            + "condition, never a change to any treatment.")]
-        public string? Suggestion { get; init; }
+            "6-12 sentences reading CardiTrackCardiMember's whole week in clinical terms, in the past "
+            + "tense. Says what was measured, what their own usual is, and where each reading sat "
+            + "against it and against any published band, keeping every figure. Read by the model that "
+            + "writes the family's account, not by a family. Not a restatement of the instructions.")]
+        public required string Finding { get; init; }
 
         [AllowedValues(WatchTier, CheckInTier, ConcerningTier, ActNowTier)]
         [Description(
@@ -3004,25 +3247,11 @@ public partial class DigestGenerationService : IDigestGenerationService
     internal sealed record MonthbookAiResponse
     {
         [Description(
-            "8-14 sentences giving the family an account of CardiTrackCardiMember's whole month, in the past "
-            + "tense. Says what held across the month and what changed within it, which week "
-            + "differed from the others and how, and how much of the month each reading covered. "
-            + "An account of the month as a whole, not a list of its days or its weeks. Not a "
-            + "restatement of the instructions.")]
-        public required string Summary { get; init; }
-
-        [Description(
-            "A five-to-six-word qualification of the month described above, in sentence case — "
-            + "what kind of month it was, never a generic label that could title any month at all. "
-            + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
-            + "not a sentence.")]
-        public required string Headline { get; init; }
-
-        [Description(
-            "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
-            + "answering something in the month's readings. Never a diagnosis, never a medical "
-            + "condition, never a change to any treatment.")]
-        public string? Suggestion { get; init; }
+            "8-14 sentences reading CardiTrackCardiMember's whole month in clinical terms, in the past "
+            + "tense. Says what was measured, what their own usual is, and where each reading sat "
+            + "against it and against any published band, keeping every figure. Read by the model that "
+            + "writes the family's account, not by a family. Not a restatement of the instructions.")]
+        public required string Finding { get; init; }
 
         [AllowedValues(WatchTier, CheckInTier, ConcerningTier, ActNowTier)]
         [Description(

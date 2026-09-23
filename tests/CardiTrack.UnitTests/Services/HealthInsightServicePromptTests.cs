@@ -7,6 +7,7 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Services;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -18,6 +19,7 @@ namespace CardiTrack.UnitTests.Services;
 public class HealthInsightServicePromptTests
 {
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
     private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
@@ -68,9 +70,12 @@ public class HealthInsightServicePromptTests
             });
     }
 
-    private HealthInsightService CreateSut() =>
-        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
+    private HealthInsightService CreateSut()
+    {
+        InsightRewriteEcho.Wire(_rewriteAi);
+        return new(_medicalAi, _rewriteAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
             PromptContextFactory.Composer(_unitOfWork), new PassThroughWriteGuard());
+    }
 
     /// <summary>
     /// The row the generating pass stored. Generation writes rather than returns since the batch
@@ -120,7 +125,7 @@ public class HealthInsightServicePromptTests
     {
         // A stored row whose summary is a restatement must not outlive the brief that stopped
         // asking for one.
-        Assert.Equal(3, HealthInsightService.BaselinePromptVersion);
+        Assert.Equal(4, HealthInsightService.BaselinePromptVersion);
     }
 
     // ── The quiet member ────────────────────────────────────────────────────────
@@ -533,7 +538,9 @@ public class HealthInsightServicePromptTests
         var prompt = CapturedPrompt();
         Assert.Contains("not yet enough history", prompt);
         Assert.Contains("call nothing unusual", prompt);
-        Assert.Contains("Write as a caregiver would", prompt);
+        // The register moved to the rewrite half; this prompt is read by a model.
+        Assert.DoesNotContain("Write as a caregiver would", prompt);
+        Assert.Contains("internal clinical read", prompt);
         Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("elevated, low, or a deviation", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("No baseline has been established yet.", prompt);
@@ -550,7 +557,9 @@ public class HealthInsightServicePromptTests
         Assert.False(result.IsLearning);
         var prompt = CapturedPrompt();
         Assert.Contains("established baseline", prompt);
-        Assert.Contains("Write as a caregiver would", prompt);
+        // The register moved to the rewrite half; this prompt is read by a model.
+        Assert.DoesNotContain("Write as a caregiver would", prompt);
+        Assert.Contains("internal clinical read", prompt);
         Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("flag for review", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("30-day — Steps: 5200±810.5", prompt);
@@ -588,7 +597,9 @@ public class HealthInsightServicePromptTests
         var prompt = CapturedPrompt();
         Assert.Contains("baseline is provisional", prompt);
         Assert.Contains("Do not treat so short a window as settled", prompt);
-        Assert.Contains("Write as a caregiver would", prompt);
+        // The register moved to the rewrite half; this prompt is read by a model.
+        Assert.DoesNotContain("Write as a caregiver would", prompt);
+        Assert.Contains("internal clinical read", prompt);
         Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("early signs", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("flag for review", prompt, StringComparison.OrdinalIgnoreCase);
@@ -701,8 +712,9 @@ public class HealthInsightServicePromptTests
         Assert.Equal(
             prompts[0][..prompts[0].IndexOf(marker, StringComparison.Ordinal)],
             prompts[1][..prompts[1].IndexOf(marker, StringComparison.Ordinal)]);
-        // Every prompt opens with the shared tone block, and this one's own brief follows it.
-        Assert.StartsWith(MedicalPromptBlocks.Tone, prompts[0]);
+        // The prefix is still shared and still fixed; it is the clinical opening now rather
+        // than the tone block, because this brief writes for another model.
+        Assert.StartsWith(MedicalPromptBlocks.WearableClinicalOpening, prompts[0]);
         Assert.Contains("call nothing unusual", prompts[0]);
         Assert.DoesNotContain("medical AI assistant", prompts[0], StringComparison.OrdinalIgnoreCase);
     }
@@ -742,6 +754,64 @@ public class HealthInsightServicePromptTests
 
     // ── Alert insight ───────────────────────────────────────────────────────────
 
+    // -- The slot boundary needs a member to redact against --------------------
+
+    /// <summary>
+    /// The alert and the member are two separate queries, so an erasure can land between them.
+    /// Until this returned, the redaction was silently optional: NamePlaceholder.Redact hands back
+    /// the text unchanged when the name is null, and the clinical read can carry a name out of the
+    /// caregiver notes DemographicsContextSource decrypts without redacting. The guarded write
+    /// refuses to store the card, but by then the name has reached Vertex — and DPIA A20's
+    /// boundary is about what is sent, not about what is kept.
+    /// </summary>
+    [Fact]
+    public async Task TheAlertRewrite_IsNotCalledAtAll_WhenTheMemberHasGone()
+    {
+        SetupAlert();
+        _members.GetByIdAsync(_memberId).Returns((CardiMember?)null);
+
+        var wrote = await CreateSut().RegenerateAlertInsightAsync(_alertId);
+
+        Assert.False(wrote);
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A member with no name on file leaves the redaction nothing to match either.</summary>
+    [Fact]
+    public async Task TheAlertRewrite_IsNotCalledAtAll_WhenTheMemberHasNoName()
+    {
+        SetupAlert();
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "   ",
+            DateOfBirth = DateOfBirth,
+            Gender = Gender.Female,
+            IsActive = true,
+        });
+
+        var wrote = await CreateSut().RegenerateAlertInsightAsync(_alertId);
+
+        Assert.False(wrote);
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The baseline card crosses the same boundary and holds the same line.</summary>
+    [Fact]
+    public async Task TheBaselineRewrite_IsNotCalledAtAll_WhenTheMemberHasGone()
+    {
+        SetupBaseline();
+        _members.GetByIdAsync(_memberId).Returns((CardiMember?)null);
+
+        var wrote = await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        Assert.False(wrote);
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     private void SetupAlert()
     {
         _alerts.GetByIdWithCardiMemberAsync(_alertId).Returns(new Alert
@@ -762,12 +832,30 @@ public class HealthInsightServicePromptTests
         await CreateSut().RegenerateAlertInsightAsync(_alertId);
 
         var prompt = CapturedPrompt();
-        Assert.Contains("Write as a caregiver would", prompt);
-        Assert.Contains("Everyday words for the readings are fine", prompt);
+        // The register moved to the rewrite half; this prompt is read by a model.
+        Assert.DoesNotContain("Write as a caregiver would", prompt);
+        Assert.Contains("internal clinical read", prompt);
+        Assert.DoesNotContain("Everyday words for the readings are fine", prompt);
         Assert.Contains("what this alert means in the recent readings", prompt);
+        Assert.Contains(
+            "Everyday words for the readings are fine",
+            HealthInsightService.AlertRewriteInstructions,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("may sit behind it", prompt, StringComparison.Ordinal);
-        Assert.Contains("one specific thing the caregiver can do now that answers this", prompt);
-        Assert.Contains("CardiTrackCardiMember", prompt);
+        // Both halves ask for the action — the clinical one judges it from the alert and the
+        // readings, which the rewrite is shown neither of; the rewrite says it to a caregiver.
+        Assert.Contains("one specific thing that answers this alert", prompt);
+        Assert.Contains(
+            "one specific thing the caregiver can do now that answers this",
+            HealthInsightService.AlertRewriteInstructions,
+            StringComparison.Ordinal);
+        // The name placeholder belongs to the rewrite half — the only one whose output is read by
+        // someone with a name. The clinical half is never asked to write the token, so it no
+        // longer carries the rule for it.
+        Assert.Contains(
+            "CardiTrackCardiMember",
+            HealthInsightService.AlertRewriteInstructions,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("heart rate, sleep, quieter today, worth a look", prompt);
         Assert.DoesNotContain("check-in", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("means clinically", prompt);
@@ -925,4 +1013,85 @@ public class HealthInsightServicePromptTests
         Assert.False(written);
         Assert.True(NothingStored());
     }
+
+    /// <summary>
+    /// The Rewrite slot runs on a different provider and fails on its own — a Vertex timeout, a
+    /// 429, a region that stopped serving the model. Nothing is stored: a missing card costs the
+    /// detail screen one heading, which this service already treats as best-effort, while clinical
+    /// prose under a heading a caregiver reads costs rather more.
+    /// </summary>
+    [Fact]
+    public async Task ARewriteFailure_StoresNothing()
+    {
+        SetupAlert();
+        var sut = CreateSut();
+
+        // After CreateSut: it wires the echoing fake, which would otherwise replace this.
+        _rewriteAi.GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Throws(new HttpRequestException("Vertex unavailable"));
+
+        var written = await sut.RegenerateAlertInsightAsync(_alertId);
+
+        Assert.False(written);
+        Assert.True(NothingStored());
+    }
+
+    /// <summary>
+    /// A blank clinical read leaves the rewrite nothing to write from, and the second call is not
+    /// made at all — a card that cannot be written must not cost the pass a Vertex call to
+    /// discover it.
+    /// </summary>
+    [Fact]
+    public async Task ABlankClinicalRead_StoresNothing_AndNeverCallsTheRewrite()
+    {
+        SetupAlert();
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.AlertAiResponse
+            {
+                Explanation = "   ",
+                RecommendedAction = "Ask how they slept.",
+            });
+
+        var written = await CreateSut().RegenerateAlertInsightAsync(_alertId);
+
+        Assert.False(written);
+        Assert.True(NothingStored());
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// DPIA row A20's boundary, asserted rather than assumed. MedGemma is handed decrypted
+    /// caregiver notes and can repeat the member's name out of them, so the read is redacted on
+    /// the way across — and the rewrite is shown no readings, no baseline and no member block.
+    /// </summary>
+    [Fact]
+    public async Task TheRewritePrompt_CarriesTheReadAndNoMemberIdentity()
+    {
+        SetupAlert();
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.AlertAiResponse
+            {
+                Explanation = "Margaret Doe's resting rate sat above her own usual overnight.",
+                RecommendedAction = "Ask whether Margaret slept poorly.",
+            });
+
+        await CreateSut().RegenerateAlertInsightAsync(_alertId);
+
+        // Last rather than Single: the echo wires both response shapes on this substitute, so the
+        // setup calls are on the record too.
+        var prompt = _rewriteAi.ReceivedCalls()
+            .Select(c => c.GetArguments()[0] as string)
+            .Last(arg => arg is not null && arg.Contains("Clinical read to write from", StringComparison.Ordinal))!;
+
+        Assert.Contains("resting rate sat above", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Margaret", prompt, StringComparison.OrdinalIgnoreCase);
+        // Word-bounded: the surname is a substring of "does", which the tone block uses.
+        Assert.DoesNotMatch(@"Doe", prompt);
+        Assert.DoesNotContain("--- Member ---", prompt, StringComparison.Ordinal);
+    }
 }
+

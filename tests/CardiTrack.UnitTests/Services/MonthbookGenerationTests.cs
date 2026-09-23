@@ -30,6 +30,7 @@ public class MonthbookGenerationTests
     private readonly IMemberQuestionnaireRepository _questionnaires =
         Substitute.For<IMemberQuestionnaireRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
 
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -108,20 +109,24 @@ public class MonthbookGenerationTests
             .Returns(logs);
     }
 
-    private void SetupModelReply(string headline, string summary) =>
+    private void SetupModelReply(string headline, string summary)
+    {
+        // The clinical half reads; the rewrite half writes what a family reads, echoing the
+        // read back so these tests still assert on the text they always did.
+        JournalRewriteEcho.Wire(_rewriteAi, headline);
         _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.MonthbookAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<DigestGenerationService.MonthbookAiResponse>(
                 new DigestGenerationService.MonthbookAiResponse
                 {
-                    Headline = headline,
-                    Summary = summary,
+                    Finding = summary,
                     Urgency = "watch",
                 },
                 new AiUsage { ModelName = "test-medical" }));
+    }
 
     private DigestGenerationService CreateSut() =>
-        new(_unitOfWork, _medicalAi, Substitute.For<IRewriteAiService>(),
+        new(_unitOfWork, _medicalAi, _rewriteAi,
             PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
             InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance, new PassThroughWriteGuard());

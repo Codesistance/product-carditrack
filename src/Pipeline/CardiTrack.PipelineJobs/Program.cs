@@ -1,4 +1,5 @@
 ﻿using CardiTrack.Application.Interfaces.Repositories;
+using System.Diagnostics;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -83,6 +84,7 @@ builder.Services.AddScoped<IRhythmEpisodeRepository, RhythmEpisodeRepository>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
+builder.Services.AddScoped<IBenignJudgementRepository, BenignJudgementRepository>();
 builder.Services.AddScoped<IMetricAlarmRepository, MetricAlarmRepository>();
 builder.Services.AddScoped<IMetricAlarmStateRepository, MetricAlarmStateRepository>();
 // UnitOfWork's constructor takes every repository, so each host must register all of them even
@@ -114,7 +116,7 @@ builder.Services.AddMedicalAiServices(configuration);
 builder.Services.AddNumerics();
 builder.Services.AddScoped<IDigestGenerationService, DigestGenerationService>();
 builder.Services.AddScoped<IRealtimeAssessmentService, RealtimeAssessmentService>();
-// The R1 statistical findings judgement — the nine rules compute, MedGemma decides. Here rather
+// The R1 statistical findings judgement — the eleven rules compute, MedGemma decides. Here rather
 // than the Worker because it calls the medical model (CLAUDE.md: AI inference is pipeline work).
 builder.Services.AddScoped<IStatisticalAlertService, StatisticalAlertService>();
 // The chat theming pass — Rewrite slot only, which AddMedicalAiServices above already carries.
@@ -167,6 +169,17 @@ if (jobName == "assess")
 
 var app = builder.Build();
 
+// The job's root span. Declared out here, rather than as a `using var` inside the try, so the
+// catch below can mark it failed: a span that ends green on a run that exited non-zero is worse
+// than no span, because it is the one an alert would trust.
+//
+// Until this existed, every arm but `notify` produced a scatter of parentless spans — one per
+// MedGemma call, one per Npgsql command — with nothing tying them to a pass, a member or a rule,
+// and none of the arm's log lines carried a trace_id, because ActivityLogEnricher reads
+// Activity.Current and a job that starts no activity has none. The AI and database spans were
+// always shipping; what was missing was something to hang them from.
+Activity? jobActivity = null;
+
 // No app.Run(): a job executes one pass and exits, and never listens.
 try
 {
@@ -181,6 +194,11 @@ try
     // throw on a malformed endpoint. Outside, that would be an unhandled exception on a path
     // whose whole purpose is to exit non-zero with a fatal log explaining why.
     app.Services.StartTelemetry();
+
+    // After StartTelemetry, necessarily: before the provider is resolved there is no
+    // ActivityListener, so this would return null and the whole run would go untraced.
+    jobActivity = PipelineTelemetry.Source.StartActivity($"pipeline.{jobName}", ActivityKind.Internal);
+    jobActivity?.SetTag("pipeline.job", jobName);
 
     Log.Information("PipelineJobs run starting: {Job}.", jobName);
 
@@ -241,14 +259,23 @@ try
         case "assess":
             var assessments = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentService>();
             var assessed = await assessments.AssessDueMembersAsync(DateTime.UtcNow);
-            // The daily statistical findings ride the same pass: the nine R1 rules produce
-            // findings against the 30-day baseline, and MedGemma — already warm from the
-            // assessor — returns the severity, headline and message for each. Runs before the
-            // digest pass below so a summary written on this execution already sees the alerts.
-            // Cost: one call per member per pass in which a finding survives cooldown and dedup,
-            // and none for a member with nothing off. A raised alert dedups its rule for the day;
-            // a finding the model judges low is not persisted and is asked again next pass while
-            // its yardstick keeps tripping — see StatisticalAlertService's remarks.
+            // The daily statistical findings ride the same pass: the eleven R1 rules produce
+            // findings (nine against the 30-day baseline, two from the device's own rhythm
+            // classifications), and MedGemma — already warm from the
+            // assessor — returns a severity and a clinical read for each. What a caregiver reads
+            // is written from those reads by the Rewrite slot, in one further call. Runs before
+            // the digest pass below so a summary written on this execution already sees the alerts.
+            //
+            // Cost: one private-slot call per member per pass in which a finding survives cooldown
+            // and dedup, none for a member with nothing off, and one Rewrite-slot call on top in
+            // the passes where at least one read clears Yellow — a pass whose findings are all
+            // judged benign still costs the one call it always did. A raised alert dedups its rule
+            // for the day; a benign verdict is remembered in BenignJudgements against a hash of
+            // the finding's own figures, so the same question is put to the model once rather than
+            // on all 288 passes. Every rule is remembered and none is exempt: readings that move
+            // make a different hash and are judged again, no_morning_activity names the clock in
+            // its observation and so re-judges every pass on its own, and the measured rules carry
+            // the device's counts. See StatisticalAlertService's remarks.
             var judgements = scope.ServiceProvider.GetRequiredService<IStatisticalAlertService>();
             var judged = await judgements.EvaluateAsync(DateTime.UtcNow);
             // The digest job still runs at :00/:30; this pass runs every 5 minutes, two minutes
@@ -292,6 +319,9 @@ try
             return 0;
 
         default:
+            // Non-zero exit without an exception, so the catch below never runs and the root span
+            // would otherwise end unset — a failed Cloud Run execution reading as a clean trace.
+            jobActivity?.SetStatus(ActivityStatusCode.Error, $"unknown job '{jobName}'");
             Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate, assess, enrich, trend, theme.", jobName);
             return 1;
     }
@@ -299,11 +329,17 @@ try
 catch (Exception ex)
 {
     // A non-zero exit marks the execution failed in Cloud Run, which is what alerting keys on.
+    jobActivity?.AddException(ex);
+    jobActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
     Log.Fatal(ex, "PipelineJobs run failed: {Job}.", jobName);
     return 1;
 }
 finally
 {
+    // Before the flushes: a span still open when its provider is flushed is a span that never
+    // ships, and this is the one the rest of the run's telemetry hangs from.
+    jobActivity?.Dispose();
+
     // Guarded, and first, so the two flushes cannot take each other down. Both resolve providers
     // that may be the very thing that failed above, and an exception thrown here would replace
     // the outcome the catch just recorded — losing the fatal log that explains the run, which is

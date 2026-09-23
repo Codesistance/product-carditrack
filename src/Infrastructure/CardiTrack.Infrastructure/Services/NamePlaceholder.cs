@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -90,6 +91,30 @@ internal static partial class NamePlaceholder
     /// while the cost of the opposite mistake is a real name reaching a third-party provider.
     /// Nothing a caregiver reads passes through here.
     /// </remarks>
+    /// <summary>
+    /// Whether a member's name can be redacted against at all. Every slot boundary asks this
+    /// before it wraps anything for the Rewrite slot, and refuses in its own way when the answer
+    /// is no.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="Redact"/> hands the text straight back when the name is null or blank, which is
+    /// the right behaviour for a redaction helper and the wrong one for a boundary: a crossing
+    /// that proceeds on it sends the clinical read to Vertex unredacted, and that read may repeat
+    /// a name out of the caregiver notes <c>DemographicsContextSource</c> decrypts without
+    /// redacting. The no-op is silent, and the downstream write guards do not catch it, because
+    /// DPIA A20's boundary is about what is <em>sent</em>, not about what is stored.
+    /// </para>
+    /// <para>
+    /// Stated once, here, rather than as a condition each caller invents: the first sweep for
+    /// this looked for <c>member?.Name</c> and so classified the five crossings that pass a
+    /// non-nullable <c>member.Name</c> as safe — a name that is present but blank fails exactly
+    /// the same way.
+    /// </para>
+    /// </remarks>
+    internal static bool CanRedactAgainst([NotNullWhen(true)] string? name) =>
+        !string.IsNullOrWhiteSpace(name);
+
     internal static string? Redact(string? text, string? name)
     {
         if (string.IsNullOrEmpty(text) || string.IsNullOrWhiteSpace(name))
