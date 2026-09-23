@@ -213,7 +213,8 @@ Survey of the user-facing surfaces on 2026-09-23:
 | Journal — Daybook, Weekbook, Monthbook entries (A11 text) | **None** found | `JournalPage.xaml`, `JournalEntryPage.xaml` |
 | Member detail — "Trends to keep an eye on" / "The longer view" (A5 narrative) | **None** found | `CardiMemberDetailPage.xaml` |
 | Family questionnaire question and rationale (A19) | **None** found | `Controls/QuestionCard.xaml`, `QuestionPopupPage.xaml` |
-| PDF report narrative; chat-transcript export | **Present** — "Written by CardiTrack's AI assistant. Not a clinical assessment." / "AI-generated answers · Not a clinical assessment" | `PdfReportRenderer.cs`, `ChatTranscriptDocument.cs` |
+| PDF report narrative; chat-transcript export (**PDF**) | **Present** — "Written by CardiTrack's AI assistant. Not a clinical assessment." / "AI-generated answers · Not a clinical assessment" | `PdfReportRenderer.cs`, `ChatTranscriptDocument.cs` |
+| Chat-transcript export (**CSV**) | **None** — the CSV carries only Member, SentUtc, Speaker and Message columns, no provenance line. A data file rather than a document, so arguably out of 50(1); noted for OI-15 (c) as a 50(2) candidate | `CsvReportRenderer.WriteTranscript` |
 | `/privacy` | Describes "a medical language model writes a short assessment" — policy-level, not the product-surface disclosure 50(1) asks for | `Privacy.razor` |
 
 **Gaps recorded.** Two Art. 50 items are open, both live since 2 August 2026:
