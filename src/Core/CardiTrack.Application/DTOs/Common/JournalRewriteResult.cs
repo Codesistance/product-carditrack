@@ -39,11 +39,6 @@ public enum JournalRewriteOutcome
 /// <param name="Outcome">What happened.</param>
 /// <param name="Entry">The composed (then stored) book when <paramref name="Outcome"/> is <see cref="JournalRewriteOutcome.Written"/>; otherwise null.</param>
 /// <param name="Usage">The model call the attempt made, when one was made — for the caller to bill.</param>
-/// <param name="RewriteUsage">
-/// The Rewrite-slot call the attempt made, when one was made. Separate from <paramref name="Usage"/>
-/// because a book costs two calls on two providers since the clinical/rewrite split, and the ledger
-/// records a row per call — summing them would bill a Vertex call as MedGemma.
-/// </param>
 /// <param name="ReplacedAnEarlierBook">True when a book for the period existed and was removed for this one. Always false from a composition, which stores nothing.</param>
 /// <param name="DaysWithData">For <see cref="JournalRewriteOutcome.NoReadings"/> on a Weekbook or Monthbook: how many days carried readings.</param>
 /// <param name="DaysNeeded">For the same case: how many the book needs.</param>
@@ -53,8 +48,20 @@ public sealed record JournalRewriteResult(
     AiUsage? Usage,
     bool ReplacedAnEarlierBook,
     int DaysWithData = 0,
-    int DaysNeeded = 0,
-    // Appended last on purpose: this record's positional constructor and deconstruction are part
-    // of its contract, and slipping a new optional parameter in front of the existing ones
-    // silently rebinds every positional call that passed the day counts.
-    AiUsage? RewriteUsage = null);
+    int DaysNeeded = 0)
+{
+    /// <summary>
+    /// The Rewrite-slot call the attempt made, when one was made. Separate from
+    /// <see cref="Usage"/> because a book costs two calls on two providers since the
+    /// clinical/rewrite split, and the ledger records a row per call — summing them would bill a
+    /// Vertex call as MedGemma.
+    /// </summary>
+    /// <remarks>
+    /// An init property rather than a seventh positional component, deliberately. This record's
+    /// positional constructor and its generated <c>Deconstruct</c> are part of its shape: adding a
+    /// component changes their arity, which breaks a caller deconstructing six values even though
+    /// appending it keeps calls that simply omit it compiling. A property adds a way to set the
+    /// value without changing anything that already existed.
+    /// </remarks>
+    public AiUsage? RewriteUsage { get; init; }
+}

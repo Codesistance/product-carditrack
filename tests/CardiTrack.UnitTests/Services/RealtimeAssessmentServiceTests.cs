@@ -680,5 +680,42 @@ public class RealtimeAssessmentServiceTests
         Assert.DoesNotContain("(truncated)", prompt, StringComparison.Ordinal);
         Assert.Contains("The rise resolved before morning.", prompt, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The alert is still raised when the rewrite fails, carrying the fallback sentence and the
+    /// severity the clinical half judged.
+    /// </summary>
+    /// <remarks>
+    /// This is the one place in the split that fails <em>safe</em> rather than closed, and the
+    /// reason is the whole argument for the shape: everywhere else a rewrite failure costs a card
+    /// that is rewritten next pass, while here it would cost silence about a heart rate the model
+    /// has just called urgent. The behaviour had no test until Copilot asked for one — which is
+    /// exactly the sort of contract that gets quietly inverted later by someone tidying the
+    /// exception handling.
+    /// </remarks>
+    [Fact]
+    public async Task ARewriteFailure_StillRaisesTheAlert_WithTheFallbackSentence()
+    {
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "Resting rate ran well above this person's usual through the evening.",
+                Severity = "high",
+            });
+
+        var sut = CreateSut();
+
+        // After CreateSut: it wires the echoing fake, which would otherwise replace this.
+        _rewriteAi.GenerateStructuredAsync<RealtimeAssessmentService.AlertRewriteAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Throws(new HttpRequestException("Vertex unavailable"));
+
+        await sut.AssessDueMembersAsync(UtcNow);
+
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.Message == RealtimeAssessmentService.NonClinicalObservation
+            && a.Severity == AlertSeverity.Orange));
+    }
 }
 

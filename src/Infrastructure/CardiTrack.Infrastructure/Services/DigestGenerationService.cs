@@ -913,7 +913,10 @@ public partial class DigestGenerationService : IDigestGenerationService
         {
             return new JournalRewriteResult(
                 composed.Outcome, null, composed.Usage, false,
-                composed.DaysWithData, composed.DaysNeeded, RewriteUsage: composed.RewriteUsage);
+                composed.DaysWithData, composed.DaysNeeded)
+            {
+                RewriteUsage = composed.RewriteUsage,
+            };
         }
 
         _logger.LogInformation(
@@ -921,8 +924,10 @@ public partial class DigestGenerationService : IDigestGenerationService
             audience, cardiMemberId, periodEnd);
 
         return new JournalRewriteResult(
-            JournalRewriteOutcome.Written, composed.Entry, composed.Usage, false,
-            RewriteUsage: composed.RewriteUsage);
+            JournalRewriteOutcome.Written, composed.Entry, composed.Usage, false)
+        {
+            RewriteUsage = composed.RewriteUsage,
+        };
     }
 
     /// <summary>
