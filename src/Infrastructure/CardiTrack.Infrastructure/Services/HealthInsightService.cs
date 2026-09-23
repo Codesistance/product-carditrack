@@ -295,7 +295,7 @@ public class HealthInsightService : IHealthInsightService
     /// name swapped out. MedGemma is given decrypted caregiver notes and can repeat a name from
     /// them, and that identifier must not reach Vertex.
     /// </summary>
-    private static string ForRewrite(string? text, string? memberName)
+    private static string ForRewrite(string? text, string memberName)
     {
         if (string.IsNullOrWhiteSpace(text))
             return string.Empty;
@@ -412,11 +412,24 @@ public class HealthInsightService : IHealthInsightService
             return false;
         }
 
+        // Nothing crosses to the Rewrite slot for a member who is not there to be redacted
+        // against. The alert and the member are two queries, so an erasure can land between them,
+        // and until this returned the redaction was silently optional: NamePlaceholder.Redact
+        // hands back the text unchanged when the name is null, and the clinical read can carry a
+        // name out of the caregiver notes DemographicsContextSource decrypts without redacting.
+        // The guarded write at the end refuses to store the card, but the name has reached Vertex
+        // by then — and A20's boundary is about what is sent, not about what is kept.
+        if (member is null || string.IsNullOrWhiteSpace(member.Name))
+        {
+            CopyGuardTelemetry.Count(AlertSurface, CopyGuardTelemetry.ReasonReadBlank);
+            return false;
+        }
+
         // What the rewrite is given, held in a local because it is also what the rewrite is held
         // to: the grounding check below has to compare the copy against everything the model was
         // shown, not against half of it.
-        var brief = $"finding: {ForRewrite(read.Explanation, member?.Name)}\n"
-            + $"suggested action: {ForRewrite(read.RecommendedAction, member?.Name)}";
+        var brief = $"finding: {ForRewrite(read.Explanation, member.Name)}\n"
+            + $"suggested action: {ForRewrite(read.RecommendedAction, member.Name)}";
 
         AlertAiResponse aiResponse;
         try
@@ -722,11 +735,19 @@ public class HealthInsightService : IHealthInsightService
             return false;
         }
 
+        // Same boundary as the alert path above, same reason: no member, no redaction, so
+        // nothing crosses.
+        if (member is null || string.IsNullOrWhiteSpace(member.Name))
+        {
+            CopyGuardTelemetry.Count(BaselineSurface, CopyGuardTelemetry.ReasonReadBlank);
+            return false;
+        }
+
         BaselineAiResponse aiResponse;
         try
         {
             var readFindings = read.KeyFindings
-                .Select(finding => ForRewrite(finding, member?.Name))
+                .Select(finding => ForRewrite(finding, member.Name))
                 .Where(finding => finding.Length > 0)
                 .ToList();
 
@@ -734,7 +755,7 @@ public class HealthInsightService : IHealthInsightService
                 BuildRewritePrompt(
                     BaselineRewriteInstructions,
                     new DeidentifiedFindings(
-                        $"summary: {ForRewrite(read.Summary, member?.Name)}"
+                        $"summary: {ForRewrite(read.Summary, member.Name)}"
                         + (readFindings.Count == 0
                             ? string.Empty
                             : "\nfindings:\n- " + string.Join("\n- ", readFindings)))),

@@ -754,6 +754,64 @@ public class HealthInsightServicePromptTests
 
     // ── Alert insight ───────────────────────────────────────────────────────────
 
+    // -- The slot boundary needs a member to redact against --------------------
+
+    /// <summary>
+    /// The alert and the member are two separate queries, so an erasure can land between them.
+    /// Until this returned, the redaction was silently optional: NamePlaceholder.Redact hands back
+    /// the text unchanged when the name is null, and the clinical read can carry a name out of the
+    /// caregiver notes DemographicsContextSource decrypts without redacting. The guarded write
+    /// refuses to store the card, but by then the name has reached Vertex — and DPIA A20's
+    /// boundary is about what is sent, not about what is kept.
+    /// </summary>
+    [Fact]
+    public async Task TheAlertRewrite_IsNotCalledAtAll_WhenTheMemberHasGone()
+    {
+        SetupAlert();
+        _members.GetByIdAsync(_memberId).Returns((CardiMember?)null);
+
+        var wrote = await CreateSut().RegenerateAlertInsightAsync(_alertId);
+
+        Assert.False(wrote);
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A member with no name on file leaves the redaction nothing to match either.</summary>
+    [Fact]
+    public async Task TheAlertRewrite_IsNotCalledAtAll_WhenTheMemberHasNoName()
+    {
+        SetupAlert();
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "   ",
+            DateOfBirth = DateOfBirth,
+            Gender = Gender.Female,
+            IsActive = true,
+        });
+
+        var wrote = await CreateSut().RegenerateAlertInsightAsync(_alertId);
+
+        Assert.False(wrote);
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The baseline card crosses the same boundary and holds the same line.</summary>
+    [Fact]
+    public async Task TheBaselineRewrite_IsNotCalledAtAll_WhenTheMemberHasGone()
+    {
+        SetupBaseline();
+        _members.GetByIdAsync(_memberId).Returns((CardiMember?)null);
+
+        var wrote = await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        Assert.False(wrote);
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     private void SetupAlert()
     {
         _alerts.GetByIdWithCardiMemberAsync(_alertId).Returns(new Alert
