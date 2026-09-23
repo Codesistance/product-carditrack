@@ -336,9 +336,14 @@ public sealed class JournalChatActions
 
         // The generation the yes paid for, whatever happens to the claim below: a book composed
         // and then not stored is still a model call this turn made, and the ledger says so.
-        var generation = composition?.Usage is { } paid
-            ? new List<AiCallRecord> { new(AiCallStep.JournalWrite, AiProviderSlot.Private, paid) }
-            : [];
+        // Two rows, because a book is two calls since the clinical/rewrite split: the private
+        // slot's read and the Rewrite slot's account. Billing only the first would leave every
+        // caregiver-requested rewrite's Vertex call out of the ledger entirely.
+        var generation = new List<AiCallRecord>();
+        if (composition?.Usage is { } paid)
+            generation.Add(new(AiCallStep.JournalWrite, AiProviderSlot.Private, paid));
+        if (composition?.RewriteUsage is { } rewritten)
+            generation.Add(new(AiCallStep.Rewrite, AiProviderSlot.Rewrite, rewritten));
 
         await _unitOfWork.BeginTransactionAsync();
 

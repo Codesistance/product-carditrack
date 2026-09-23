@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Infrastructure.Services;
 using NSubstitute;
@@ -21,14 +22,19 @@ internal static class JournalRewriteEcho
         IRewriteAiService rewriteAi,
         string headline = "A settled stretch",
         string suggestion = "Ask how they have been sleeping lately.") =>
-        rewriteAi.GenerateStructuredAsync<JournalRewritePrompt.JournalRewriteAiResponse>(
+        // The WithUsage variant, because a book's Rewrite call is billed: the ledger records a row
+        // per call, so the production path needs the usage back and a fake that only stubs the
+        // usage-less overload silently returns null and discards every book.
+        rewriteAi.GenerateStructuredWithUsageAsync<JournalRewritePrompt.JournalRewriteAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(call => new JournalRewritePrompt.JournalRewriteAiResponse
-            {
-                Summary = FindingIn((string)call[0]!),
-                Headline = headline,
-                Suggestion = suggestion,
-            });
+            .Returns(call => new AiGenerationResult<JournalRewritePrompt.JournalRewriteAiResponse>(
+                new JournalRewritePrompt.JournalRewriteAiResponse
+                {
+                    Summary = FindingIn((string)call[0]!),
+                    Headline = headline,
+                    Suggestion = suggestion,
+                },
+                new AiUsage { ModelName = "test-rewrite", InputTokens = 400, OutputTokens = 90 }));
 
     /// <summary>The read's own finding line, which is everything after its label.</summary>
     private static string FindingIn(string prompt)

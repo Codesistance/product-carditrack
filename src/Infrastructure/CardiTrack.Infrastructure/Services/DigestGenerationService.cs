@@ -912,31 +912,50 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (composed.Entry is null)
         {
             return new JournalRewriteResult(
-                composed.Outcome, null, composed.Usage, false, composed.DaysWithData, composed.DaysNeeded);
+                composed.Outcome, null, composed.Usage, false, composed.RewriteUsage,
+                composed.DaysWithData, composed.DaysNeeded);
         }
 
         _logger.LogInformation(
             "Composed the {Audience} for CardiMember {CardiMemberId} dated {PeriodEnd} at a caregiver's request.",
             audience, cardiMemberId, periodEnd);
 
-        return new JournalRewriteResult(JournalRewriteOutcome.Written, composed.Entry, composed.Usage, false);
+        return new JournalRewriteResult(
+            JournalRewriteOutcome.Written, composed.Entry, composed.Usage, false, composed.RewriteUsage);
     }
 
     /// <summary>
     /// What composing one book produced: the entry to store, or the reason there is none, plus the
     /// model call it cost so a caller acting for a chat turn can bill it.
     /// </summary>
+    /// <summary>
+    /// <param name="Usage">The private slot's clinical read.</param>
+    /// <param name="RewriteUsage">
+    /// The Rewrite slot's call, when one was made. Carried separately rather than folded into
+    /// <paramref name="Usage"/> because the two are different providers and different models, and
+    /// the ledger records a row per call — summing them would bill a Vertex call as MedGemma.
+    /// </param>
+    /// </summary>
     private sealed record JournalComposition(
-        JournalRewriteOutcome Outcome, DigestEntry? Entry, AiUsage? Usage, int DaysWithData = 0, int DaysNeeded = 0)
+        JournalRewriteOutcome Outcome,
+        DigestEntry? Entry,
+        AiUsage? Usage,
+        AiUsage? RewriteUsage = null,
+        int DaysWithData = 0,
+        int DaysNeeded = 0)
     {
+        // Named arguments throughout: RewriteUsage sits between Usage and the day counts, so a
+        // positional call that predates it binds a day count to a usage and still compiles.
         public static JournalComposition NoReadings(int daysWithData, int daysNeeded) =>
-            new(JournalRewriteOutcome.NoReadings, null, null, daysWithData, daysNeeded);
+            new(JournalRewriteOutcome.NoReadings, null, null,
+                DaysWithData: daysWithData, DaysNeeded: daysNeeded);
 
-        public static JournalComposition Discarded(AiUsage usage) =>
-            new(JournalRewriteOutcome.Discarded, null, usage);
+        public static JournalComposition Discarded(AiUsage usage, AiUsage? rewriteUsage = null) =>
+            new(JournalRewriteOutcome.Discarded, null, usage, rewriteUsage);
 
-        public static JournalComposition Written(DigestEntry entry, AiUsage usage) =>
-            new(JournalRewriteOutcome.Written, entry, usage);
+        public static JournalComposition Written(
+            DigestEntry entry, AiUsage usage, AiUsage? rewriteUsage = null) =>
+            new(JournalRewriteOutcome.Written, entry, usage, rewriteUsage);
     }
 
     /// <summary>
@@ -1040,12 +1059,14 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (rewritten is null)
             return JournalComposition.Discarded(generated.Usage);
 
+        var (rewrite, rewriteUsage) = rewritten.Value;
+
         // A daybook is written once, so a bad one is not replaced half an hour later; discarding
         // costs the member that day's review and nothing else.
         return FinishJournalCopy(
             memberId, reviewedDate, DigestAudience.Daybook, utcNow, member,
-            rewritten.Summary.Trim(), rewritten.Headline, rewritten.Suggestion, read.Urgency,
-            generated.Usage, DaybookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: false);
+            rewrite.Summary.Trim(), rewrite.Headline, rewrite.Suggestion, read.Urgency,
+            generated.Usage, rewriteUsage, DaybookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: false);
     }
 
     /// <summary>
@@ -1121,11 +1142,13 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (rewritten is null)
             return JournalComposition.Discarded(generated.Usage);
 
+        var (rewrite, rewriteUsage) = rewritten.Value;
+
         // A Weekbook is written once, so a bad one is not replaced next pass.
         return FinishJournalCopy(
             memberId, weekEnd, DigestAudience.Weekbook, utcNow, member,
-            rewritten.Summary.Trim(), rewritten.Headline, rewritten.Suggestion, read.Urgency,
-            generated.Usage, WeekbookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: true);
+            rewrite.Summary.Trim(), rewrite.Headline, rewrite.Suggestion, read.Urgency,
+            generated.Usage, rewriteUsage, WeekbookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: true);
     }
 
     /// <summary>
@@ -1200,10 +1223,12 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (rewritten is null)
             return JournalComposition.Discarded(generated.Usage);
 
+        var (rewrite, rewriteUsage) = rewritten.Value;
+
         return FinishJournalCopy(
             memberId, monthEnd, DigestAudience.Monthbook, utcNow, member,
-            rewritten.Summary.Trim(), rewritten.Headline, rewritten.Suggestion, read.Urgency,
-            generated.Usage, MonthbookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: true);
+            rewrite.Summary.Trim(), rewrite.Headline, rewrite.Suggestion, read.Urgency,
+            generated.Usage, rewriteUsage, MonthbookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: true);
     }
 
     /// <summary>
@@ -1227,7 +1252,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// own answers and the caregiver's notes, and can repeat a name out of them.
     /// </para>
     /// </remarks>
-    private async Task<JournalRewritePrompt.JournalRewriteAiResponse?> RewriteJournalAsync(
+    private async Task<(JournalRewritePrompt.JournalRewriteAiResponse Reply, AiUsage Usage)?> RewriteJournalAsync(
         string finding, string period, string sentences, CardiMember member, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(finding))
@@ -1244,8 +1269,27 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         try
         {
-            return await _rewriteAi.GenerateStructuredAsync<JournalRewritePrompt.JournalRewriteAiResponse>(
-                JournalRewritePrompt.Build(JournalRewritePrompt.Render(period, sentences, read)), ct);
+            var rewritten = await _rewriteAi
+                .GenerateStructuredWithUsageAsync<JournalRewritePrompt.JournalRewriteAiResponse>(
+                    JournalRewritePrompt.Build(JournalRewritePrompt.Render(period, sentences, read)), ct);
+
+            // Grounded against the read, like every other rewrite on the platform. A book is the
+            // most figure-dense thing written here, so an invented number is both the likeliest
+            // thing for a rewrite to add and the hardest for a reader to catch.
+            var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(
+                $"{rewritten.Result.Summary} {rewritten.Result.Headline} {rewritten.Result.Suggestion}",
+                read);
+            if (invented is not null)
+            {
+                CopyGuardTelemetry.Count($"{period}book", CopyGuardTelemetry.ReasonInventedReading);
+                _logger.LogWarning(
+                    "Discarded the {Period}book for CardiMember {CardiMemberId}: the rewrite named a "
+                    + "reading the clinical read did not ({Reading}).",
+                    period, member.Id, invented);
+                return null;
+            }
+
+            return (rewritten.Result, rewritten.Usage);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -1274,6 +1318,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         string? suggestion,
         string? urgency,
         AiUsage usage,
+        AiUsage? rewriteUsage,
         Func<string, bool> readsLikeInstructions,
         bool requireMinimumSentences)
     {
@@ -1292,7 +1337,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 + "returned empty text or restated its own instructions.",
                 bookName, memberId, periodPhrase);
             CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonReadsLikeInstructions);
-            return JournalComposition.Discarded(usage);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
         if (JournalRegisterGuards.NamesACondition(text) is { } condition)
@@ -1302,7 +1347,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 + "condition or a treatment ({Marker}).",
                 bookName, memberId, periodPhrase, condition);
             CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonNamesACondition);
-            return JournalComposition.Discarded(usage);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
         if (requireMinimumSentences
@@ -1313,7 +1358,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 + "its sentence count ({Sentences}) is below the minimum.",
                 bookName, memberId, periodPhrase, JournalRegisterGuards.SentenceCount(text));
             CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonTooFewSentences);
-            return JournalComposition.Discarded(usage);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
         var (glossedText, glossed) = JournalRegisterGuards.Gloss(text);
@@ -1332,10 +1377,14 @@ public partial class DigestGenerationService : IDigestGenerationService
                 + "'{Term}' without explaining it where it is first used.",
                 bookName, memberId, periodPhrase, term);
             CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnglossedTerm);
-            return JournalComposition.Discarded(usage);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
-        var name = NamePlaceholder.FirstName(member.Name);
+        // MemberVoice rather than a first name: the rewrite brief asks for PronounsByToken, so a
+        // book can come back carrying CardiTrackCardiMemberTheir as well as the name token, and
+        // resolving only the name would store the pronoun sentinel for a caregiver to read.
+        var voice = MemberVoice.For(member);
+        var name = voice.FirstName;
         if (name is null && NamePlaceholder.IsPresentIn(text))
         {
             _logger.LogWarning(
@@ -1343,10 +1392,20 @@ public partial class DigestGenerationService : IDigestGenerationService
                 + "member through the placeholder, but no name is on file to resolve it to.",
                 bookName, memberId, periodPhrase);
             CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
-            return JournalComposition.Discarded(usage);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
-        var storedText = NamePlaceholder.Resolve(text, name)!;
+        var storedText = voice.Resolve(text)!;
+        if (MemberVoice.IsUnresolvedIn(storedText))
+        {
+            _logger.LogWarning(
+                "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it carries a "
+                + "pronoun token the member's record cannot settle.",
+                bookName, memberId, periodPhrase);
+            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
+            return JournalComposition.Discarded(usage, rewriteUsage);
+        }
+
         if (storedText.Length > DigestEntry.MaxTextLength)
         {
             _logger.LogWarning(
@@ -1354,7 +1413,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 + "{Length} characters is over the {Max} the table holds.",
                 bookName, memberId, periodPhrase, storedText.Length, DigestEntry.MaxTextLength);
             CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonTooLong);
-            return JournalComposition.Discarded(usage);
+            return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
         return JournalComposition.Written(new DigestEntry
@@ -1362,13 +1421,13 @@ public partial class DigestGenerationService : IDigestGenerationService
             CardiMemberId = memberId,
             LocalDate = periodEnd,
             Audience = audience,
-            Headline = NamePlaceholder.Resolve(CleanHeadline(headline, memberId, periodEnd), name),
+            Headline = voice.Resolve(CleanHeadline(headline, memberId, periodEnd)),
             Text = storedText,
-            Suggestion = NamePlaceholder.Resolve(CleanSuggestion(suggestion, memberId, periodEnd), name),
+            Suggestion = voice.Resolve(CleanSuggestion(suggestion, memberId, periodEnd)),
             Urgency = ParseUrgency(urgency, memberId, periodEnd),
             GeneratedAtUtc = utcNow,
             PromptVersion = CurrentPromptVersion,
-        }, usage);
+        }, usage, rewriteUsage);
     }
 
     /// <summary>

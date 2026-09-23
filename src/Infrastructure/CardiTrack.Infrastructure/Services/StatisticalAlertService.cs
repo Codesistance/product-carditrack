@@ -731,7 +731,7 @@ public class StatisticalAlertService : IStatisticalAlertService
                 CardiMemberId = memberId,
                 AlertType = finding.Type,
                 Severity = judgedFinding.Severity,
-                Title = CaregiverFacingHeadline(entry.Headline, finding.Rule),
+                Title = CaregiverFacingHeadline(entry.Headline, finding.Rule, voice),
                 Message = message,
                 TriggeredDate = utcNow,
                 MetricValues = finding.MetricValues,
@@ -989,12 +989,22 @@ public class StatisticalAlertService : IStatisticalAlertService
     /// catalogue's own name for the rule — "Activity decline", "Elevated resting heart rate" —
     /// which names the observation the caregiver already chose to be told about, not a verdict.
     /// </summary>
-    private static string CaregiverFacingHeadline(string? headline, string rule)
+    private static string CaregiverFacingHeadline(string? headline, string rule, MemberVoice voice)
     {
         var cleaned = (headline ?? string.Empty).Trim().Trim('"', '\'', '.', '—', '-').Trim();
+
+        // The condition and sex guards belong here too, now the headline comes from a rewrite
+        // working off a read that is encouraged to name a mechanism. The message has always had
+        // somewhere safe to land when it goes wrong (NonClinicalObservation); the title's
+        // equivalent is the rule catalogue's own name for the thing the caregiver chose to be told
+        // about, which is already where an unusable headline falls back to. Until now a title
+        // could carry a condition into the card while the message beside it was being scrubbed of
+        // exactly that.
         var usable = cleaned.Length is > 0 and <= MaxHeadlineLength
             && !GeneratedTitles.ExceedsWordCap(cleaned)
-            && !MemberVoice.IsUnresolvedIn(cleaned);
+            && !MemberVoice.IsUnresolvedIn(cleaned)
+            && JournalRegisterGuards.NamesACondition(cleaned) is null
+            && !RewriteCopyGuards.StatesAnUnsupportedSex(cleaned, voice.Gender);
 
         return usable ? cleaned : AlertRuleCatalogue.Find(rule)?.Title ?? "Worth a look";
     }

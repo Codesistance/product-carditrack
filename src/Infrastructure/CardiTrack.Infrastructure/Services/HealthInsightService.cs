@@ -509,6 +509,13 @@ public class HealthInsightService : IHealthInsightService
 
     private static string CaregiverFacingInsight(string? text, MemberVoice voice)
     {
+        // Checked before resolving, on the raw reply: the brief asks for pronoun tokens, so a
+        // natural "his" or "her" in the output is the model ignoring that instruction rather than
+        // a token to settle — and settling first would hide it. Same order the digest and Advise
+        // rewrites use.
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(text, voice.Gender))
+            return string.Empty;
+
         var resolved = ResolvedOrEmpty(text, voice);
         return JournalRegisterGuards.NamesACondition(resolved) is null ? resolved : string.Empty;
     }

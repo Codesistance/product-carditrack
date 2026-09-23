@@ -785,6 +785,11 @@ public class TrendInterpretationService
         // MemberVoice rather than a bare first name: the rewrite brief asks for PronounsByToken, so
         // a reply can carry CardiTrackCardiMemberTheir as well as the name token, and resolving
         // only the name left the pronoun to reach the trend card verbatim.
+        // Before resolving, on the raw reply, for the reason the insight path gives: the brief
+        // asks for tokens, so a natural sexed pronoun is the instruction being ignored.
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(text, voice.Gender))
+            return null;
+
         var resolved = voice.Resolve(text);
         if (string.IsNullOrWhiteSpace(resolved)
             || NamePlaceholder.IsPresentIn(resolved)
