@@ -278,10 +278,16 @@ public partial class DeviceConnectionPage : ContentPage
         AuthorizeBtn.Text = "Try Again";
     }
 
+    // Reconnecting sends this page in as the modal's root (WizardLauncher, reconnectDevice) —
+    // same fallback DeviceSelectionPage.OnBackRequested uses, and for the same reason: with
+    // nothing under it on the stack, PopAsync would be a no-op and Cancel would trap the
+    // caregiver in the modal.
     private async void OnCancelTapped(object? sender, EventArgs e)
     {
         if (Navigation.NavigationStack.Count > 1)
             await Navigation.PopAsync();
+        else
+            await _ctx.CancelAsync(this);
     }
 
     private Task OnInfoAsync(string title, string message) => _popups.ShowInfoAsync(message, title);

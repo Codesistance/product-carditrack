@@ -15,6 +15,9 @@ public partial class DeviceCard : ContentView
     public event EventHandler<Guid>? SetPrimaryRequested;
     public event EventHandler<Guid>? RemoveRequested;
 
+    /// <summary>The provider itself broke the token — carries the caregiver into M1-06 to redo consent.</summary>
+    public event EventHandler<Guid>? ReconnectRequested;
+
     /// <summary>False while a re-pull is open or its cooldown is in force — the row then only reports.</summary>
     private bool _canRepull = true;
 
@@ -52,6 +55,21 @@ public partial class DeviceCard : ContentView
             StatusChip.BackgroundColor = Color.FromArgb(chipColour);
             StatusLabel.TextColor = Color.FromArgb(textColour);
             StatusLabel.Text = label;
+
+            // "token_expired" is the one wire status Refresh Connection cannot fix — the
+            // provider itself rejected the refresh (expired grant, or the wearer revoked
+            // access), so the identity/sharing/stats read as stale until the caregiver redoes
+            // consent, and Refresh Connection gives way to Reconnect below. Re-pull History and
+            // Set as Primary are withheld too — both would only queue against a connection that
+            // cannot currently pull anything.
+            var needsReconnect = device.Status == "token_expired";
+            DeviceInfoSection.Opacity = needsReconnect ? 0.55 : 1;
+            ReconnectRow.IsVisible = needsReconnect;
+            RefreshRow.IsVisible = !needsReconnect;
+            RepullRow.IsVisible = !needsReconnect;
+            PrimaryRow.IsVisible = !needsReconnect;
+            SemanticProperties.SetDescription(ReconnectRow,
+                $"{device.DisplayName} needs reconnecting. Opens sign-in to restore the connection.");
 
             SyncedLabel.Text = device.LastSyncedAt is { } synced
                 ? $"synced {RelativeTime.Format(synced)}"
@@ -353,6 +371,9 @@ public partial class DeviceCard : ContentView
 
     private void OnRefreshTapped(object? sender, TappedEventArgs e) =>
         RefreshRequested?.Invoke(this, _deviceId);
+
+    private void OnReconnectTapped(object? sender, TappedEventArgs e) =>
+        ReconnectRequested?.Invoke(this, _deviceId);
 
     private void OnRepullTapped(object? sender, TappedEventArgs e)
     {

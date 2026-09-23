@@ -217,6 +217,7 @@ public partial class DeviceManagementPage : ContentPage
             card.RepullRequested += OnRepullRequested;
             card.SetPrimaryRequested += OnSetPrimaryRequested;
             card.RemoveRequested += OnRemoveRequested;
+            card.ReconnectRequested += OnReconnectRequested;
             card.SharingExpansionChanged += (_, expanded) =>
             {
                 if (expanded)
@@ -266,9 +267,7 @@ public partial class DeviceManagementPage : ContentPage
         _wizardActive = true;
         try
         {
-            // The connect wizard wants the list shape, not the detail shape.
-            var members = await _api.GetCardiMembersAsync();
-            var member = members.FirstOrDefault(m => m.Id == _route.Id);
+            var member = await ResolveConnectMemberAsync();
             if (member is null)
                 return;
 
@@ -299,6 +298,72 @@ public partial class DeviceManagementPage : ContentPage
         {
             _wizardActive = false;
         }
+    }
+
+    /// <summary>
+    /// A device the provider itself locked out (Fitbit rejected the refresh, or the wearer
+    /// revoked consent) — Refresh Connection would only repeat that failure, so this sends the
+    /// caregiver straight into M1-06 for the device's own brand, skipping M1-05's picker. The
+    /// OAuth callback resolves by CardiMember + brand, so completing it revives this same
+    /// connection rather than creating a second one.
+    /// </summary>
+    private async void OnReconnectRequested(object? sender, Guid deviceId)
+    {
+        if (_wizardActive || _member is null)
+            return;
+
+        var device = _last?.Devices.Devices.FirstOrDefault(d => d.DeviceId == deviceId);
+        var connectable = device is null ? null : ConnectableDevice.ForWireName(device.Provider);
+        if (connectable is null)
+        {
+            // Remove-and-reconnect is not a real path for a brand M1-05's picker doesn't offer
+            // yet (Garmin) — the caregiver would land back on the same picker with nothing to
+            // pick. Point at support instead of a retry that only leads back here.
+            await _popups.ShowWarningAsync(
+                "This device type can't be reconnected from the app yet — reach us at " +
+                "support@carditrack.com and we'll help get it working again.",
+                "Can't reconnect");
+            return;
+        }
+
+        _wizardActive = true;
+        try
+        {
+            var member = await ResolveConnectMemberAsync();
+            if (member is null)
+                return;
+
+            var result = await WizardLauncher.RunModalAsync(
+                Navigation, member, showBaselineIntro: false, reconnectDevice: connectable);
+
+            if (result.ExitedToDashboard)
+                return;
+
+            await LoadAsync(force: true);
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't reconnect this device");
+        }
+        catch (ApiException)
+        {
+            // Session gone — the app is already on its way back to sign-in.
+        }
+        catch (Exception ex)
+        {
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't reconnect this device");
+        }
+        finally
+        {
+            _wizardActive = false;
+        }
+    }
+
+    /// <summary>The connect wizard wants the list shape, not the detail shape.</summary>
+    private async Task<CardiMemberResponse?> ResolveConnectMemberAsync()
+    {
+        var members = await _api.GetCardiMembersAsync();
+        return members.FirstOrDefault(m => m.Id == _route.Id);
     }
 
     private async void OnRefreshRequested(object? sender, Guid deviceId) =>
