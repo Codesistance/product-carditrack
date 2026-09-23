@@ -735,12 +735,19 @@ public class HealthInsightService : IHealthInsightService
         // from the read, is worse than an empty field wherever it happens.
         var voice = MemberVoice.For(member);
         var summary = CaregiverFacingInsight(aiResponse.Summary, voice);
-        var inventedSummary = RewriteCopyGuards.NamesAReadingTheReadDidNot(aiResponse.Summary, read.Summary);
-        if (summary.Length == 0 || inventedSummary is not null)
+
+        // Both halves of the reply against both halves of the read, as the trend path does. The
+        // rewrite is handed the read's summary and its findings, so checking only the summaries
+        // rejects a summary legitimately grounded in a finding and lets an invented figure in the
+        // reply's own findings through — wrong in both directions from one asymmetry.
+        var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(
+            aiResponse.Summary + " " + string.Join(" ", aiResponse.KeyFindings),
+            read.Summary + " " + string.Join(" ", read.KeyFindings));
+        if (summary.Length == 0 || invented is not null)
         {
             CopyGuardTelemetry.Count(
                 BaselineSurface,
-                inventedSummary is not null
+                invented is not null
                     ? CopyGuardTelemetry.ReasonInventedReading
                     : CopyGuardTelemetry.ReasonRegisterRejected);
             return false;
