@@ -1,0 +1,61 @@
+{
+  "date": "2026-09-23",
+  "summary": "*CardiTrack digest — 2026-09-23* · 6 items · 1 HIGH, 5 FYI · NIA 2027 closes in 4 days (Sat 2026-09-27 23:59, deadline unchanged per the NIA page as indexed) — application status still unconfirmed anywhere in the repo, see 2026-09-21 · held for want of a primary source: Samsung Health family heart-health sharing (Seoul briefing 2026-09-09 — children view a parent's HR, BP and overnight vitals with baseline-deviation alerts; no Samsung Newsroom post found) · note: apple.com, developers.google.com, arxiv.org, gov.uk and most vendor hosts are denied by the sandbox's network policy — the briefs say what was read directly and what came from search indexes",
+  "empty_reason": null,
+  "items": [
+    {
+      "slug": "apple-intelligence-health-app-ai-insights-ios-27-2-beta",
+      "title": "Apple's redesigned Health app ships AI-written daily health summaries — in iOS 27.2 beta 1 now, on every iPhone \"later this year\"",
+      "url": "https://www.apple.com/newsroom/2026/09/apple-advances-health-and-fitness-capabilities-using-apple-intelligence/",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-23-apple-intelligence-health-app-ai-insights-ios-27-2-beta.md",
+      "text": "*HIGH* — Apple's redesigned Health app ships AI-written daily health summaries — in iOS 27.2 beta 1 now, on every iPhone \"later this year\"\nApple's 2026-09-09 release announced a Health app rebuilt around Apple Intelligence; the first iOS 27.2 developer beta (2026-09-16) shows it: an *Insights* tab with a plain-language summary \"that updates throughout the day across heart, sleep, readiness, fitness, vitals\", a *For You* section of personalised suggestions, overnight vitals with Recovery HRV judged against the wearer's own baseline, a Readiness score and a Longevity tab. Apple says the app lands \"later this year\", not with 27.2 itself. Nothing reported reaches a second person — no caregiver or family view.\nWhy HIGH: an LLM-written digest of heart, sleep and baseline-deviation vitals is CardiTrack's core generated artefact, and Apple will ship it free at OS level to the Apple Watch households CardiTrack reaches only by bridge. The gap Apple leaves is the relative who never reads their own insights — the caregiver side. Smallest next action: check the homepage and `docs/market_analysis.md` for any line that sells the AI digest itself as what Apple lacks, and decide which caregiver-side feature (family sharing #1198/#1200, wearer-side consent, alerts) the next wave leads with.\n_Caveat: apple.com is unreadable from the digest sandbox; quotes are from the search index of the release and its BusinessWire copy — open the link before quoting it._\nhttps://www.apple.com/newsroom/2026/09/apple-advances-health-and-fitness-capabilities-using-apple-intelligence/\n\nclaude \"work through @research/queue/2026-09-23-apple-intelligence-health-app-ai-insights-ios-27-2-beta.md\""
+    },
+    {
+      "slug": "website-garmin-copy-corrected-internal-docs-still-say-q1-2027",
+      "title": "Public supported-devices page no longer promises Garmin \"Q1 2027\" — fixed 2026-09-22; three internal docs still carry the quarter",
+      "url": "https://carditrack.com/supported-devices",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-23-website-garmin-copy-corrected-internal-docs-still-say-q1-2027.md",
+      "text": "*FYI* — Public supported-devices page no longer promises Garmin \"Q1 2027\" — fixed 2026-09-22; three internal docs still carry the quarter\nUpdate on yesterday's item, resolved on the public side: website PR #80 (merged 2026-09-22 22:47) changed Garmin to \"Planned\" with the copy \"paused new developer access in 2026 with no date to reopen, so a dedicated Garmin connection depends on that reopening\", and points families at the Google Health route in the meantime. Withings stays Q3 2027; Fitbit and Pixel Watch stay \"Connected today\"; Apple and Samsung stay \"Through Google Health\" — all matching `devices.md` as of today.\nWhat is now stale is internal: `docs/google_credits_pitch.md` (lines 38, 101) and `docs/market_analysis.md` (426, 455, 741) still say \"Garmin Q1 2027\", and the `devices.md` Garmin caveat still says \"apply before scheduling R2\" when there is no form to apply on. Smallest next action: one docs-only PR aligning the three to the public wording.\nhttps://carditrack.com/supported-devices\n\nclaude \"work through @research/queue/2026-09-23-website-garmin-copy-corrected-internal-docs-still-say-q1-2027.md\""
+    },
+    {
+      "slug": "ollama-0-34-3-allowlisted-cross-host-redirects-restores-hf-pulls",
+      "title": "Ollama 0.34.3 allows registry cross-host redirects \"among allowlisted hosts\" — the hf.co pull that broke our build now works upstream; we no longer need it",
+      "url": "https://github.com/ollama/ollama/releases/tag/v0.34.3",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-23-ollama-0-34-3-allowlisted-cross-host-redirects-restores-hf-pulls.md",
+      "text": "*FYI* — Ollama 0.34.3 allows registry cross-host redirects \"among allowlisted hosts\" — the hf.co pull that broke our build now works upstream; we no longer need it\nv0.34.3 (2026-09-19) lists \"Fix for model pulls from HuggingFace\"; the commit is PR #18533 \"server: allow registry cross-host redirects among allowlisted hosts\", fixing #18526 — exactly the `blocked redirect to a different host` failure our CI hit on 2026-09-21. Upstream's answer to the 09-21 brief's open question is a fixed allowlist, not a user flag; the hosts in it are not visible on the PR page from here.\nNo action: since 09-21 the MedGemma image pulls nothing (vendored weights, `weights.sha256`, `ollama create` from a Modelfile, base pinned to 0.34.2 by digest). 0.34.3 and 0.34.4-rc0 carry no security fixes; GHSA-57p7-34ff-7w3w still shows no patched version. Next action, only when the base image is next bumped: read #18533's diff and record the allowlisted hosts in the serving-architecture doc.\nhttps://github.com/ollama/ollama/releases/tag/v0.34.3\n\nclaude \"work through @research/queue/2026-09-23-ollama-0-34-3-allowlisted-cross-host-redirects-restores-hf-pulls.md\""
+    },
+    {
+      "slug": "questpdf-2026-9-0-font-breaking-changes",
+      "title": "QuestPDF 2026.9.0 makes missing fonts and glyphs throw by default and drops system fonts — breaking on the next bump from our pinned 2026.8.0",
+      "url": "https://github.com/QuestPDF/QuestPDF/releases/tag/2026.9.0",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-23-questpdf-2026-9-0-font-breaking-changes.md",
+      "text": "*FYI* — QuestPDF 2026.9.0 makes missing fonts and glyphs throw by default and drops system fonts — breaking on the next bump from our pinned 2026.8.0\nReleased 2026-09-14. Breaking: `UseEnvironmentFonts` → `UseSystemFonts` (default false); `ThrowOnMissingFontFamilies` now true; `CheckIfAllTextGlyphsAreAvailable` → `ThrowOnMissingTextGlyphs`, now true; `FontDiscoveryPaths` → single `FontDiscoveryPath`; bundled Lato ships as a `.br`/`.gz` archive; `RegisterFontWithCustomName` and `Helpers.Fonts` deprecated; `SemanticHeader*` → `SemanticHeading*`. Licence unchanged (Community tier under USD 1M revenue; we set `LicenseType.Community`).\nWhat it hits: `CardiTrack.Infrastructure.csproj` pins 2026.8.0; `ReportFonts.cs` registers fonts from streams for the chiseled image (fine); chat-transcript exports render member-typed text, so an emoji or non-Latin name with no glyph will *throw* after the bump instead of rendering a box. Nothing breaks today. Smallest next action: with the bump, pick the missing-glyph policy (add a broad-coverage fallback font to the Dockerfile font stage, or set the throw off explicitly) and add a transcript test fixture containing an emoji.\nhttps://github.com/QuestPDF/QuestPDF/releases/tag/2026.9.0\n\nclaude \"work through @research/queue/2026-09-23-questpdf-2026-9-0-font-breaking-changes.md\""
+    },
+    {
+      "slug": "modalens-medgemma-report-shortcut-image-sensitivity",
+      "title": "ModaLens (arXiv 2609.15635): MedGemma-27B answers from the text it is given and largely ignores the image once a report is present",
+      "url": "https://arxiv.org/abs/2609.15635",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-23-modalens-medgemma-report-shortcut-image-sensitivity.md",
+      "text": "*FYI* — ModaLens (arXiv 2609.15635): MedGemma-27B answers from the text it is given and largely ignores the image once a report is present\nPaired image-swap audit of MedGemma-27B on 3,199 MIMIC-CXR cases (v1 2026-09-15): with the radiology report in the prompt the answer changes on 4.26% of image swaps; without it, 20.94% (paired difference 16.7 pts, 95% CI 15.6–17.7). The authors read it as a textual shortcut — once the finding is in text the model restates it and mostly stops using the image — and stress they measure sensitivity, not correctness.\nWhy it matters to us: CardiTrack hands MedGemma the findings as text (SSA baselines, statistical-alert flags, the ECG classification label, IRN counts). This says a MedGemma model will faithfully narrate those rather than re-derive them — the behaviour the architecture wants — and marks the limit of the claim: the AI *explains* what code and device classifications detected; it is not the detector. Smallest next action: grep app strings, website and `market_analysis.md` for \"detects/spots/identifies\" applied to the AI and reword. _arXiv is unreadable from the sandbox; numbers are as indexed — re-read before quoting._\nhttps://arxiv.org/abs/2609.15635\n\nclaude \"work through @research/queue/2026-09-23-modalens-medgemma-report-shortcut-image-sensitivity.md\""
+    },
+    {
+      "slug": "ecg-mirage-vlms-underuse-ecg",
+      "title": "ECG Mirage (arXiv 2609.21755): small vision-language models look at ECG images and mostly ignore them — supports keeping ECG out of MedGemma's inputs as pixels",
+      "url": "https://arxiv.org/abs/2609.21755",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-23-ecg-mirage-vlms-underuse-ecg.md",
+      "text": "*FYI* — ECG Mirage (arXiv 2609.21755): small vision-language models look at ECG images and mostly ignore them — supports keeping ECG out of MedGemma's inputs as pixels\nSeptember 2026 paper (companion repo created 2026-09-14, README read directly): four VLMs given a patient's matched ECG image gained no consistent advantage over no image for ICU-admission or deterioration prediction on MDS-ED — \"ECG neglect\" and \"ECG confusion\". Mitigation trains restricted visual prompt tokens on a frozen Qwen3.5-4B (balanced accuracy 70.6% / 67.5%); weights and data not released.\nRelevance: the ECG path built 2026-09-22 fetches the classification label only and never pulls `waveformSamples`. This is evidence against the foreseeable next ask — render the strip and let the 4B model \"read\" it — which would add PHI handling and a claim without adding signal. Smallest next action: one line of rationale next to the ECG row in `docs/llm_design.md` (label only; waveform never fetched; see ECG Mirage / ModaLens). No code.\nhttps://arxiv.org/abs/2609.21755\n\nclaude \"work through @research/queue/2026-09-23-ecg-mirage-vlms-underuse-ecg.md\""
+    }
+  ]
+}
