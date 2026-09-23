@@ -217,6 +217,14 @@ public partial class CardiMemberDetailPage : ContentPage
             PendingQuestionCard.IsVisible = false;
             QuestionsRow.IsVisible = false;
 
+            // Cleared with them, and for the same reason. Every test above is "is this card up
+            // yet", and the gate holds the other half of that — what has been drawn onto it. A
+            // caregiver who steps from this CardiMember to another and back lands inside the
+            // cadence window, so the pass makes no round trip and the saved copy is all there is;
+            // left standing, a draw from the presentation they have already left would refuse it
+            // and leave the card on its placeholder until the window ran out.
+            _followUps.Cleared();
+
             if (owed)
                 this.WhenRouteHasLanded(() => _ = LoadAsync(LoadTrigger.Arrival));
         }

@@ -143,4 +143,53 @@ public class FollowUpGateTests
         Assert.True(gate.MayDrawLive(second, Another, GeneratedCard.Digest));
         Assert.False(gate.MayDrawSaved(Member, GeneratedCard.Digest));
     }
+
+    /// <summary>
+    /// The same page handed A, then B, then A again, inside the window the cadence has already
+    /// paid for. The pass makes no round trip, so the saved copy is the whole card — and a draw
+    /// from the presentation the caregiver has already left must not be what refuses it.
+    /// </summary>
+    [Fact]
+    public void A_cleared_screen_may_draw_a_member_it_has_drawn_before()
+    {
+        var gate = new FollowUpGate();
+        gate.MayDrawLive(gate.Begin(), Member, GeneratedCard.Digest);
+
+        gate.Cleared();
+
+        Assert.True(gate.MayDrawSaved(Member, GeneratedCard.Digest));
+    }
+
+    /// <summary>
+    /// Clearing is not a way back in for an answer that has already been superseded: the pass
+    /// counter keeps running, so a read still in flight from before the change is refused once the
+    /// new presentation has drawn.
+    /// </summary>
+    [Fact]
+    public void Clearing_does_not_let_an_older_pass_draw_over_a_newer_one()
+    {
+        var gate = new FollowUpGate();
+        var before = gate.Begin();
+
+        gate.Cleared();
+
+        var after = gate.Begin();
+        Assert.True(gate.MayDrawLive(after, Member, GeneratedCard.Digest));
+        Assert.False(gate.MayDrawLive(before, Member, GeneratedCard.Digest));
+    }
+
+    /// <summary>
+    /// And an answer that is still the newest thing there is still draws after a clear — the
+    /// screen took its cards down, it did not decide the read was worthless.
+    /// </summary>
+    [Fact]
+    public void Clearing_does_not_throw_away_an_answer_nothing_has_superseded()
+    {
+        var gate = new FollowUpGate();
+        var pass = gate.Begin();
+
+        gate.Cleared();
+
+        Assert.True(gate.MayDrawLive(pass, Member, GeneratedCard.Digest));
+    }
 }

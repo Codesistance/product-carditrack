@@ -27,6 +27,8 @@ namespace CardiTrack.Mobile.Core.Offline;
 /// CardiMember without being rebuilt, and that member's cards have been drawn by nobody. Keyed by
 /// card alone, the new member's saved copy would be refused on the strength of the last member's
 /// answer, and their card would sit on its placeholder until a live read happened to be due.
+/// The key is not enough by itself, because a page handed A, then B, then A again comes back to a
+/// member this gate has seen — see <see cref="Cleared"/>.
 /// </para>
 /// <para>
 /// Nothing here cancels anything, also deliberately. A superseded read is still worth finishing:
@@ -51,6 +53,28 @@ public sealed class FollowUpGate
     /// Opens a pass. Never refuses: ordering these loads is not a way of skipping them.
     /// </summary>
     public FollowUpPass Begin() => new(++_pass);
+
+    /// <summary>
+    /// Forgets what has been drawn, for a screen that has just taken its cards down and is about
+    /// to fill them again from scratch.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without this, a page handed A, then B, then A again inside the cadence window has nothing
+    /// to show for A: the cadence has already been paid for A, so the pass makes no round trip,
+    /// and the saved copy that should stand in is refused on the strength of a draw from a
+    /// presentation the caregiver cannot see any more. The card stays on its placeholder until
+    /// the window runs out. What is stale there is not the member but the presentation, and a key
+    /// cannot say that — only the screen knows when it cleared itself.
+    /// </para>
+    /// <para>
+    /// The pass counter is deliberately left where it is. A read still in flight from before the
+    /// change keeps its place in the order, so it draws if it lands before the new presentation
+    /// has drawn anything, and is refused if it lands after — which is the same rule as ever, and
+    /// the reason clearing this is safe rather than a way back in for a superseded answer.
+    /// </para>
+    /// </remarks>
+    public void Cleared() => _drawnLiveBy.Clear();
 
     /// <summary>
     /// Whether <paramref name="pass"/> may draw its live answer for this member's
