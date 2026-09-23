@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    [Migration("20260923044059_AddBenignJudgements")]
+    [Migration("20260923092557_AddBenignJudgements")]
     partial class AddBenignJudgements
     {
         /// <inheritdoc />
@@ -445,6 +445,11 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("NOW()");
 
+                    b.Property<string>("FindingFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTime>("JudgedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -463,7 +468,7 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.HasIndex("JudgedAtUtc");
 
-                    b.HasIndex("CardiMemberId", "Rule", "LocalDate")
+                    b.HasIndex("CardiMemberId", "Rule", "LocalDate", "FindingFingerprint")
                         .IsUnique();
 
                     b.ToTable("BenignJudgements", (string)null);

@@ -53,7 +53,8 @@ public class StatisticalAlertServiceTests
         _unitOfWork.AlertPreferences.Returns(_alertPreferences);
         _unitOfWork.EnvironmentalReadings.Returns(_environmentalReadings);
         _unitOfWork.BenignJudgements.Returns(_benign);
-        _benign.GetJudgedAsync(Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<DateOnly>>(), Arg.Any<CancellationToken>())
+        _benign.GetJudgedFingerprintsAsync(
+                Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<DateOnly>>(), Arg.Any<CancellationToken>())
             .Returns([]);
 
         // Defaults: one active London-anchored member with an established baseline, a sharp
@@ -987,11 +988,11 @@ public class StatisticalAlertServiceTests
     // ── Remembering a benign verdict ──────────────────────────────────────────────
 
     /// <summary>
-    /// A rule reading a day that has ended is remembered, because asking again cannot reach a
-    /// different answer — the same question about the same finished data, up to 288 times a day.
+    /// A benign verdict is remembered against the figures it was reached on, so the same yardstick
+    /// still tripping five minutes later does not put the same question to the model again.
     /// </summary>
     [Fact]
-    public async Task ABenignVerdict_OnAFinishedDay_IsRemembered()
+    public async Task ABenignVerdict_IsRememberedAgainstTheFiguresItWasReachedOn()
     {
         ModelJudges([Verdict(StatisticalAlertRules.ActivityDeclineRule, "low")]);
 
@@ -1001,30 +1002,8 @@ public class StatisticalAlertServiceTests
             Arg.Is<BenignJudgement>(j =>
                 j.CardiMemberId == _memberId
                 && j.Rule == StatisticalAlertRules.ActivityDeclineRule
-                && j.LocalDate == new DateOnly(2026, 8, 10)),
-            Arg.Any<CancellationToken>());
-    }
-
-    /// <summary>
-    /// A rule reading today is not. The morning is still in progress and the readings are still
-    /// arriving, so the existing behaviour — judge it again next pass — is the correct one, and
-    /// remembering would trade a real thing for a saved call.
-    /// </summary>
-    [Fact]
-    public async Task ABenignVerdict_OnADayStillInProgress_IsNotRemembered()
-    {
-        SetupLogs(new ActivityLog
-        {
-            CardiMemberId = _memberId,
-            Date = new DateOnly(2026, 8, 10),
-            Steps = 0,
-        });
-        ModelJudges([Verdict(StatisticalAlertRules.NoMorningActivityRule, "low")]);
-
-        await CreateSut().EvaluateAsync(UtcNow);
-
-        await _benign.DidNotReceive().RecordAsync(
-            Arg.Is<BenignJudgement>(j => j.Rule == StatisticalAlertRules.NoMorningActivityRule),
+                && j.LocalDate == new DateOnly(2026, 8, 10)
+                && j.FindingFingerprint == QuietDayFingerprint(1000)),
             Arg.Any<CancellationToken>());
     }
 
@@ -1035,8 +1014,7 @@ public class StatisticalAlertServiceTests
     [Fact]
     public async Task ARememberedFinding_IsNotJudgedAgain()
     {
-        _benign.GetJudgedAsync(Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<DateOnly>>(), Arg.Any<CancellationToken>())
-            .Returns([(StatisticalAlertRules.ActivityDeclineRule, new DateOnly(2026, 8, 10))]);
+        Remembers(QuietDayFingerprint(1000));
 
         var raised = await CreateSut().EvaluateAsync(UtcNow);
 
@@ -1046,25 +1024,100 @@ public class StatisticalAlertServiceTests
     }
 
     /// <summary>
-    /// The rules left out of <see cref="StatisticalAlertRules.RulesOverFinishedPeriods"/> are
-    /// exactly the three that read a period still in progress. Pinned so a rule added later fails
-    /// here rather than silently defaulting into remembering a judgement about moving data.
+    /// The premise the first shape of this table rested on — a rule reading yesterday reads data
+    /// that cannot change again — is false: <c>DeviceSyncService</c>'s repair pass re-pulls
+    /// <c>SyncLookbackDays</c> of complete days, and a night's readings routinely land after local
+    /// midnight. Keyed on the day, a remembered verdict would have swallowed the re-judgement of a
+    /// finding whose figures had since moved, and a caregiver would never have been told. Keyed on
+    /// the figures, the changed day is a different question and is asked.
     /// </summary>
     [Fact]
-    public void OnlyTheRulesReadingAPeriodStillInProgress_AreLeftOutOfTheMemory()
+    public async Task AFindingWhoseReadingsChanged_IsJudgedAgain_ThoughTheDayIsTheSame()
     {
-        var notRemembered = StatisticalAlertRules.AllRules
-            .Where(rule => !StatisticalAlertRules.RulesOverFinishedPeriods.Contains(rule))
-            .OrderBy(rule => rule, StringComparer.Ordinal)
-            .ToList();
+        // This morning's verdict, on the step count the day had then.
+        Remembers(QuietDayFingerprint(1000));
 
-        Assert.Equal(
-            [
-                StatisticalAlertRules.EcgAtrialFibrillationRule,
-                StatisticalAlertRules.IrregularRhythmRule,
-                StatisticalAlertRules.NoMorningActivityRule,
-            ],
-            notRemembered);
+        // A repair sync has since re-pulled the same complete day and the count has halved. Same
+        // member, same rule, same local day.
+        SetupLogs(new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 500 });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
     }
+
+    /// <summary>
+    /// The table exists to save an inference and must never be able to cost an alert. A read that
+    /// throws — a transient Npgsql error, or the lag between a deploy and the migration that
+    /// creates the table — leaves the pass judging everything, which is what it did before the
+    /// table existed. Unguarded, this threw before a single finding had been judged and would have
+    /// cost every alert for every member on the pass.
+    /// </summary>
+    [Fact]
+    public async Task ARememberedVerdictReadThatThrows_CostsNoAlert()
+    {
+        _benign.GetJudgedFingerprintsAsync(
+                Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<DateOnly>>(), Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("relation \"BenignJudgements\" does not exist"));
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+    }
+
+    /// <summary>
+    /// Nor may the write. This loop is still walking the model's verdicts when it remembers a
+    /// benign one, so an exception escaping would abandon every finding after it — here, a
+    /// critical the same response had already judged worth paging a family about.
+    /// </summary>
+    [Fact]
+    public async Task ARememberedVerdictWriteThatThrows_CostsNoLaterAlert()
+    {
+        // Two findings from one row, in the order the engine assembles them: the quiet day first,
+        // then the raised resting heart rate.
+        SetupLogs(new ActivityLog
+        {
+            CardiMemberId = _memberId,
+            Date = Yesterday,
+            Steps = 1000,
+            RestingHeartRate = 75,
+        });
+        ModelJudges(
+        [
+            Verdict(StatisticalAlertRules.ActivityDeclineRule, "low"),
+            Verdict(StatisticalAlertRules.ElevatedHeartRateRule, "critical"),
+        ]);
+        _benign.RecordAsync(Arg.Any<BenignJudgement>(), Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("db hiccup"));
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+    }
+
+    /// <summary>
+    /// The fingerprint is the question, not the rule: the same rule on the same day with different
+    /// figures is a different question and must not reuse a verdict, while the same figures must
+    /// hash the same way on every pass or the table saves nothing at all.
+    /// </summary>
+    [Fact]
+    public void TheFingerprint_MovesWithTheFiguresAndNotOtherwise()
+    {
+        Assert.NotEqual(QuietDayFingerprint(1000), QuietDayFingerprint(500));
+        Assert.Equal(QuietDayFingerprint(1000), QuietDayFingerprint(1000));
+        Assert.Equal(64, QuietDayFingerprint(1000).Length);
+    }
+
+    /// <summary>The fingerprint of the default fixture's quiet day at a given step count.</summary>
+    private static string QuietDayFingerprint(int steps) =>
+        StatisticalAlertRules.JudgementFingerprint(
+            StatisticalAlertRules.ActivityDecline(
+                EstablishedBaseline(),
+                new ActivityLog { Date = Yesterday, Steps = steps })!);
+
+    private void Remembers(params string[] fingerprints) =>
+        _benign.GetJudgedFingerprintsAsync(
+                Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<DateOnly>>(), Arg.Any<CancellationToken>())
+            .Returns(fingerprints);
 }
 

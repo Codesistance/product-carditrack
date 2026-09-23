@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -85,41 +87,40 @@ public static class StatisticalAlertRules
     ];
 
     /// <summary>
-    /// The rules whose window is a period that has ended — yesterday, or the night that has
-    /// finished — so the data behind a finding of theirs cannot change again today.
+    /// The key a benign verdict on this finding is remembered under: a hash of the question the
+    /// model was actually asked — its rule, the observation it reads, and the figures behind it.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is what makes a benign verdict safe to remember. A verdict is about the readings as
-    /// they stand, and for most of this engine the readings keep arriving, which is why nothing
-    /// was persisted: judging again on the next pass is how a day that gets worse gets noticed.
-    /// But a rule reading yesterday is reading a day that is over, and asking the model about it
-    /// again at five-minute intervals until midnight cannot reach a different answer — it is the
-    /// same question about the same finished data, up to 288 times.
+    /// A verdict is about the readings as they stand, and for this engine the readings keep
+    /// arriving — which is why, before this existed, nothing was persisted at all: judging again
+    /// on the next pass is how a day that gets worse gets noticed. The cost was that a yardstick
+    /// which stays tripped asks the model the same question every five minutes until midnight, up
+    /// to 288 times.
     /// </para>
     /// <para>
-    /// The three left out read today and are deliberately still re-judged: <see cref="NoMorningActivityRule"/>
-    /// is about a morning still in progress, and the two measured rules carry a device
-    /// classification the watch may post more of this afternoon.
+    /// Hashing the question itself keeps both. Identical figures produce the same fingerprint and
+    /// the remembered verdict stands; one figure moving produces a different fingerprint and the
+    /// finding is judged again exactly as it was before. That is a stronger guarantee than the
+    /// first shape of this, which remembered a rule for a member's local day on the reasoning that
+    /// a rule reading yesterday reads data that cannot change again — false, because
+    /// <c>DeviceSyncService</c>'s repair pass re-pulls <c>SyncLookbackDays</c> of complete days and
+    /// a night's readings routinely land after local midnight.
     /// </para>
     /// <para>
-    /// Membership is stated rather than derived, and the test that every rule in
-    /// <see cref="AllRules"/> is classified one way or the other is what keeps a rule added later
-    /// from silently defaulting into remembering a judgement about data that was still moving.
+    /// It also removes the need to sort rules into ones whose data is settled and ones whose data
+    /// is not — a list that had to be maintained by hand and that a rule added later could default
+    /// into wrongly. <see cref="NoMorningActivity"/> names the clock in its observation and so
+    /// re-judges every pass without being named anywhere as an exception; the two measured rules
+    /// carry the device's own counts in their figures, so a notification arriving this afternoon
+    /// changes the fingerprint on its own.
     /// </para>
     /// </remarks>
-    public static readonly IReadOnlySet<string> RulesOverFinishedPeriods =
-        new HashSet<string>(StringComparer.Ordinal)
-        {
-            ActivityDeclineRule,
-            IrregularSleepRule,
-            ElevatedHeartRateRule,
-            LongTermTrendRule,
-            HeartRateVariabilityDropRule,
-            OvernightBreathingUpRule,
-            ElevatedZoneWithoutMovementRule,
-            DaytimeInactivityBlockRule,
-        };
+    public static string JudgementFingerprint(StatisticalFinding finding)
+    {
+        var question = string.Join('\n', finding.Rule, finding.Observation, finding.MetricValues);
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(question)));
+    }
 
     /// <summary>Medium sensitivity: a reading more than 30% off its baseline is worth a word.</summary>
     public const double DeviationFraction = 0.30;

@@ -11,19 +11,17 @@ public class BenignJudgementRepository : Repository<BenignJudgement>, IBenignJud
     {
     }
 
-    public async Task<IReadOnlyCollection<(string Rule, DateOnly LocalDate)>> GetJudgedAsync(
+    public async Task<IReadOnlyCollection<string>> GetJudgedFingerprintsAsync(
         Guid cardiMemberId, IReadOnlyCollection<DateOnly> localDates, CancellationToken ct = default)
     {
         if (localDates.Count == 0)
             return [];
 
         var dates = localDates.Distinct().ToList();
-        var rows = await _dbSet
+        return await _dbSet
             .Where(j => j.CardiMemberId == cardiMemberId && dates.Contains(j.LocalDate))
-            .Select(j => new { j.Rule, j.LocalDate })
+            .Select(j => j.FindingFingerprint)
             .ToListAsync(ct);
-
-        return rows.Select(r => (r.Rule, r.LocalDate)).ToList();
     }
 
     /// <inheritdoc />
@@ -37,9 +35,9 @@ public class BenignJudgementRepository : Repository<BenignJudgement>, IBenignJud
     public async Task RecordAsync(BenignJudgement judgement, CancellationToken ct = default) =>
         await _context.Database.ExecuteSqlInterpolatedAsync(
             $"""
-            INSERT INTO "BenignJudgements" ("Id", "CardiMemberId", "Rule", "LocalDate", "JudgedAtUtc", "CreatedDate")
-            VALUES ({Guid.NewGuid()}, {judgement.CardiMemberId}, {judgement.Rule}, {judgement.LocalDate}, {judgement.JudgedAtUtc}, NOW())
-            ON CONFLICT ("CardiMemberId", "Rule", "LocalDate") DO NOTHING
+            INSERT INTO "BenignJudgements" ("Id", "CardiMemberId", "Rule", "LocalDate", "FindingFingerprint", "JudgedAtUtc", "CreatedDate")
+            VALUES ({Guid.NewGuid()}, {judgement.CardiMemberId}, {judgement.Rule}, {judgement.LocalDate}, {judgement.FindingFingerprint}, {judgement.JudgedAtUtc}, NOW())
+            ON CONFLICT ("CardiMemberId", "Rule", "LocalDate", "FindingFingerprint") DO NOTHING
             """,
             ct);
 

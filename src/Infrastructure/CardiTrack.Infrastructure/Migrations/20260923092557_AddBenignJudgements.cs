@@ -19,6 +19,7 @@ namespace CardiTrack.Infrastructure.Migrations
                     CardiMemberId = table.Column<Guid>(type: "uuid", nullable: false),
                     Rule = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     LocalDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    FindingFingerprint = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     JudgedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     CreatedDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "NOW()"),
                     UpdatedDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
@@ -29,9 +30,9 @@ namespace CardiTrack.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_BenignJudgements_CardiMemberId_Rule_LocalDate",
+                name: "IX_BenignJudgements_CardiMemberId_Rule_LocalDate_FindingFinger~",
                 table: "BenignJudgements",
-                columns: new[] { "CardiMemberId", "Rule", "LocalDate" },
+                columns: new[] { "CardiMemberId", "Rule", "LocalDate", "FindingFingerprint" },
                 unique: true);
 
             migrationBuilder.CreateIndex(

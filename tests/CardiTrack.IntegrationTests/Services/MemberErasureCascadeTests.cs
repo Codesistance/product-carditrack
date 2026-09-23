@@ -473,6 +473,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             CardiMemberId = member.Id,
             Rule = "activity_decline",
             LocalDate = new DateOnly(2026, 9, 22),
+            FindingFingerprint = new string('a', 64),
             JudgedAtUtc = new DateTime(2026, 9, 22, 18, 0, 0, DateTimeKind.Utc),
         });
         db.Notifications.Add(new Notification

@@ -169,16 +169,19 @@ sign-off: FN rate on reference-red windows ≈ 0 within the sample; FP consisten
 product target.
 
 **V2b — Retrospective benchmark for the model-judged R1 path (to run, dev data; added
-2026-09-23):** V2 cannot cover R1 because its negative class does not exist: a finding the model
-judges benign is written nowhere (`StatisticalAlertService` remarks — deliberate, so the finding
-is re-judged as the day's readings arrive), so stored rows are alerts only. Protocol: (a) for
+2026-09-23):** V2 cannot cover R1 because its negative class is not analysable: since
+2026-09-23 a finding the model judges benign is written to `BenignJudgements`, but that row
+carries only the member, the rule, the day and a hash of the finding — deliberately not the
+figures judged or the severity returned — so stored rows that can be read against a rule's former
+constant are alerts only. Protocol: (a) for
 every `Alert` row from the **nine comparative rules** since 2026-09-19, compare the model's
 severity with the rule's former constant (the lineage column in the algorithm card §2), by rule,
 **age band and sex** — agreement, escalation and de-escalation rates, with every de-escalation of
 a former red read individually; (b) a **shadow log of judged findings including benign
-verdicts** (rule, finding values, raw and mapped severity) for a bounded period in dev — the
-"judged-day marker" the service's own remarks name as the follow-up — which gives V2b its
-negative class and lets the false-negative rate be estimated the way V2 does for the assessor;
+verdicts** (rule, finding values, raw and mapped severity) for a bounded period in dev — which
+gives V2b its negative class and lets the false-negative rate be estimated the way V2 does for
+the assessor. `BenignJudgements` does not substitute for it: it records that a benign verdict was
+reached, not what was judged or how, which is the half the analysis needs;
 (c) the two **measured rhythm rules** have no former constant to compare against (their
 severity has only ever been the model's), so their report is separate and different in kind:
 the distribution of model severities per rule against the device classification that raised

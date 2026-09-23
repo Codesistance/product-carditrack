@@ -49,13 +49,12 @@ namespace CardiTrack.Infrastructure.Services;
 /// rule-scoped cooldown (<see cref="AlertRuleMarkers.Suppresses"/> — one unresolved
 /// <em>standing</em> alert per remedy) and a same-local-day dedup (a daily-grain rule that
 /// already judged today — whether that alert is still on the list, resolved, or the caregiver
-/// deleted it — must not re-fire from the same day's data that evening). A finding the model
-/// judged benign is not written anywhere, so it is judged again on the next pass while its
-/// yardstick keeps tripping — up to one call per pass for that member until the readings move
-/// or the day turns — and the rules only produce a finding when a yardstick is crossed, so a
-/// member with nothing off costs nothing. Persisting a benign verdict as a judged-day marker
-/// would bound that to one call per rule-day; it needs a row of its own (a green alert would
-/// re-surface the retired benign-sleep card), and is left as the follow-up it is.
+/// deleted it — must not re-fire from the same day's data that evening). A third layer sits
+/// behind them: a finding the model judged benign is remembered in <see cref="BenignJudgement"/>
+/// against a fingerprint of the question it answered, so a yardstick that stays tripped is put to
+/// the model once rather than on all 288 passes of the day. Readings that move change the
+/// fingerprint and the finding is judged again, which is what keeps a day that gets worse from
+/// hiding behind this morning's verdict.
 /// </para>
 /// <para>
 /// <b>Two calls, two slots.</b> The clinical half runs on the private slot and judges: severity,
@@ -502,11 +501,31 @@ public class StatisticalAlertService : IStatisticalAlertService
 
         // The days a finding of this member's could be filed under: today, and the night that
         // ended this morning. One read for all of them rather than one per finding.
-        var benign = await _unitOfWork.BenignJudgements.GetJudgedAsync(
-            memberId, [localToday, yesterday], ct);
+        //
+        // Guarded the same way the write and the sweep below are, and for the same reason stated
+        // there: this table exists to save an inference and must never be able to cost an alert.
+        // Unguarded, a transient Npgsql error or the lag between a deploy and its migration would
+        // throw here — before a single finding has been judged — and take down every alert for
+        // every member on the pass. Read as empty, the pass simply judges everything, which is
+        // what it did before this table existed.
+        IReadOnlyCollection<string> benign;
+        try
+        {
+            benign = await _unitOfWork.BenignJudgements.GetJudgedFingerprintsAsync(
+                memberId, [localToday, yesterday], ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Could not read remembered benign verdicts for CardiMember {CardiMemberId}; "
+                + "every finding will be judged this pass.",
+                memberId);
+            benign = [];
+        }
 
-        // The key a benign judgement is remembered under, matching what the dedup above keys an
-        // alert on: the night a night-scoped finding named, and the local day otherwise.
+        // The day a judgement is filed under, matching what the dedup below keys an alert on: the
+        // night a night-scoped finding named, and the local day otherwise.
         DateOnly JudgementDay(StatisticalFinding finding) => finding.NightOf ?? localToday;
 
         var toJudge = new List<StatisticalFinding>();
@@ -515,10 +534,11 @@ public class StatisticalAlertService : IStatisticalAlertService
             if (standing.Any(a => AlertRuleMarkers.Suppresses(a, finding.Type, finding.Rule)))
                 continue;
 
-            // Already judged not worth the family's attention, on data that has since finished
-            // changing. Asking again cannot reach a different answer — see
-            // StatisticalAlertRules.RulesOverFinishedPeriods for why only some rules qualify.
-            if (benign.Contains((finding.Rule, JudgementDay(finding))))
+            // This exact question was already put to the model and judged not worth the family's
+            // attention. Exact is what the fingerprint buys: it hashes the rule, the observation
+            // and the figures, so asking again could only reach the same answer — see
+            // StatisticalAlertRules.JudgementFingerprint.
+            if (benign.Contains(StatisticalAlertRules.JudgementFingerprint(finding)))
                 continue;
 
             // Same-data dedup, regardless of resolution or deletion: a rule reads one day's data,
@@ -602,8 +622,9 @@ public class StatisticalAlertService : IStatisticalAlertService
                     "The model judged rule {Rule} on CardiMember {CardiMemberId} not worth attention today.",
                     finding.Rule, memberId);
 
-                // Remembered only where the data behind it has finished changing. For the rest,
-                // the paragraph above still holds and the finding is asked about again next pass.
+                // Remembered against the figures it was made on, not against the day — so the
+                // paragraph above still holds wherever it matters: readings that move produce a
+                // different fingerprint and the finding is asked about again next pass.
                 //
                 // Guarded like every other post-inference write here. The judgement is made after a
                 // model call that can run for minutes, RecordAsync executes its insert immediately,
@@ -612,37 +633,35 @@ public class StatisticalAlertService : IStatisticalAlertService
                 // leave a row behind for someone the product has forgotten. Refused means the
                 // judgement is simply not remembered, which costs one re-judgement that will find
                 // no member.
-                if (StatisticalAlertRules.RulesOverFinishedPeriods.Contains(finding.Rule))
+                var judgement = new BenignJudgement
                 {
-                    var judgement = new BenignJudgement
-                    {
-                        CardiMemberId = memberId,
-                        Rule = finding.Rule,
-                        LocalDate = JudgementDay(finding),
-                        JudgedAtUtc = utcNow,
-                    };
+                    CardiMemberId = memberId,
+                    Rule = finding.Rule,
+                    LocalDate = JudgementDay(finding),
+                    FindingFingerprint = StatisticalAlertRules.JudgementFingerprint(finding),
+                    JudgedAtUtc = utcNow,
+                };
 
-                    // Best-effort, and the try/catch is the whole point of it. This loop is still
-                    // walking the model's verdicts, so an exception escaping here would abandon
-                    // every finding after this one — including a critical the same response had
-                    // already judged worth paging a family about. A cache that exists to save an
-                    // inference must not be able to cost an alert; not remembering costs one
-                    // re-judgement next pass, which is exactly what the table is an optimisation of.
-                    try
-                    {
-                        await _guard.WriteIfMemberLivesAsync(
-                            memberId,
-                            token => _unitOfWork.BenignJudgements.RecordAsync(judgement, token),
-                            ct);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        _logger.LogWarning(
-                            ex,
-                            "Could not remember the benign verdict for rule {Rule} on CardiMember "
-                            + "{CardiMemberId}; it will be judged again next pass.",
-                            finding.Rule, memberId);
-                    }
+                // Best-effort, and the try/catch is the whole point of it. This loop is still
+                // walking the model's verdicts, so an exception escaping here would abandon every
+                // finding after this one — including a critical the same response had already
+                // judged worth paging a family about. A cache that exists to save an inference must
+                // not be able to cost an alert; not remembering costs one re-judgement next pass,
+                // which is exactly what the table is an optimisation of.
+                try
+                {
+                    await _guard.WriteIfMemberLivesAsync(
+                        memberId,
+                        token => _unitOfWork.BenignJudgements.RecordAsync(judgement, token),
+                        ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Could not remember the benign verdict for rule {Rule} on CardiMember "
+                        + "{CardiMemberId}; it will be judged again next pass.",
+                        finding.Rule, memberId);
                 }
 
                 continue;
