@@ -172,15 +172,18 @@ product target.
 2026-09-23):** V2 cannot cover R1 because its negative class does not exist: a finding the model
 judges benign is written nowhere (`StatisticalAlertService` remarks — deliberate, so the finding
 is re-judged as the day's readings arrive), so stored rows are alerts only. Protocol: (a) for
-every R1 `Alert` row since 2026-09-19, compare the model's severity with the rule's former
-constant (the lineage column in the algorithm card §2), by rule, **age band and sex** —
-agreement, escalation and de-escalation rates, with every de-escalation of a former red read
-individually; (b) a **shadow log of judged findings including benign verdicts** (rule, finding
-values, raw and mapped severity) for a bounded period in dev — the "judged-day marker" the
-service's own remarks name as the follow-up — which gives V2b its negative class and lets the
-false-negative rate be estimated the way V2 does for the assessor; (c) the two measured rhythm
-rules are reported separately, since their finding is the device's classification and the only
-question for the model is severity. Acceptance to propose at sign-off, as V2's.
+every `Alert` row from the **nine comparative rules** since 2026-09-19, compare the model's
+severity with the rule's former constant (the lineage column in the algorithm card §2), by rule,
+**age band and sex** — agreement, escalation and de-escalation rates, with every de-escalation of
+a former red read individually; (b) a **shadow log of judged findings including benign
+verdicts** (rule, finding values, raw and mapped severity) for a bounded period in dev — the
+"judged-day marker" the service's own remarks name as the follow-up — which gives V2b its
+negative class and lets the false-negative rate be estimated the way V2 does for the assessor;
+(c) the two **measured rhythm rules** have no former constant to compare against (their
+severity has only ever been the model's), so their report is separate and different in kind:
+the distribution of model severities per rule against the device classification that raised
+the finding, every benign or yellow verdict on an `ecg_afib` finding read individually, and the
+same shadow log as (b). Acceptance to propose at sign-off, as V2's.
 
 **V3 — Prod shadow period (to run at enablement):** enable the pipeline's assessor job in prod
 with alert audience restricted to staff-owned test members for ≥2 weeks; measure alert volume,
@@ -188,6 +191,18 @@ FP rate (staff adjudication), and cooldown behavior under real load before any r
 enrolled. Since 2026-09-23 this covers **both LLM-routed producers**: the assessor's heart-rate
 alerts and the R1 judged alerts alike are adjudicated as warranted or not, reported per rule and
 per cohort (age band, sex). This slots between runbook steps 6 and 10's lift.
+
+> **V3 precondition — recorded 2026-09-23, not yet met.** Nothing in code or Terraform can
+> restrict the audience today: `enable_pipeline_jobs` provisions and schedules the digest,
+> assessor, trend and themer jobs together (`infrastructure/deployments/cloud_run.tf`), and the
+> assessor's member selection is every active member with recent activity
+> (`StatisticalAlertService.AssessDueMembersAsync`, `RealtimeAssessmentService`) — there is no
+> staff or test-member allowlist. Flipping the flag in prod as it stands would judge and push
+> alerts for every enrolled family, before the shadow gate. V3 therefore requires, **before the
+> flag is flipped**: (i) a production member allowlist enforced in both LLM-routed producers'
+> member selection (or a staff-only project), and (ii) an assessor schedule that can be enabled
+> independently of the digest job. Both are code and Terraform work outside this document;
+> until they exist, V3 cannot be run and prod alerting stays gated (§6).
 
 **V4 — Change control (standing):** any change to a `CARDITRACK_*` prompt, the model tag,
 the severity mapping, **or the numerical engine that produces SSA features / baseline
@@ -238,5 +253,5 @@ real families is gated on both being recorded here.
 |---|---|
 | Is built alerting Art. 22(1) ADM? | Most likely **no** (human decision-maker, no significant automated effect) — treated conservatively as if yes |
 | Are Art. 22(3)-grade safeguards present? | Yes — engineered and cited above; one deliberate gap (`no clinical review tier`) flagged for sign-off |
-| What blocks prod alerting? | Executing V2 + V3 and recording results here; sign-off by a qualified reviewer. Privacy-policy alerting text and the algorithm card now exist; the rest of `/privacy` is still a short placeholder |
+| What blocks prod alerting? | Executing V2, **V2b** and V3 and recording results here; the V3 precondition (a production audience allowlist and an independently schedulable assessor — neither exists yet, §5); sign-off by a qualified reviewer. Privacy-policy alerting text and the algorithm card now exist; the rest of `/privacy` is still a short placeholder |
 | What re-opens this analysis? | Push dispatch (2026-08-11) fired the first re-run, drafted 2026-09-23 (§2.1). Next: **enabling the pipeline jobs in prod**; SMS dispatch landing; any prompt/model/severity-mapping change; wearer-population change (e.g. exceeding the 100-user cap); any of the re-classification events in [ai_act_classification.md](ai_act_classification.md) §6.3 |
