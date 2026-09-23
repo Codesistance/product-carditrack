@@ -244,7 +244,16 @@ public class FcmNotificationChannel : INotificationChannel
                     Icon = SmallIconName,
                     Color = SmallIconColor,
                     Sound = NotificationChannels.AndroidSoundFor(delivery.Category),
-                    DefaultVibrateTimings = delivery.Category == DeliveryCategory.Safety
+                    DefaultVibrateTimings = delivery.Category == DeliveryCategory.Safety,
+                    // Android's `when` — the time in the notification's header, and the key the
+                    // shade sorts the panel by.
+                    //
+                    // Not optional, despite looking it. FirebaseAdmin 3.6.0 declares
+                    // EventTimestamp as a non-nullable DateTime and always serialises it, so
+                    // leaving it unset does not omit `event_time`: it sends
+                    // "0001-01-01T00:00:00Z", and every Android push arrived stamped with a
+                    // year-1 date (#498). Deleting this line puts that back.
+                    EventTimestamp = EventTimeOf(delivery)
                 }
             },
             Apns = new ApnsConfig
@@ -273,6 +282,32 @@ public class FcmNotificationChannel : INotificationChannel
             }
         };
     }
+
+    /// <summary>
+    /// When the thing being notified about happened — the outbox row's enqueue time, which
+    /// <c>DeliveryPlanner</c> writes as the alert is raised.
+    /// </summary>
+    /// <remarks>
+    /// The row's own timestamp rather than the source <see cref="Alert"/>'s, deliberately: the
+    /// payload is built without loading the source (see the deep-link comment above), and the two
+    /// are the same enqueue for every delivery the planner creates. An escalated copy carries its
+    /// own creation time, which is when *that* page went out — what its recipient is being told.
+    /// <para>
+    /// A quiet-hours deferral therefore shows the caregiver when the reading came in, not when the
+    /// OS was finally allowed to buzz. That is the honest answer for a health alert: "this
+    /// happened at 02:10" is the fact they act on.
+    /// </para>
+    /// <para>
+    /// The fallback exists because the field it feeds is the one that cannot be omitted. A row
+    /// that somehow reached here without a creation time would otherwise reintroduce the exact
+    /// year-1 header this method was added to fix; send time is wrong by minutes, which is
+    /// survivable, rather than wrong by two thousand years, which is not.
+    /// </para>
+    /// </remarks>
+    private DateTime EventTimeOf(NotificationDelivery delivery) =>
+        delivery.CreatedDate == default
+            ? _timeProvider.GetUtcNow().UtcDateTime
+            : delivery.CreatedDate;
 
     private static FirebaseAdmin.Messaging.Notification BuildTeaser(NotificationDelivery delivery)
     {

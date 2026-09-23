@@ -480,6 +480,14 @@ builds). Android alpha-masks a small icon and repaints it flat, so with none of 
 back to the adaptive launcher icon and the notification arrives as a featureless grey square. iOS
 needs no equivalent — APNs uses the app icon.
 
+**Header time.** `AndroidNotification.event_time` carries the delivery row's enqueue time — what
+Android shows in the notification header and sorts the shade by. It is set explicitly because it
+cannot be omitted: FirebaseAdmin declares `EventTimestamp` as a non-nullable `DateTime` and
+serialises it either way, so an unset field ships `0001-01-01T00:00:00Z` and every Android push
+arrives headed with a year-1 date (#498). A quiet-hours deferral therefore shows when the reading
+came in rather than when the OS was allowed to buzz, which is the fact a caregiver acts on. iOS has
+no equivalent — APNs stamps the notification on delivery.
+
 **Opt-in richness.** A setting — *"Show alert details on the lock screen"* — lets a caregiver who
 values speed over discretion get the full text directly in the payload. Off by default; the choice is
 theirs to make knowingly. The send-time branch on this flag **must fail closed**: a null, unreadable
