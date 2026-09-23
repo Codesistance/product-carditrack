@@ -262,12 +262,19 @@ try
             // The daily statistical findings ride the same pass: the eleven R1 rules produce
             // findings (nine against the 30-day baseline, two from the device's own rhythm
             // classifications), and MedGemma — already warm from the
-            // assessor — returns the severity, headline and message for each. Runs before the
-            // digest pass below so a summary written on this execution already sees the alerts.
-            // Cost: one call per member per pass in which a finding survives cooldown and dedup,
-            // and none for a member with nothing off. A raised alert dedups its rule for the day;
-            // a finding the model judges low is not persisted and is asked again next pass while
-            // its yardstick keeps tripping — see StatisticalAlertService's remarks.
+            // assessor — returns a severity and a clinical read for each. What a caregiver reads
+            // is written from those reads by the Rewrite slot, in one further call. Runs before
+            // the digest pass below so a summary written on this execution already sees the alerts.
+            //
+            // Cost: one private-slot call per member per pass in which a finding survives cooldown
+            // and dedup, none for a member with nothing off, and one Rewrite-slot call on top in
+            // the passes where at least one read clears Yellow — a pass whose findings are all
+            // judged benign still costs the one call it always did. A raised alert dedups its rule
+            // for the day; a benign verdict is remembered in BenignJudgements for the rest of the
+            // member's local day, but only for the eight rules reading a period that has ended.
+            // The three reading a day still in progress — no_morning_activity and the two measured
+            // rules — are asked again every pass while their yardstick keeps tripping. See
+            // StatisticalAlertService's remarks.
             var judgements = scope.ServiceProvider.GetRequiredService<IStatisticalAlertService>();
             var judged = await judgements.EvaluateAsync(DateTime.UtcNow);
             // The digest job still runs at :00/:30; this pass runs every 5 minutes, two minutes
