@@ -214,13 +214,20 @@ Survey of the user-facing surfaces on 2026-09-23:
 
 **Gaps recorded.** Two Art. 50 items are open, both live since 2 August 2026:
 
-- **50(1), product surface:** eight in-app surfaces need one fixed line of chrome each, matching
-  what the PDF already does. Copy, not logic, tracked as
+- **In-product disclosure, eight surfaces:** member chat is squarely an Art. 50(1) interaction.
+  The other seven show generated text rather than host a conversation, so their statutory home
+  is 50(2) if anything, and that is OI-15 (c)'s question. The eight-line rollout is a
+  **conservative product posture, not a finding that 50(1) reaches all eight**: one fixed line
+  of chrome per surface costs nothing, matches what the PDF already does, and satisfies either
+  reading while counsel confirms coverage. Copy, not logic, tracked as
   [issue #1244](https://github.com/Codesistance/product-carditrack/issues/1244).
 - **50(2), machine-readable marking:** no API response that serves generated text carries an
   `AI-generated` marker today. Whether 50(2) reaches these surfaces is OI-15 (c), pending
   counsel; until decided, this is recorded as **unmet, not accepted**. If counsel says yes, the
-  marker is a small API change (a boolean on the responses A5, A11, A15, A20, A22 and A24 serve).
+  marker is a small API change: a boolean on every response that carries generated text — A5
+  (insights), A11 (summaries, journal entries), A15 (alert headline and message), A19
+  (`QuestionnaireResponse.QuestionText` and `TriggerContext`), A20 (chat turns), A22 (Advise)
+  and A24 (status line).
 
 Together with the Art. 4 record in §7.2 these are the open AI Act obligations on CardiTrack
 today; #1244 is the only one on a product surface.
@@ -251,7 +258,7 @@ lifecycle (human oversight), and the V1–V4 validation protocol (accuracy).
 | OI-15 (a) | Are A13 / A15 Annex III high-risk (point 5(d))? | **No** — §6.1 | Owner + regulatory counsel |
 | OI-15 (b) | Annex I status | Follows OI-2; no separate decision | Owner + regulatory counsel |
 | OI-15 (c) | Do the text-generating surfaces fall under Art. 50(2), and what marking satisfies it? | Treat as yes; disclose in-product and mark in the API | Owner + counsel |
-| OI-15 (d) | Art. 50(1) disclosure copy on the eight in-app surfaces in §7.1 | Ship it (#1244) | Owner |
+| OI-15 (d) | In-product "AI-written" line on the eight surfaces in §7.1 — Art. 50(1) for chat, conservative for the other seven pending (c) | Ship it (#1244) | Owner |
 | OI-15 (e) | Art. 4 literacy record | Write it | Owner |
 
 Until OI-15 (a) is confirmed, the product must make **no AI Act compliance representation** in

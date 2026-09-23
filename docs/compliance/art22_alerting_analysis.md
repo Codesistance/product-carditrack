@@ -23,10 +23,12 @@ in the pipeline's assessor job, gated on `enable_pipeline_jobs`, which prod has 
 | Statistical engine (R1) | Eleven deterministic rules produce *findings* — nine **comparative** rules vs the 30-day baseline (silent without one) and two **measured** rhythm rules (`irregular_rhythm`, `ecg_afib`, DPIA A26) that relay a finding the wearer's device already classified and are deliberately not gated on a baseline; **since 2026-09-19 LLM-routed** — MedGemma returns the severity, headline and message for every finding (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`) | yellow/orange/red per the model's verdict, mapped strictly, fail closed | `StatisticalAlertRules`, `StatisticalAlertService` (pipeline `assess` job) |
 | Caregiver-defined alarms (R2) | Deterministic threshold arithmetic, **on numbers the caregiver chose** | yellow/orange/red, chosen by the caregiver | `MetricAlarmEvaluator`, `MetricAlarmEngine` |
 
-The first and third involve a model; the other two are pure arithmetic against the member's own
-baseline (inactivity in the Worker, alarms on the caregiver's own numbers). All four produce the
-same artifact: an `Alert` row a caregiver sees, acknowledges,
-and resolves. Since 2026-08-11, Red/Orange alerts are additionally **dispatched by push (FCM
+The first and third involve a model; the other two are deterministic — the inactivity detector
+a fixed silence rule (more than two hours without a granular reading during waking hours, in
+the Worker), the alarms threshold arithmetic on numbers the caregiver chose. Their inputs are
+deterministic and their outputs conditional: when a producer fires, the artifact is the same
+`Alert` row a caregiver sees, acknowledges and resolves; when the model judges a finding benign,
+nothing is written at all. Since 2026-08-11, Red/Orange alerts are additionally **dispatched by push (FCM
 HTTP v1 with APNs passthrough)** with a 120s/300s/900s escalation ladder (re-push → fan-out to
 other caregivers → `UNDELIVERED_CRITICAL`) and quiet hours. **No alert triggers any action
 beyond notifying humans** — there is no SMS fallback, no effect on any service, price, or
