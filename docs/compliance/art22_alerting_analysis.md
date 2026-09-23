@@ -202,7 +202,9 @@ per cohort (age band, sex). This slots between runbook steps 6 and 10's lift.
 > flag is flipped**: (i) a production member allowlist enforced in both LLM-routed producers'
 > member selection (or a staff-only project), and (ii) an assessor schedule that can be enabled
 > independently of the digest job. Both are code and Terraform work outside this document;
-> until they exist, V3 cannot be run and prod alerting stays gated (§6).
+> until they exist, V3 cannot be run and prod's **LLM-routed** alerting stays gated (§6). The
+> deterministic producers — the Worker's inactivity detector and caregiver-defined alarms — run
+> in prod today and are not what this precondition holds back.
 
 **V4 — Change control (standing):** any change to a `CARDITRACK_*` prompt, the model tag,
 the severity mapping, **or the numerical engine that produces SSA features / baseline
@@ -253,5 +255,5 @@ real families is gated on both being recorded here.
 |---|---|
 | Is built alerting Art. 22(1) ADM? | Most likely **no** (human decision-maker, no significant automated effect) — treated conservatively as if yes |
 | Are Art. 22(3)-grade safeguards present? | Yes — engineered and cited above; one deliberate gap (`no clinical review tier`) flagged for sign-off |
-| What blocks prod alerting? | Executing V2, **V2b** and V3 and recording results here; the V3 precondition (a production audience allowlist and an independently schedulable assessor — neither exists yet, §5); sign-off by a qualified reviewer. Privacy-policy alerting text and the algorithm card now exist; the rest of `/privacy` is still a short placeholder |
+| What blocks prod **LLM-routed** alerting? (The deterministic Worker producers already run in prod, §1.) | Executing V2, **V2b** and V3 and recording results here; the V3 precondition (a production audience allowlist and an independently schedulable assessor — neither exists yet, §5); sign-off by a qualified reviewer. Privacy-policy alerting text and the algorithm card now exist; the rest of `/privacy` is still a short placeholder |
 | What re-opens this analysis? | Push dispatch (2026-08-11) fired the first re-run, drafted 2026-09-23 (§2.1). Next: **enabling the pipeline jobs in prod**; SMS dispatch landing; any prompt/model/severity-mapping change; wearer-population change (e.g. exceeding the 100-user cap); any of the re-classification events in [ai_act_classification.md](ai_act_classification.md) §6.3 |
