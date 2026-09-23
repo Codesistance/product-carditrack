@@ -912,8 +912,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (composed.Entry is null)
         {
             return new JournalRewriteResult(
-                composed.Outcome, null, composed.Usage, false, composed.RewriteUsage,
-                composed.DaysWithData, composed.DaysNeeded);
+                composed.Outcome, null, composed.Usage, false,
+                composed.DaysWithData, composed.DaysNeeded, RewriteUsage: composed.RewriteUsage);
         }
 
         _logger.LogInformation(
@@ -921,7 +921,8 @@ public partial class DigestGenerationService : IDigestGenerationService
             audience, cardiMemberId, periodEnd);
 
         return new JournalRewriteResult(
-            JournalRewriteOutcome.Written, composed.Entry, composed.Usage, false, composed.RewriteUsage);
+            JournalRewriteOutcome.Written, composed.Entry, composed.Usage, false,
+            RewriteUsage: composed.RewriteUsage);
     }
 
     /// <summary>
@@ -1232,6 +1233,45 @@ public partial class DigestGenerationService : IDigestGenerationService
     }
 
     /// <summary>
+    /// One of a book's short optional fields — its headline or its suggestion — held to the two
+    /// checks the body already gets, and dropped rather than stored when it fails either.
+    /// </summary>
+    /// <remarks>
+    /// Dropped rather than discarding the whole book, and that asymmetry is the point: the account
+    /// is the thing a caregiver came for, and losing it because a five-word headline carried a
+    /// leftover token would be the guard costing more than it saves. A book with no headline still
+    /// renders; the body is what could not be allowed through unchecked. Both fields are nullable
+    /// in the entity, so there is somewhere for "nothing" to go.
+    /// </remarks>
+    private string? JournalField(string? text, string bookName, Guid memberId)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        if (MemberVoice.IsUnresolvedIn(text))
+        {
+            _logger.LogWarning(
+                "Dropped a {BookName} field for CardiMember {CardiMemberId}: it carries a token the "
+                + "member's record cannot settle.",
+                bookName, memberId);
+            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
+            return null;
+        }
+
+        if (JournalRegisterGuards.NamesACondition(text) is { } condition)
+        {
+            _logger.LogWarning(
+                "Dropped a {BookName} field for CardiMember {CardiMemberId}: it names a condition "
+                + "or a treatment ({Marker}).",
+                bookName, memberId, condition);
+            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonNamesACondition);
+            return null;
+        }
+
+        return text;
+    }
+
+    /// <summary>
     /// Turns a book's clinical read into the account a family reads, on the Rewrite slot. Null
     /// when there is nothing to write from or the call failed — the caller discards the book.
     /// </summary>
@@ -1384,6 +1424,21 @@ public partial class DigestGenerationService : IDigestGenerationService
         // book can come back carrying CardiTrackCardiMemberTheir as well as the name token, and
         // resolving only the name would store the pronoun sentinel for a caregiver to read.
         var voice = MemberVoice.For(member);
+
+        // Checked on the raw reply, across every field, before anything is resolved. The brief asks
+        // for tokens, so a natural "her" is the instruction being ignored rather than something to
+        // settle — and for a PreferNotToSay member there is no right sexed pronoun to settle it to.
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(text, voice.Gender)
+            || RewriteCopyGuards.StatesAnUnsupportedSex(headline, voice.Gender)
+            || RewriteCopyGuards.StatesAnUnsupportedSex(suggestion, voice.Gender))
+        {
+            _logger.LogWarning(
+                "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it states a "
+                + "sex the record does not bear out.",
+                bookName, memberId, periodPhrase);
+            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnsupportedSex);
+            return JournalComposition.Discarded(usage, rewriteUsage);
+        }
         var name = voice.FirstName;
         if (name is null && NamePlaceholder.IsPresentIn(text))
         {
@@ -1421,9 +1476,11 @@ public partial class DigestGenerationService : IDigestGenerationService
             CardiMemberId = memberId,
             LocalDate = periodEnd,
             Audience = audience,
-            Headline = voice.Resolve(CleanHeadline(headline, memberId, periodEnd)),
+            Headline = JournalField(
+                voice.Resolve(CleanHeadline(headline, memberId, periodEnd)), bookName, memberId),
             Text = storedText,
-            Suggestion = voice.Resolve(CleanSuggestion(suggestion, memberId, periodEnd)),
+            Suggestion = JournalField(
+                voice.Resolve(CleanSuggestion(suggestion, memberId, periodEnd)), bookName, memberId),
             Urgency = ParseUrgency(urgency, memberId, periodEnd),
             GeneratedAtUtc = utcNow,
             PromptVersion = CurrentPromptVersion,

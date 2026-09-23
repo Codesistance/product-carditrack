@@ -52,6 +52,9 @@ public sealed record JournalRewriteResult(
     DigestEntry? Entry,
     AiUsage? Usage,
     bool ReplacedAnEarlierBook,
-    AiUsage? RewriteUsage = null,
     int DaysWithData = 0,
-    int DaysNeeded = 0);
+    int DaysNeeded = 0,
+    // Appended last on purpose: this record's positional constructor and deconstruction are part
+    // of its contract, and slipping a new optional parameter in front of the existing ones
+    // silently rebinds every positional call that passed the day counts.
+    AiUsage? RewriteUsage = null);

@@ -87,6 +87,9 @@ public static class CopyGuardTelemetry
     /// </summary>
     public const string ReasonRegisterRejected = "register_rejected";
 
+    /// <summary>States a sex the member's record does not bear out.</summary>
+    public const string ReasonUnsupportedSex = "unsupported_sex";
+
     /// <summary>Records one discard.</summary>
     public static void Count(string surface, string reason) =>
         Discarded.Add(

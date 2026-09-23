@@ -621,10 +621,28 @@ public class StatisticalAlertService : IStatisticalAlertService
                         LocalDate = JudgementDay(finding),
                         JudgedAtUtc = utcNow,
                     };
-                    await _guard.WriteIfMemberLivesAsync(
-                        memberId,
-                        token => _unitOfWork.BenignJudgements.RecordAsync(judgement, token),
-                        ct);
+
+                    // Best-effort, and the try/catch is the whole point of it. This loop is still
+                    // walking the model's verdicts, so an exception escaping here would abandon
+                    // every finding after this one — including a critical the same response had
+                    // already judged worth paging a family about. A cache that exists to save an
+                    // inference must not be able to cost an alert; not remembering costs one
+                    // re-judgement next pass, which is exactly what the table is an optimisation of.
+                    try
+                    {
+                        await _guard.WriteIfMemberLivesAsync(
+                            memberId,
+                            token => _unitOfWork.BenignJudgements.RecordAsync(judgement, token),
+                            ct);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _logger.LogWarning(
+                            ex,
+                            "Could not remember the benign verdict for rule {Rule} on CardiMember "
+                            + "{CardiMemberId}; it will be judged again next pass.",
+                            finding.Rule, memberId);
+                    }
                 }
 
                 continue;
