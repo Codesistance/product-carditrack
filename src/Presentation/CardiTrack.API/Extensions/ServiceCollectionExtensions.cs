@@ -104,6 +104,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationRepository, CardiTrack.Infrastructure.Repositories.NotificationRepository>();
         services.AddScoped<INotificationMuteRepository, CardiTrack.Infrastructure.Repositories.NotificationMuteRepository>();
         services.AddScoped<IAlertPreferenceRepository, CardiTrack.Infrastructure.Repositories.AlertPreferenceRepository>();
+        services.AddScoped<IBenignJudgementRepository, CardiTrack.Infrastructure.Repositories.BenignJudgementRepository>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IMetricAlarmService, CardiTrack.Application.Services.MetricAlarmService>();
         services.AddScoped<IMetricAlarmRepository, CardiTrack.Infrastructure.Repositories.MetricAlarmRepository>();
         services.AddScoped<IMetricAlarmStateRepository, CardiTrack.Infrastructure.Repositories.MetricAlarmStateRepository>();

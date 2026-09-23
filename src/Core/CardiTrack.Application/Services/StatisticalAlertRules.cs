@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -61,6 +63,64 @@ public static class StatisticalAlertRules
     public const string OvernightBreathingUpRule = "overnight_breathing_up";
     public const string ElevatedZoneWithoutMovementRule = "elevated_zone_without_movement";
     public const string DaytimeInactivityBlockRule = "daytime_inactivity_block";
+
+    /// <summary>
+    /// Every rule this class can produce a finding for. The judgement reply's <c>rule</c> field
+    /// carries the same eleven as an <c>[AllowedValues]</c> enum, which has to list them one by one
+    /// because an attribute takes compile-time constants; this list is what lets a test prove the
+    /// two agree, so a twelfth rule cannot be added and then silently be unnameable by the model
+    /// asked to judge it.
+    /// </summary>
+    public static readonly IReadOnlyList<string> AllRules =
+    [
+        ActivityDeclineRule,
+        IrregularSleepRule,
+        ElevatedHeartRateRule,
+        NoMorningActivityRule,
+        LongTermTrendRule,
+        HeartRateVariabilityDropRule,
+        IrregularRhythmRule,
+        EcgAtrialFibrillationRule,
+        OvernightBreathingUpRule,
+        ElevatedZoneWithoutMovementRule,
+        DaytimeInactivityBlockRule,
+    ];
+
+    /// <summary>
+    /// The key a benign verdict on this finding is remembered under: a hash of the question the
+    /// model was actually asked — its rule, the observation it reads, and the figures behind it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A verdict is about the readings as they stand, and for this engine the readings keep
+    /// arriving — which is why, before this existed, nothing was persisted at all: judging again
+    /// on the next pass is how a day that gets worse gets noticed. The cost was that a yardstick
+    /// which stays tripped asks the model the same question every five minutes until midnight, up
+    /// to 288 times.
+    /// </para>
+    /// <para>
+    /// Hashing the question itself keeps both. Identical figures produce the same fingerprint and
+    /// the remembered verdict stands; one figure moving produces a different fingerprint and the
+    /// finding is judged again exactly as it was before. That is a stronger guarantee than the
+    /// first shape of this, which remembered a rule for a member's local day on the reasoning that
+    /// a rule reading yesterday reads data that cannot change again — false, because
+    /// <c>DeviceSyncService</c>'s repair pass re-pulls <c>SyncLookbackDays</c> of complete days and
+    /// a night's readings routinely land after local midnight.
+    /// </para>
+    /// <para>
+    /// It also removes the need to sort rules into ones whose data is settled and ones whose data
+    /// is not — a list that had to be maintained by hand and that a rule added later could default
+    /// into wrongly. <see cref="NoMorningActivity"/> names the clock in its observation and so
+    /// re-judges every pass without being named anywhere as an exception; the two measured rules
+    /// carry the device's own counts in their figures, so a notification arriving this afternoon
+    /// changes the fingerprint on its own.
+    /// </para>
+    /// </remarks>
+    public static string JudgementFingerprint(StatisticalFinding finding)
+    {
+        var question = string.Join('\n', finding.Rule, finding.Observation, finding.MetricValues);
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(question)));
+    }
 
     /// <summary>Medium sensitivity: a reading more than 30% off its baseline is worth a word.</summary>
     public const double DeviationFraction = 0.30;

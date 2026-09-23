@@ -535,7 +535,7 @@ defensible precisely because it is not a notes feature.
 | OQ-15 | Two families alerting on one episode: does either learn the other exists, or is duplicate contact accepted? | Product | Story 4.3 fan-out scope | Before D3 |
 | OQ-16 | Does choosing a family in the drawer scope only the Family tab (as specified) or the whole shell — Dashboard, Alerts, Journal too? Showing open alerts per family makes the second reading tempting; it is also a much larger change, since nothing today has a "current family" | Product | B4 scope | Before B4 |
 | OQ-17 | Should a caregiver close re-arm the rule's cooldown immediately, or after a grace period? Immediate is honest but means "closed — she's fine" can be followed by a fresh page minutes later if the reading has not moved | Product + Eng | E1 | Before E1 |
-| OQ-18 | The canned lists per rule — who writes them? They are product copy in code, and each one is a claim about what a caregiver plausibly did. Draft set in the canvas; needs a pass against the nine-rule taxonomy | Product | E1 | Before E1 |
+| OQ-18 | The canned lists per rule — who writes them? They are product copy in code, and each one is a claim about what a caregiver plausibly did. Draft set in the canvas; needs a pass against the eleven-rule taxonomy | Product | E1 | Before E1 |
 | OQ-7 | Does Google restricted-scope verification change the reach ceiling? Still ⬜ not started as of the last matrix read | Eng/Ops | Reach in §9 | R1→R2 gate |
 
 ## 7. Risk & Dependency Check

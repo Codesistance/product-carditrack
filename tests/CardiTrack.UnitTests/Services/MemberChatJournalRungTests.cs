@@ -476,6 +476,35 @@ public class MemberChatJournalRungTests
     }
 
     /// <summary>
+    /// A book is two calls since the clinical/rewrite split, on two providers, and the ledger
+    /// records a row per call. The test above supplies only the private slot's usage, so it would
+    /// still pass if the Rewrite-slot row were dropped — which would leave every caregiver-asked
+    /// rewrite's Vertex call out of the ledger entirely, and summing the two into one row would
+    /// bill a Vertex call as MedGemma.
+    /// </summary>
+    [Fact]
+    public async Task A_yes_bills_both_slots_when_the_book_cost_a_rewrite_call()
+    {
+        Resolves("rewrite", "day", Reviewed);
+        HasDaybook(Reviewed);
+        var written = StoredDaybook(Reviewed, "A quieter day than usual");
+        _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(new JournalRewriteResult(
+                JournalRewriteOutcome.Written, written, new AiUsage { ModelName = "medgemma" }, false)
+            {
+                RewriteUsage = new AiUsage { ModelName = "gemini-3.5-flash" },
+            });
+        await Send("rewrite that day's daybook");
+
+        await Send("yes");
+
+        await _usages.Received(1).AddAsync(Arg.Is<MemberChatTurnUsage>(u =>
+            u.Step == AiCallStep.JournalWrite && u.ProviderSlot == AiProviderSlot.Private));
+        await _usages.Received(1).AddAsync(Arg.Is<MemberChatTurnUsage>(u =>
+            u.Step == AiCallStep.Rewrite && u.ProviderSlot == AiProviderSlot.Rewrite));
+    }
+
+    /// <summary>
     /// The model call runs before any transaction; the claim, the store, the turns and the save
     /// then run inside one short transaction the service commits last. The book and the turn that
     /// asked for it land together, and no connection is held across a MedGemma call.

@@ -38,11 +38,12 @@ internal static class WeekbookPrompt
     /// always after it, same as every other generation on this platform.
     /// </summary>
     internal const string Instructions =
-        MedicalPromptBlocks.JournalTone + MedicalPromptBlocks.Pronouns + """
-        Write the family's account of one week of CardiTrackCardiMember's readings. The week is over.
-        Write CardiTrackCardiMember exactly as it appears wherever you would name the person; it stands in
-        for their real name, which you are not given.
-        """ + MedicalPromptBlocks.JournalRegister + """
+        MedicalPromptBlocks.WearableClinicalOpening + """
+        Read one week of this person's readings. The week is over.
+        This is an internal clinical read: a separate step writes the family's account from it, so
+        write precisely and address no one. Nothing you write here reaches a family unrewritten.
+        A precise term for a measurement is right here, and so is naming the mechanism the readings
+        are consistent with where there is one.
 
         [DATA CONSTRAINTS]
         """ + MedicalPromptBlocks.WearableDataConstraints + """
@@ -59,20 +60,11 @@ internal static class WeekbookPrompt
 
         [OUTPUT FORMAT]
         Return a JSON object with:
-        - summary: 6-12 sentences to the family, an account of the week as a whole, naming the
-          person as CardiTrackCardiMember — never a relationship stand-in. An unremarkable week is allowed to be
-          a short account, but it still says what was measured and how much of the week it covered.
-          Open with one or two sentences saying what kind of week it was and what the
-          readings mean for the family — plainly, before any figures, so a reader who gets no
-          further still has the answer. Then the account, keeping every number it has now.
-        - headline: a five-to-six-word qualification of the week you just described — what kind
-          of week it was, never a generic label that could title any week at all. Sentence case, no
-          full stop, no name and no CardiTrackCardiMember, not a sentence.
-        - suggestion: one supportive, specific thing the family could do, at most 25 words,
-          answering something in the week's readings closely enough that a reader could tell what it
-          came from. It may reference an already-known routine fact. Never a diagnosis, never a
-          medical condition, never a change to any treatment, and never an instruction to the
-          family to interpret a reading themselves.
+        - finding: an account of the week as a whole rather than a list of its days, saying what moved and what
+          held steady across the seven days and naming any day that stood apart and what set it
+          apart. Say where the week sat against any published band, and how much of the week each
+          reading covered, keeping every figure. An unremarkable week is allowed to be a short
+          account, but it still says what was measured. 6-12 sentences.
         - urgency: how soon the family should act on this week's readings — one of watch (nothing
           pressing), check-in (worth a call), concerning (worth prompt attention), or act-now
           (worth acting on right away). Judge only from the readings below, and never let this

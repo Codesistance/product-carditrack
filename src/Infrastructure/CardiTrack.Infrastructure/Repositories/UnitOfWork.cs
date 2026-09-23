@@ -36,6 +36,7 @@ public class UnitOfWork : IUnitOfWork
     public IPushDeviceTokenRepository PushDeviceTokens { get; }
     public INotificationPreferenceRepository NotificationPreferences { get; }
     public IAlertPreferenceRepository AlertPreferences { get; }
+    public IBenignJudgementRepository BenignJudgements { get; }
     public IMetricAlarmRepository MetricAlarms { get; }
     public IMetricAlarmStateRepository MetricAlarmStates { get; }
     public IMemberChatSessionRepository MemberChatSessions { get; }
@@ -82,6 +83,7 @@ public class UnitOfWork : IUnitOfWork
         IPushDeviceTokenRepository pushDeviceTokens,
         INotificationPreferenceRepository notificationPreferences,
         IAlertPreferenceRepository alertPreferences,
+        IBenignJudgementRepository benignJudgements,
         IMetricAlarmRepository metricAlarms,
         IMetricAlarmStateRepository metricAlarmStates,
         IMemberChatSessionRepository memberChatSessions,
@@ -127,6 +129,7 @@ public class UnitOfWork : IUnitOfWork
         PushDeviceTokens = pushDeviceTokens;
         NotificationPreferences = notificationPreferences;
         AlertPreferences = alertPreferences;
+        BenignJudgements = benignJudgements;
         MetricAlarms = metricAlarms;
         MetricAlarmStates = metricAlarmStates;
         MemberChatSessions = memberChatSessions;

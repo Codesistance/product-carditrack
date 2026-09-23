@@ -723,11 +723,26 @@ internal static partial class MedicalPromptBlocks
     /// </summary>
     internal static string Flatten(string note)
     {
-        var flattened = WhitespaceRuns().Replace(note, " ").Trim();
+        var flattened = FlattenWhole(note);
         return flattened.Length > MaxNoteLength
             ? $"{CutTo(flattened, MaxNoteLength)}… (truncated)"
             : flattened;
     }
+
+    /// <summary>
+    /// The same whitespace collapse without <see cref="MaxNoteLength"/>, for text that is a whole
+    /// generation rather than a note.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Flatten"/>'s cap is sized for a caregiver note and is the right cap for one. It
+    /// is the wrong cap for a clinical read crossing to the Rewrite slot: a CardiJournal book runs
+    /// to thousands of characters, so flattening one for redaction silently truncated the account
+    /// to its first thousand and the rewrite wrote a book about the first third of a week. Caught
+    /// by <c>A_reply_the_gloss_pushes_over_the_text_cap_is_discarded</c>, which noticed the reply
+    /// it had made too long arriving comfortably short.
+    /// </remarks>
+    internal static string FlattenWhole(string text) =>
+        WhitespaceRuns().Replace(text, " ").Trim();
 
     /// <summary>
     /// Cuts <paramref name="text"/> to at most <paramref name="max"/> characters without splitting

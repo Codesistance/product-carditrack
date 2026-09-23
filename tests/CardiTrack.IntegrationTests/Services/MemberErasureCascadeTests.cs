@@ -89,6 +89,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         Assert.Equal(0, await db.Alerts.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.PatternBaselines.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.AlertPreferences.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.BenignJudgements.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberChatSessions.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberStatusLines.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MetricAlarms.CountAsync(x => x.CardiMemberId == memberId));
@@ -243,6 +244,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "NotificationMutes",
             "Notifications",
             "AlertPreferences",
+            "BenignJudgements",
             "CaregiverInvites",
             "AlertResponses",
             "Alerts",
@@ -466,6 +468,14 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             Note = "v1:0000000000000000:not-real-ciphertext",
         });
         db.AlertPreferences.Add(new AlertPreference { CardiMemberId = member.Id });
+        db.BenignJudgements.Add(new BenignJudgement
+        {
+            CardiMemberId = member.Id,
+            Rule = "activity_decline",
+            LocalDate = new DateOnly(2026, 9, 22),
+            FindingFingerprint = new string('a', 64),
+            JudgedAtUtc = new DateTime(2026, 9, 22, 18, 0, 0, DateTimeKind.Utc),
+        });
         db.Notifications.Add(new Notification
         {
             OrganizationId = organization.Id,

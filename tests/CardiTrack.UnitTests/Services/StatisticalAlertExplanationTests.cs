@@ -25,6 +25,7 @@ public class StatisticalAlertExplanationTests
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
     private readonly IMemberInsightRepository _insights = Substitute.For<IMemberInsightRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly IHealthInsightService _insightService = Substitute.For<IHealthInsightService>();
 
     private readonly Guid _memberId = Guid.NewGuid();
@@ -200,7 +201,7 @@ public class StatisticalAlertExplanationTests
     }
 
     private StatisticalAlertService CreateSut() =>
-        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+        new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
             InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance, new PassThroughWriteGuard(),
             alertEnqueue: null, insights: _insightService);
 

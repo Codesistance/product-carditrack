@@ -30,6 +30,7 @@ public class WeekbookGenerationTests
     private readonly IMemberQuestionnaireRepository _questionnaires =
         Substitute.For<IMemberQuestionnaireRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
 
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -108,20 +109,24 @@ public class WeekbookGenerationTests
             .Returns(logs);
     }
 
-    private void SetupModelReply(string headline, string summary) =>
+    private void SetupModelReply(string headline, string summary)
+    {
+        // The clinical half reads; the rewrite half writes what a family reads, echoing the
+        // read back so these tests still assert on the text they always did.
+        JournalRewriteEcho.Wire(_rewriteAi, headline);
         _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.WeekbookAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<DigestGenerationService.WeekbookAiResponse>(
                 new DigestGenerationService.WeekbookAiResponse
                 {
-                    Headline = headline,
-                    Summary = summary,
+                    Finding = summary,
                     Urgency = "watch",
                 },
                 new AiUsage { ModelName = "test-medical" }));
+    }
 
     private DigestGenerationService CreateSut() =>
-        new(_unitOfWork, _medicalAi, Substitute.For<IRewriteAiService>(),
+        new(_unitOfWork, _medicalAi, _rewriteAi,
             PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
             InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance, new PassThroughWriteGuard());
@@ -350,4 +355,32 @@ public class WeekbookGenerationTests
         Assert.Equal(new TimeOnly(2, 0), JournalSchedule.EffectiveTime(member.WeekbookLocalTime));
         Assert.Equal(1, await CreateSut().GenerateDueWeekbooksAsync(UtcNow));
     }
+
+    /// <summary>
+    /// The whole read crosses to the Rewrite slot, not the first thousand characters of it.
+    /// </summary>
+    /// <remarks>
+    /// The split first shipped using <c>MedicalPromptBlocks.Flatten</c> to prepare the read for
+    /// redaction. That is the right helper for a caregiver note and the wrong one for a book: its
+    /// cap is 1,000 characters, so a week's account arrived at the rewrite truncated to its first
+    /// third with "… (truncated)" on the end, and the rewrite wrote a confident account of a week
+    /// it had only been shown the start of. Nothing about the output looked wrong — which is why
+    /// this is pinned rather than left to the length guard that happened to catch it.
+    /// </remarks>
+    [Fact]
+    public async Task The_whole_clinical_read_reaches_the_rewrite()
+    {
+        var longAccount = "Her sleep held close to her usual. " + new string('x', 2_500) + ".";
+        SetupModelReply("A steady week", longAccount);
+
+        await CreateSut().GenerateDueWeekbooksAsync(UtcNow);
+
+        var prompt = _rewriteAi.ReceivedCalls()
+            .Select(c => c.GetArguments()[0] as string)
+            .Last(arg => arg is not null && arg.Contains("Clinical read to write from", StringComparison.Ordinal))!;
+
+        Assert.DoesNotContain("(truncated)", prompt, StringComparison.Ordinal);
+        Assert.Contains(new string('x', 2_500), prompt, StringComparison.Ordinal);
+    }
 }
+

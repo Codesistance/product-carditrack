@@ -80,6 +80,7 @@ builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReading
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
+builder.Services.AddScoped<IBenignJudgementRepository, BenignJudgementRepository>();
 builder.Services.AddScoped<IMetricAlarmRepository, MetricAlarmRepository>();
 builder.Services.AddScoped<IMetricAlarmStateRepository, MetricAlarmStateRepository>();
 // UnitOfWork takes these as constructor dependencies, so leaving one out does not degrade the

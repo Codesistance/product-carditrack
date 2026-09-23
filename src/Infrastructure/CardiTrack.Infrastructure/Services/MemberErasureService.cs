@@ -126,6 +126,9 @@ public class MemberErasureService : IMemberErasureService
             await Step("NotificationMutes", _db.NotificationMutes.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("Notifications", _db.Notifications.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("AlertPreferences", _db.AlertPreferences.Where(x => x.CardiMemberId == cardiMemberId));
+            // A rule id and a date rather than a reading, but keyed to this member all the same,
+            // and a row saying which of their days the model looked at is theirs to have erased.
+            await Step("BenignJudgements", _db.BenignJudgements.Where(x => x.CardiMemberId == cardiMemberId));
             // Before Alerts, and it is the reason this list is ordered children-first: an
             // answer carries the caregiver's own encrypted words about this member, and
             // nothing in the schema would take it with the alert.

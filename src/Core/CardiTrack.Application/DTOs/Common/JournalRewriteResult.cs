@@ -48,4 +48,20 @@ public sealed record JournalRewriteResult(
     AiUsage? Usage,
     bool ReplacedAnEarlierBook,
     int DaysWithData = 0,
-    int DaysNeeded = 0);
+    int DaysNeeded = 0)
+{
+    /// <summary>
+    /// The Rewrite-slot call the attempt made, when one was made. Separate from
+    /// <see cref="Usage"/> because a book costs two calls on two providers since the
+    /// clinical/rewrite split, and the ledger records a row per call — summing them would bill a
+    /// Vertex call as MedGemma.
+    /// </summary>
+    /// <remarks>
+    /// An init property rather than a seventh positional component, deliberately. This record's
+    /// positional constructor and its generated <c>Deconstruct</c> are part of its shape: adding a
+    /// component changes their arity, which breaks a caller deconstructing six values even though
+    /// appending it keeps calls that simply omit it compiling. A property adds a way to set the
+    /// value without changing anything that already existed.
+    /// </remarks>
+    public AiUsage? RewriteUsage { get; init; }
+}
