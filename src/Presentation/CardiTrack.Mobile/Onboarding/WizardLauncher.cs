@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Devices;
 
 namespace CardiTrack.Mobile.Onboarding;
 
@@ -32,12 +33,22 @@ internal static class WizardLauncher
     /// Pass false when the member already has a connected device, so success exits straight
     /// back to the caller instead of via the M1-08 baseline explainer.
     /// </param>
+    /// <param name="reconnectDevice">
+    /// Set to send an existing connection straight into M1-06 for its own brand, skipping
+    /// M1-05's picker — the caregiver already told us which device is broken by tapping
+    /// Reconnect on it. Ignored when <paramref name="member"/> is null: M1-04 has to run first.
+    /// </param>
     public static async Task<WizardResult> RunModalAsync(
-        INavigation navigation, CardiMemberResponse? member, bool showBaselineIntro = true)
+        INavigation navigation, CardiMemberResponse? member, bool showBaselineIntro = true,
+        ConnectableDevice? reconnectDevice = null)
     {
         var ctx = WizardContext.ForModal(member);
         ctx.ShowBaselineIntro = showBaselineIntro;
-        Page entry = member is null ? new AddCardiMemberPage(ctx) : new DeviceSelectionPage(ctx);
+        Page entry = member is null
+            ? new AddCardiMemberPage(ctx)
+            : reconnectDevice is not null
+                ? new DeviceConnectionPage(ctx, reconnectDevice)
+                : new DeviceSelectionPage(ctx);
         var wizardNav = new NavigationPage(entry);
         var tcs = new TaskCompletionSource<WizardResult>(TaskCreationOptions.RunContinuationsAsynchronously);
 

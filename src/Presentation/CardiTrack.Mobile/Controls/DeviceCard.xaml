@@ -6,6 +6,12 @@
     <Border Style="{StaticResource ElevatedCard}">
         <VerticalStackLayout Spacing="12">
 
+            <!-- Identity, sharing and stats read as stale once the connection needs reconnecting —
+                 dimmed together (DeviceInfoSection.Opacity) rather than per-element, so nothing
+                 here looks more current than the "NEEDS RECONNECT" chip already says it is. The
+                 actions below stay at full opacity: Reconnect is the one thing still live. -->
+            <VerticalStackLayout x:Name="DeviceInfoSection" Spacing="12">
+
             <!-- Identity -->
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                 <Border Grid.Column="0"
@@ -150,10 +156,31 @@
                 </Border>
             </Grid>
 
+            </VerticalStackLayout>
+
             <BoxView Style="{StaticResource DividerLine}"/>
 
             <!-- Actions -->
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="40">
+
+            <!-- The provider itself broke the token (Fitbit rejected the refresh, or revoked
+                 consent) — retrying Refresh Connection just repeats the same failure. Reconnect
+                 takes the place of Refresh Connection rather than sitting alongside it, so there
+                 is one live action here, not one that works and one that silently can't. -->
+            <Grid x:Name="ReconnectRow" ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="40"
+                  IsVisible="False">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnReconnectTapped"/>
+                </Grid.GestureRecognizers>
+                <Image Grid.Column="0" Source="icon_refresh.svg"
+                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                <Label Grid.Column="1" Text="Reconnect"
+                       Style="{StaticResource Body2Medium}"
+                       TextColor="{StaticResource Primary}"
+                       FontFamily="QuicksandSemiBold"
+                       VerticalTextAlignment="Center"/>
+            </Grid>
+
+            <Grid x:Name="RefreshRow" ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="40">
                 <Grid.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnRefreshTapped"/>
                 </Grid.GestureRecognizers>

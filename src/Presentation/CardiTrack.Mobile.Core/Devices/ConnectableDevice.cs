@@ -20,4 +20,14 @@ public sealed record ConnectableDevice(
     // Placeholder tile art until design ships a Pixel Watch asset (no Figma slot yet).
     public static readonly ConnectableDevice PixelWatch =
         new("pixel_watch", "Google Pixel Watch", "Pixel", "Pixel Watch 1–3", "device_other.png");
+
+    private static readonly ConnectableDevice[] All = [Fitbit, PixelWatch];
+
+    /// <summary>
+    /// The brand a connected device's wire name belongs to, for reconnecting an existing
+    /// connection through M1-06 rather than M1-05's picker. Null for a provider M1-05 doesn't
+    /// offer yet (Garmin) — there is no connection screen to send it to.
+    /// </summary>
+    public static ConnectableDevice? ForWireName(string wireName) =>
+        All.FirstOrDefault(d => string.Equals(d.WireName, wireName, StringComparison.OrdinalIgnoreCase));
 }
