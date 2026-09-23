@@ -1330,8 +1330,13 @@ public partial class DigestGenerationService : IDigestGenerationService
             // Grounded against the read, like every other rewrite on the platform. A book is the
             // most figure-dense thing written here, so an invented number is both the likeliest
             // thing for a rewrite to add and the hardest for a reader to catch.
+            //
+            // The account and its headline, and deliberately not the suggestion: the same split
+            // the digest makes a few hundred lines down, for the reason the guard's own remark
+            // gives. A suggestion is an action and the brief lets it reach for a routine fact the
+            // read never measured, so holding it to the read discards sound copy.
             var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(
-                $"{rewritten.Result.Summary} {rewritten.Result.Headline} {rewritten.Result.Suggestion}",
+                $"{rewritten.Result.Summary} {rewritten.Result.Headline}",
                 read);
             if (invented is not null)
             {

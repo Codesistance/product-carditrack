@@ -412,15 +412,17 @@ public class HealthInsightService : IHealthInsightService
             return false;
         }
 
+        // What the rewrite is given, held in a local because it is also what the rewrite is held
+        // to: the grounding check below has to compare the copy against everything the model was
+        // shown, not against half of it.
+        var brief = $"finding: {ForRewrite(read.Explanation, member?.Name)}\n"
+            + $"suggested action: {ForRewrite(read.RecommendedAction, member?.Name)}";
+
         AlertAiResponse aiResponse;
         try
         {
             aiResponse = await _rewriteAi.GenerateStructuredAsync<AlertAiResponse>(
-                BuildRewritePrompt(
-                    AlertRewriteInstructions,
-                    new DeidentifiedFindings(
-                        $"finding: {ForRewrite(read.Explanation, member?.Name)}\n"
-                        + $"suggested action: {ForRewrite(read.RecommendedAction, member?.Name)}")),
+                BuildRewritePrompt(AlertRewriteInstructions, new DeidentifiedFindings(brief)),
                 ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -442,8 +444,15 @@ public class HealthInsightService : IHealthInsightService
         // was the one rewrite path that could add a metric or a figure the read never observed and
         // have it stored — the check only became possible once a separate statement of what the
         // readings showed existed to compare against.
-        var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(
-            $"{aiResponse.Explanation} {aiResponse.RecommendedAction}", read.Explanation);
+        //
+        // The explanation alone, against the whole brief. Both halves of that matter and the first
+        // shape of this got both wrong. The recommended action is an action, and the guard's own
+        // remark excludes actions: a walk suggested against a read about sleep is the brief working
+        // as asked, not an invented reading. And the read side has to be everything the rewrite was
+        // shown, or an explanation faithfully echoing a figure out of the suggested-action half is
+        // thrown away as an invention — which is the mistake TrendInterpretationService records
+        // having made in both directions before it grounded against its findings too.
+        var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(aiResponse.Explanation, brief);
 
         // An explanation the guards emptied is not an explanation, and storing it would leave the
         // screen showing a heading over nothing. Withheld entirely, the same stance
