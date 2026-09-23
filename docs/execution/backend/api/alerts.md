@@ -70,7 +70,7 @@ The implemented `AlertType` enum (integers on the wire) differs from the string 
 
 ### Sensitivity and preferences
 
-**The built-in rules still run on fixed constants.** The nine comparative rules threshold on the hard-coded "medium" profile below (deviation > 30% → yellow, > 50% → orange); the two measured rhythm rules have no threshold at all — the finding is the device's classification, and their severity is only ever the model's. `CardiMember.AlertSensitivity` `CardiMember.AlertSensitivity` remains stored end-to-end and unused by every producer. Nothing about the shipped rules is tunable.
+**The built-in rules still run on fixed constants.** The nine comparative rules threshold on the hard-coded "medium" profile below (deviation > 30% → yellow, > 50% → orange); the two measured rhythm rules have no threshold at all — the finding is the device's classification, and their severity is only ever the model's. `CardiMember.AlertSensitivity` remains stored end-to-end and unused by every producer. Nothing about the shipped rules is tunable.
 
 **What is tunable is a separate thing: caregiver-defined alarms.** `MetricAlarm` (R2) lets a caregiver say "tell me when this reading reaches this level" in the grammar cloud monitoring made standard — metric, statistic, comparison, threshold, evaluation window, M-of-N datapoints, missing-data treatment, severity — set once for the account and overridable per CardiMember. These **coexist with** the eleven rules rather than retuning them: a firing alarm writes an ordinary `Alert` row with `rule: "custom:{alarmId}"` and inherits the whole delivery spine. See "User-defined alarms" below, and [alarm_catalogue.md](../../../technical/alarm_catalogue.md) for the suggested defaults and their sources.
 

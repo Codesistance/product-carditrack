@@ -182,7 +182,8 @@ negative class and lets the false-negative rate be estimated the way V2 does for
 (c) the two **measured rhythm rules** have no former constant to compare against (their
 severity has only ever been the model's), so their report is separate and different in kind:
 the distribution of model severities per rule against the device classification that raised
-the finding, every benign or yellow verdict on an `ecg_afib` finding read individually, and the
+the finding, every benign or yellow verdict on an `ecg_afib` or `irregular_rhythm` finding read
+individually, and the
 same shadow log as (b). Acceptance to propose at sign-off, as V2's.
 
 **V3 — Prod shadow period (to run at enablement):** enable the pipeline's assessor job in prod
