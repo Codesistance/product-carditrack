@@ -316,8 +316,12 @@ public partial class DeviceManagementPage : ContentPage
         var connectable = device is null ? null : ConnectableDevice.ForWireName(device.Provider);
         if (connectable is null)
         {
+            // Remove-and-reconnect is not a real path for a brand M1-05's picker doesn't offer
+            // yet (Garmin) — the caregiver would land back on the same picker with nothing to
+            // pick. Point at support instead of a retry that only leads back here.
             await _popups.ShowWarningAsync(
-                "This device can't be reconnected from here yet — remove it and connect it again.",
+                "This device type can't be reconnected from the app yet — reach us at " +
+                "support@carditrack.com and we'll help get it working again.",
                 "Can't reconnect");
             return;
         }
