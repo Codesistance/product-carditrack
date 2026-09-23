@@ -311,6 +311,9 @@ try
             return 0;
 
         default:
+            // Non-zero exit without an exception, so the catch below never runs and the root span
+            // would otherwise end unset — a failed Cloud Run execution reading as a clean trace.
+            jobActivity?.SetStatus(ActivityStatusCode.Error, $"unknown job '{jobName}'");
             Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate, assess, enrich, trend, theme.", jobName);
             return 1;
     }

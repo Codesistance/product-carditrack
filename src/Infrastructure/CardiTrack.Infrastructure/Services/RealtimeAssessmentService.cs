@@ -88,7 +88,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         Respond with:
         - message: what this hour's readings show against this person's usual pattern, at the severity you give it — 1-3 sentences.
         - severity: exactly one of critical, high, medium, or low, from most to least severe.
-        """ + MedicalPromptBlocks.ContextGuardrailNotesOnly;
+        """ + MedicalPromptBlocks.ContextGuardrail;
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ISsaDecomposition _ssa;

@@ -113,7 +113,7 @@ public class HealthInsightService : IHealthInsightService
           change medication, never a diagnosis, and never a fix.
 
         Keep both fields factual and concise.
-        """ + MedicalPromptBlocks.ContextGuardrailNotesOnly;
+        """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
     /// <c>CARDITRACK_ALERT_PROMPT</c>, rewrite half — the explanation card a caregiver reads, on
@@ -181,7 +181,7 @@ public class HealthInsightService : IHealthInsightService
         Never give a score, a probability, a risk level or a prediction of what will happen next.
         Do not pad the list to three, and do not look for something to report where the figures
         show nothing.
-        """ + MedicalPromptBlocks.ContextGuardrailNotesOnly;
+        """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
     /// <c>CARDITRACK_LEARNING_PROMPT</c>, clinical half — the first weeks, before a baseline
@@ -199,7 +199,7 @@ public class HealthInsightService : IHealthInsightService
         - summary: the daily rhythm shown so far, and what is still needed for a reliable
           picture of this member.
         - keyFindings: up to three short strings, one per key observation.
-        """ + MedicalPromptBlocks.ContextGuardrailNotesOnly;
+        """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
     /// <c>CARDITRACK_PROVISIONAL_PROMPT</c>, clinical half — a provisional (sub-30-day) baseline
@@ -219,7 +219,7 @@ public class HealthInsightService : IHealthInsightService
         - summary: what the early data suggests, and what will become clearer once the full
           30-day baseline is established.
         - keyFindings: up to three short strings, one per key observation.
-        """ + MedicalPromptBlocks.ContextGuardrailNotesOnly;
+        """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
     /// The rewrite half shared by <see cref="BaselineInstructions"/>,
@@ -432,14 +432,32 @@ public class HealthInsightService : IHealthInsightService
             return false;
         }
 
-        var name = NamePlaceholder.FirstName(member?.Name);
-        var explanation = CaregiverFacingInsight(aiResponse.Explanation, name);
+        var voice = MemberVoice.For(member);
+        var explanation = CaregiverFacingInsight(aiResponse.Explanation, voice);
+
+        // Held to the clinical read, like the statistical and trend rewrites are. Without it this
+        // was the one rewrite path that could add a metric or a figure the read never observed and
+        // have it stored — the check only became possible once a separate statement of what the
+        // readings showed existed to compare against.
+        var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(
+            $"{aiResponse.Explanation} {aiResponse.RecommendedAction}", read.Explanation);
 
         // An explanation the guards emptied is not an explanation, and storing it would leave the
         // screen showing a heading over nothing. Withheld entirely, the same stance
         // AdviseGenerationService takes on a suggestion with no grounding.
-        if (explanation.Length == 0)
+        //
+        // Counted, not just returned: a rewrite that succeeded and was then thrown away is the
+        // silent-guard case carditrack.copy.discarded exists for, and it is a different reason
+        // from the call having failed.
+        if (explanation.Length == 0 || invented is not null)
+        {
+            CopyGuardTelemetry.Count(
+                AlertSurface,
+                invented is not null
+                    ? CopyGuardTelemetry.ReasonInventedReading
+                    : CopyGuardTelemetry.ReasonRegisterRejected);
             return false;
+        }
 
         var row = existing ?? new MemberInsight
         {
@@ -452,7 +470,7 @@ public class HealthInsightService : IHealthInsightService
         // costs the member the explanation and makes the row a permanent backfill candidate.
         row.Summary = InsightLimits.Fit(explanation, InsightLimits.Summary)!;
         row.RecommendedAction = InsightLimits.Fit(
-            CaregiverFacingInsight(aiResponse.RecommendedAction, name), InsightLimits.RecommendedAction);
+            CaregiverFacingInsight(aiResponse.RecommendedAction, voice), InsightLimits.RecommendedAction);
         row.BaselinePeriodDays = baseline?.PeriodDays;
         row.GeneratedAtUtc = DateTime.UtcNow;
         row.PromptVersion = AlertPromptVersion;
@@ -471,10 +489,14 @@ public class HealthInsightService : IHealthInsightService
     /// them, and an insight that still says <c>CardiTrackCardiMember</c> is worse than an empty field.
     /// A named condition is dropped the same way — this path has no rewrite step to strip one.
     /// </summary>
-    private static string ResolvedOrEmpty(string? text, string? name)
+    private static string ResolvedOrEmpty(string? text, MemberVoice voice)
     {
-        var resolved = NamePlaceholder.Resolve(text, name) ?? string.Empty;
-        if (NamePlaceholder.IsPresentIn(resolved))
+        // MemberVoice rather than a bare first name: the rewrite briefs ask for PronounsByToken,
+        // so a reply can carry CardiTrackCardiMemberTheir as well as the name token, and resolving
+        // only the name left the pronoun token to reach a caregiver verbatim. MemberVoice.Resolve
+        // settles both from the member's record; anything still unresolved is no text at all.
+        var resolved = voice.Resolve(text) ?? string.Empty;
+        if (NamePlaceholder.IsPresentIn(resolved) || MemberVoice.IsUnresolvedIn(resolved))
             return string.Empty;
 
         // Trimmed, and whitespace treated as nothing at all. A reply of three spaces passes the
@@ -485,9 +507,9 @@ public class HealthInsightService : IHealthInsightService
         return string.IsNullOrWhiteSpace(resolved) ? string.Empty : resolved.Trim();
     }
 
-    private static string CaregiverFacingInsight(string? text, string? name)
+    private static string CaregiverFacingInsight(string? text, MemberVoice voice)
     {
-        var resolved = ResolvedOrEmpty(text, name);
+        var resolved = ResolvedOrEmpty(text, voice);
         return JournalRegisterGuards.NamesACondition(resolved) is null ? resolved : string.Empty;
     }
 
@@ -706,17 +728,26 @@ public class HealthInsightService : IHealthInsightService
             return false;
         }
 
-        // The same placeholder guard the alert path applies. The three clinical briefs never
-        // mention CardiTrackCardiMember and neither does this card's rewrite — only the alert's
-        // does — so a token that reaches a caregiver unresolved is worse than an empty field
-        // wherever it happens.
-        var name = NamePlaceholder.FirstName(member?.Name);
-        var summary = ResolvedOrEmpty(aiResponse.Summary, name);
-        if (summary.Length == 0)
+        // The same guards the alert path applies, and the condition guard is newly among them: the
+        // rewrite is now handed a clinical read that is encouraged to name a mechanism, so "the
+        // clinical briefs never mention CardiTrackCardiMember" is no longer the only thing that
+        // can reach this card. A token that resolves to nothing, or a condition carried through
+        // from the read, is worse than an empty field wherever it happens.
+        var voice = MemberVoice.For(member);
+        var summary = CaregiverFacingInsight(aiResponse.Summary, voice);
+        var inventedSummary = RewriteCopyGuards.NamesAReadingTheReadDidNot(aiResponse.Summary, read.Summary);
+        if (summary.Length == 0 || inventedSummary is not null)
+        {
+            CopyGuardTelemetry.Count(
+                BaselineSurface,
+                inventedSummary is not null
+                    ? CopyGuardTelemetry.ReasonInventedReading
+                    : CopyGuardTelemetry.ReasonRegisterRejected);
             return false;
+        }
 
         var findings = aiResponse.KeyFindings
-            .Select(finding => ResolvedOrEmpty(finding, name))
+            .Select(finding => CaregiverFacingInsight(finding, voice))
             .Where(finding => finding.Length > 0)
             .Take(InsightLimits.MaxFindings)
             .ToList();

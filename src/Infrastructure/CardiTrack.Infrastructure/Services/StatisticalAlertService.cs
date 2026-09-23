@@ -128,7 +128,7 @@ public class StatisticalAlertService : IStatisticalAlertService
         - rule: the finding's rule, copied exactly.
         - severity: exactly one of critical, high, medium, or low, from most to least severe. Low means the finding is not worth the family's attention today and nothing is raised.
         - finding: what this reading shows against what is usual for this person, at the severity you gave it — at most 80 words.
-        """ + MedicalPromptBlocks.ContextGuardrailNotesOnly;
+        """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
     /// <c>CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT</c>, rewrite half — the caregiver voice, the
@@ -318,6 +318,25 @@ public class StatisticalAlertService : IStatisticalAlertService
         using var activity = JudgementTelemetry.Source.StartActivity(
             "judgement.member", ActivityKind.Internal);
 
+        try
+        {
+            return await EvaluateMemberCoreAsync(activity, memberId, utcNow, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Marked here rather than at the caller's catch, which runs after this span has already
+            // been disposed: a member whose pass threw would otherwise end green in APM while the
+            // log said it failed, and the green one is what an alert would trust.
+            activity?.AddException(ex);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+    }
+
+    /// <inheritdoc cref="EvaluateMemberAsync"/>
+    private async Task<int> EvaluateMemberCoreAsync(
+        Activity? activity, Guid memberId, DateTime utcNow, CancellationToken ct)
+    {
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return 0;
@@ -585,16 +604,26 @@ public class StatisticalAlertService : IStatisticalAlertService
 
                 // Remembered only where the data behind it has finished changing. For the rest,
                 // the paragraph above still holds and the finding is asked about again next pass.
+                //
+                // Guarded like every other post-inference write here. The judgement is made after a
+                // model call that can run for minutes, RecordAsync executes its insert immediately,
+                // and the new table has no foreign key to cascade from — so an unguarded write can
+                // land after MemberErasureService has taken its lock and cleared the member, and
+                // leave a row behind for someone the product has forgotten. Refused means the
+                // judgement is simply not remembered, which costs one re-judgement that will find
+                // no member.
                 if (StatisticalAlertRules.RulesOverFinishedPeriods.Contains(finding.Rule))
                 {
-                    await _unitOfWork.BenignJudgements.RecordAsync(
-                        new BenignJudgement
-                        {
-                            CardiMemberId = memberId,
-                            Rule = finding.Rule,
-                            LocalDate = JudgementDay(finding),
-                            JudgedAtUtc = utcNow,
-                        },
+                    var judgement = new BenignJudgement
+                    {
+                        CardiMemberId = memberId,
+                        Rule = finding.Rule,
+                        LocalDate = JudgementDay(finding),
+                        JudgedAtUtc = utcNow,
+                    };
+                    await _guard.WriteIfMemberLivesAsync(
+                        memberId,
+                        token => _unitOfWork.BenignJudgements.RecordAsync(judgement, token),
                         ct);
                 }
 

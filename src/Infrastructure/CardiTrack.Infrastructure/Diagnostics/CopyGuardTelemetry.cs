@@ -73,6 +73,20 @@ public static class CopyGuardTelemetry
     /// </summary>
     public const string ReasonRewriteFailed = "rewrite_failed";
 
+    /// <summary>
+    /// The rewrite named a reading its clinical read did not. Distinct from the register reasons
+    /// above because it is the one failure a rewrite can only commit once a separate statement of
+    /// what the readings showed exists to hold it against.
+    /// </summary>
+    public const string ReasonInventedReading = "invented_reading";
+
+    /// <summary>
+    /// The rewrite came back and a register guard emptied it — a named condition, or a placeholder
+    /// that would not resolve. The call succeeded and the card is still blank, which is exactly the
+    /// case a counter on failures alone cannot see.
+    /// </summary>
+    public const string ReasonRegisterRejected = "register_rejected";
+
     /// <summary>Records one discard.</summary>
     public static void Count(string surface, string reason) =>
         Discarded.Add(

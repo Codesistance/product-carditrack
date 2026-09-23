@@ -172,7 +172,7 @@ public class TrendInterpretationService
         saying what it might lead to, how likely that is, or what it puts them at risk of is none of those things
         and must not appear. Where the readings have been steady, say so plainly rather than
         looking for something to report.
-        """ + MedicalPromptBlocks.ContextGuardrailNotesOnly;
+        """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
     /// <c>CARDITRACK_TREND_PROMPT</c>, rewrite half — the caregiver voice over the clinical read,
@@ -682,8 +682,18 @@ public class TrendInterpretationService
             return false;
         }
 
-        var name = NamePlaceholder.FirstName(member.Name);
-        var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(reply.Summary, redactedRead);
+        var voice = MemberVoice.For(member);
+
+        // Both halves of what was sent, against both halves of what came back. The read handed to
+        // the rewrite is the summary *and* the key findings, so checking the reply's summary
+        // against the summary alone got it wrong in both directions: a summary legitimately
+        // grounded in a key finding was rejected as invented, and an invented reading in the
+        // reply's own findings was never checked at all before storage.
+        var groundingRead = redactedFindings.Count == 0
+            ? redactedRead
+            : redactedRead + " " + string.Join(" ", redactedFindings);
+        var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(
+            reply.Summary + " " + string.Join(" ", reply.KeyFindings), groundingRead);
         if (invented is not null)
         {
             _logger.LogWarning(
@@ -693,7 +703,7 @@ public class TrendInterpretationService
             return false;
         }
 
-        var summary = CaregiverFacingTrend(reply.Summary, name);
+        var summary = CaregiverFacingTrend(reply.Summary, voice);
         if (summary is null)
         {
             // Withheld rather than stored: a narrative the guards emptied, or one that named a
@@ -706,7 +716,7 @@ public class TrendInterpretationService
         }
 
         var findings = reply.KeyFindings
-            .Select(finding => CaregiverFacingTrend(finding, name))
+            .Select(finding => CaregiverFacingTrend(finding, voice))
             .OfType<string>()
             .Take(InsightLimits.MaxFindings)
             .ToList();
@@ -770,11 +780,18 @@ public class TrendInterpretationService
     /// no text, and a named condition is refused outright rather than rewritten — this path has no
     /// rewrite slot to soften one.
     /// </summary>
-    private static string? CaregiverFacingTrend(string? text, string? name)
+    private static string? CaregiverFacingTrend(string? text, MemberVoice voice)
     {
-        var resolved = NamePlaceholder.Resolve(text, name);
-        if (string.IsNullOrWhiteSpace(resolved) || NamePlaceholder.IsPresentIn(resolved))
+        // MemberVoice rather than a bare first name: the rewrite brief asks for PronounsByToken, so
+        // a reply can carry CardiTrackCardiMemberTheir as well as the name token, and resolving
+        // only the name left the pronoun to reach the trend card verbatim.
+        var resolved = voice.Resolve(text);
+        if (string.IsNullOrWhiteSpace(resolved)
+            || NamePlaceholder.IsPresentIn(resolved)
+            || MemberVoice.IsUnresolvedIn(resolved))
+        {
             return null;
+        }
 
         return JournalRegisterGuards.NamesACondition(resolved) is null ? resolved.Trim() : null;
     }
