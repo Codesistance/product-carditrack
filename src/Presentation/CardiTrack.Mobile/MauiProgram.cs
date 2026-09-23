@@ -85,6 +85,11 @@ public static class MauiProgram
         builder.Services.AddSingleton(new ApiOptions(AppConfig.ApiBaseUrl));
 
         builder.Services.AddSingleton<SessionGeneration>();
+
+        // Shared by every API client the container builds: the typed client is transient and the
+        // offline cache is not, so the order cached writes land in has to be kept somewhere they
+        // all see — see CacheWriteOrder.
+        builder.Services.AddSingleton<CacheWriteOrder>();
         builder.Services.AddSingleton<ITokenStore, SecureTokenStore>();
         builder.Services.AddSingleton<ISecureKeyValueStore, SecureStorageKeyValueStore>();
         builder.Services.AddSingleton<IOfflineReadCache>(sp =>

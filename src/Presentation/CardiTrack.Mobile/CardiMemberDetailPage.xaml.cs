@@ -363,6 +363,12 @@ public partial class CardiMemberDetailPage : ContentPage
         var questionsClaim = ReadClaim.None;
         var recorded = false;
 
+        // The follow-up loads themselves, kept rather than dropped, because a claim is given back
+        // when its read is over and these outlive this method — see the finally.
+        var digestLoad = Task.CompletedTask;
+        var adviseLoad = Task.CompletedTask;
+        var questionsLoad = Task.CompletedTask;
+
         try
         {
             // Started before the member is awaited, not after it. These three only ever needed
@@ -417,11 +423,11 @@ public partial class CardiMemberDetailPage : ContentPage
             // number the older answer could arrive last and draw over the newer one (#1105).
             var rendered = memberOnScreen.Task;
             var pass = _followUps.Begin();
-            _ = LoadThenRestoreAsync(
+            digestLoad = LoadThenRestoreAsync(
                 LoadDigestAsync(memberId, pass, rendered, digestClaim.IsDue), anchor, focusAdvise);
-            _ = LoadThenRestoreAsync(
+            adviseLoad = LoadThenRestoreAsync(
                 LoadAdviseAsync(memberId, pass, rendered, adviseClaim.IsDue), anchor, focusAdvise);
-            _ = LoadThenRestoreAsync(
+            questionsLoad = LoadThenRestoreAsync(
                 LoadQuestionnairesAsync(memberId, pass, rendered, questionsClaim.IsDue),
                 anchor, focusAdvise);
 
@@ -477,6 +483,10 @@ public partial class CardiMemberDetailPage : ContentPage
                 // Handed back card by card, including the ones this pass never claimed: Record
                 // knows an empty claim when it sees one, and sorting them here would only be this
                 // rule written down twice.
+                //
+                // Given back here and not when the reads land, unlike the abandoned case below,
+                // because the stamp Record writes is what holds another screen off from this
+                // moment on. The claim has nothing left to do.
                 _schedule.Record(memberId, GeneratedCard.Digest, digestClaim);
                 _schedule.Record(memberId, GeneratedCard.Advise, adviseClaim);
                 _schedule.Record(memberId, GeneratedCard.Questions, questionsClaim);
@@ -515,17 +525,45 @@ public partial class CardiMemberDetailPage : ContentPage
             memberOnScreen.TrySetResult(false);
 
             // Every one of those paths is a pass that read for a member it never put on screen,
-            // so its cards go back unread rather than being written down — and go back now rather
-            // than waiting out the lease, so the pass that does show this member is not made to
-            // wait on this one's failure.
+            // so its cards go back unread rather than being written down — and go back rather than
+            // waiting out the lease, so the pass that does show this member is not made to wait on
+            // this one's failure.
+            //
+            // But not yet: a card is being read until its read lands, and these three routinely
+            // outlive the member load that got here. Handed back on this line, a second page would
+            // find nothing claimed and start the same reads beside the ones still running, which
+            // is the case the claim exists to stop. Each goes back when its own read is over, and
+            // a read that never comes back at all is covered by the lease.
             if (!recorded)
             {
-                _schedule.Abandon(memberId, GeneratedCard.Digest, digestClaim);
-                _schedule.Abandon(memberId, GeneratedCard.Advise, adviseClaim);
-                _schedule.Abandon(memberId, GeneratedCard.Questions, questionsClaim);
+                _ = AbandonWhenDoneAsync(digestLoad, memberId, GeneratedCard.Digest, digestClaim);
+                _ = AbandonWhenDoneAsync(adviseLoad, memberId, GeneratedCard.Advise, adviseClaim);
+                _ = AbandonWhenDoneAsync(
+                    questionsLoad, memberId, GeneratedCard.Questions, questionsClaim);
             }
 
             _gate.Release(ticket);
+        }
+    }
+
+    /// <summary>
+    /// Gives a claim back once the read it covers has finished, however it finished.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="LoadThenRestoreAsync"/> has already dealt with the load's failure, so this
+    /// waits on it rather than guarding it; the abandon is in a finally all the same, because a
+    /// claim nobody gives back is a card nobody may read until the lease runs out.
+    /// </remarks>
+    private async Task AbandonWhenDoneAsync(
+        Task load, Guid memberId, GeneratedCard card, ReadClaim claim)
+    {
+        try
+        {
+            await load;
+        }
+        finally
+        {
+            _schedule.Abandon(memberId, card, claim);
         }
     }
 

@@ -28,7 +28,8 @@ namespace CardiTrack.Mobile.Core.Offline;
 /// card alone, the new member's saved copy would be refused on the strength of the last member's
 /// answer, and their card would sit on its placeholder until a live read happened to be due.
 /// The key is not enough by itself, because a page handed A, then B, then A again comes back to a
-/// member this gate has seen — see <see cref="Cleared"/>.
+/// member this gate has seen, which is why what is drawn on screen is tracked apart from which
+/// answer is the newest — see <see cref="Cleared"/>.
 /// </para>
 /// <para>
 /// Nothing here cancels anything, also deliberately. A superseded read is still worth finishing:
@@ -42,10 +43,19 @@ namespace CardiTrack.Mobile.Core.Offline;
 public sealed class FollowUpGate
 {
     /// <summary>
-    /// The newest pass to have drawn each of a member's cards from the network, absent until one
-    /// has. Bounded by the CardiMembers one page instance is handed, times the three cards.
+    /// The newest pass to have drawn each of a member's cards from the network, ever. Absent
+    /// until one has, and never forgotten: this is what says which answer is older, and that does
+    /// not stop being true because the screen took the card down.
+    /// Bounded by the CardiMembers one page instance is handed, times the three cards.
     /// </summary>
-    private readonly Dictionary<(Guid Member, GeneratedCard Card), int> _drawnLiveBy = [];
+    private readonly Dictionary<(Guid Member, GeneratedCard Card), int> _floor = [];
+
+    /// <summary>
+    /// The cards a live answer has drawn in the presentation that is on screen now. Cleared with
+    /// it, and kept apart from <see cref="_floor"/> for exactly that reason — see
+    /// <see cref="Cleared"/>.
+    /// </summary>
+    private readonly HashSet<(Guid Member, GeneratedCard Card)> _drawnHere = [];
 
     private int _pass;
 
@@ -68,13 +78,14 @@ public sealed class FollowUpGate
     /// cannot say that — only the screen knows when it cleared itself.
     /// </para>
     /// <para>
-    /// The pass counter is deliberately left where it is. A read still in flight from before the
-    /// change keeps its place in the order, so it draws if it lands before the new presentation
-    /// has drawn anything, and is refused if it lands after — which is the same rule as ever, and
-    /// the reason clearing this is safe rather than a way back in for a superseded answer.
+    /// Only what is on screen is forgotten. The floor — which pass last drew each card from the
+    /// network — is kept, because that is what says which answer is older, and it does not stop
+    /// being true when the card comes down. Clearing both together was the first cut of this, and
+    /// it let a read still in flight from the presentation just cleared come back to a gate with
+    /// no memory of having been superseded, and draw its old answer onto the new one.
     /// </para>
     /// </remarks>
-    public void Cleared() => _drawnLiveBy.Clear();
+    public void Cleared() => _drawnHere.Clear();
 
     /// <summary>
     /// Whether <paramref name="pass"/> may draw its live answer for this member's
@@ -90,10 +101,11 @@ public sealed class FollowUpGate
     public bool MayDrawLive(FollowUpPass pass, Guid cardiMemberId, GeneratedCard card)
     {
         var key = (cardiMemberId, card);
-        if (_drawnLiveBy.TryGetValue(key, out var drawnBy) && pass.Generation < drawnBy)
+        if (_floor.TryGetValue(key, out var drawnBy) && pass.Generation < drawnBy)
             return false;
 
-        _drawnLiveBy[key] = pass.Generation;
+        _floor[key] = pass.Generation;
+        _drawnHere.Add(key);
         return true;
     }
 
@@ -107,12 +119,14 @@ public sealed class FollowUpGate
     /// stands aside for all of them rather than taking a place in the order. What it must not do
     /// is land on a card a live answer has already drawn — that happens when a peek is still out
     /// while another pass's answer arrives, and it would put the cache back over fresher words.
+    /// Asked of the presentation on screen rather than of everything this gate has seen: a card
+    /// that was drawn and then taken down is empty again, and the saved copy is what fills it.
     /// A live answer still in flight has drawn nothing yet, which is the ordinary case this is
     /// written for: the saved copy goes up at once so the card reads as written, and the answer
     /// lands on top of it when it comes.
     /// </remarks>
     public bool MayDrawSaved(Guid cardiMemberId, GeneratedCard card) =>
-        !_drawnLiveBy.ContainsKey((cardiMemberId, card));
+        !_drawnHere.Contains((cardiMemberId, card));
 }
 
 /// <summary>The identity of one round of follow-up loads: its place in the sequence.</summary>

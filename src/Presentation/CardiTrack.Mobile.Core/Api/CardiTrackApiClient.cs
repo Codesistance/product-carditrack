@@ -26,6 +26,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     private readonly IOfflineReadCache? _cache;
     private readonly ITokenStore? _tokens;
     private readonly SessionGeneration? _session;
+    private readonly CacheWriteOrder _writeOrder;
     private readonly ILogger<CardiTrackApiClient> _logger;
 
     /// <summary>
@@ -41,12 +42,17 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         IOfflineReadCache? cache = null,
         ILogger<CardiTrackApiClient>? logger = null,
         ITokenStore? tokens = null,
-        SessionGeneration? session = null)
+        SessionGeneration? session = null,
+        CacheWriteOrder? writeOrder = null)
     {
         _http = http;
         _cache = cache;
         _tokens = tokens;
         _session = session;
+        // Shared by every client in the app when the container supplies it — see CacheWriteOrder
+        // for why an order kept per client would be no order at all. The fallback is for a client
+        // built by hand: one instance's reads are still ordered among themselves.
+        _writeOrder = writeOrder ?? new CacheWriteOrder();
         _logger = logger ?? NullLogger<CardiTrackApiClient>.Instance;
     }
 
@@ -327,37 +333,6 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// </remarks>
     private int _cacheEpoch;
 
-    /// <summary>
-    /// Which read last wrote each key, numbered by the order the reads started in, and one writer
-    /// at a time per key so that the check and the write cannot be split.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The fourth guard on a cached write, and the one the other three cannot give. Two reads of
-    /// the same path are routinely out at once — a screen pulled down while its first read is
-    /// still in flight — and nothing makes the answers come back in the order they were sent. A
-    /// screen can drop the loser before it draws it (<c>FollowUpGate</c>), but the cache is
-    /// written underneath that, by this client, on behalf of every screen: unordered, the older
-    /// body lands last and the next screen to peek reads it. That is the same stale-answer bug one
-    /// layer down, and it outlives the page that caused it.
-    /// </para>
-    /// <para>
-    /// Ordered by when a read started, because that is what says which answer is older: the server
-    /// only moves forward, so a request sent later cannot be describing an earlier state.
-    /// </para>
-    /// <para>
-    /// The writer gates are what make it a guarantee rather than a narrower window. Claiming the
-    /// key and then writing it without holding anything would still let a slow write finish last
-    /// after a newer one had already landed — the failure being fixed, just harder to hit.
-    /// Both grow with the distinct keys one client reads, the same bound <see cref="_evictions"/>
-    /// carries.
-    /// </para>
-    /// </remarks>
-    private readonly ConcurrentDictionary<string, int> _cachedBy = new(StringComparer.Ordinal);
-
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _cacheWriters = new(StringComparer.Ordinal);
-
-    private int _reads;
 
     private static string[] MemberProfileKeys(Guid cardiMemberId) =>
     [
@@ -1122,8 +1097,8 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         var evictions = EvictionsOf(path);
         var epoch = Volatile.Read(ref _cacheEpoch);
 
-        // This read's place in the order, taken before the request goes out — see _cachedBy.
-        var read = Interlocked.Increment(ref _reads);
+        // This read's place in the order, taken before the request goes out.
+        var read = _writeOrder.Begin();
 
         HttpResponseMessage response;
         try
@@ -1160,7 +1135,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         if (value is not null && cache && EvictionsOf(path) == evictions
             && Volatile.Read(ref _cacheEpoch) == epoch)
         {
-            await SaveInOrderAsync(path, body, generation, read, ct);
+            // Ordered against every other read of this key, this client's and any other's —
+            // see CacheWriteOrder.
+            await _writeOrder.WriteAsync(path, read, () => TrySaveCacheAsync(path, body, generation, ct));
         }
         return value;
     }
@@ -1299,40 +1276,6 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         _logger.LogInformation("Serving GET {Path} from the on-device cache (saved {CachedAt:o})",
             path, entry.CachedAt);
         return envelope.Data;
-    }
-
-    /// <summary>
-    /// Saves this read's body unless a read that started later has already written that key — see
-    /// <see cref="_cachedBy"/>.
-    /// </summary>
-    /// <remarks>
-    /// The wait is not given the request's token, deliberately. It is bounded by one cache write,
-    /// and cancelling the caller here would turn a skipped save into a fault thrown out of a GET
-    /// whose answer has already arrived and is about to be returned.
-    /// The key is marked as written whether or not <see cref="TrySaveCacheAsync"/> got as far as
-    /// writing it: all that mark can do is keep an older body out, and an older body is no more
-    /// welcome for the newer one having been refused by a sign-out.
-    /// </remarks>
-    private async Task SaveInOrderAsync(
-        string path, string body, int generation, int read, CancellationToken ct)
-    {
-        if (_cache is null)
-            return;
-
-        var writer = _cacheWriters.GetOrAdd(path, static _ => new SemaphoreSlim(1, 1));
-        await writer.WaitAsync(CancellationToken.None);
-        try
-        {
-            if (_cachedBy.TryGetValue(path, out var wroteLast) && wroteLast > read)
-                return;
-
-            await TrySaveCacheAsync(path, body, generation, ct);
-            _cachedBy[path] = read;
-        }
-        finally
-        {
-            writer.Release();
-        }
     }
 
     private async Task TrySaveCacheAsync(string path, string body, int generation, CancellationToken ct)

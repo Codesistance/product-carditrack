@@ -192,4 +192,43 @@ public class FollowUpGateTests
 
         Assert.True(gate.MayDrawLive(pass, Member, GeneratedCard.Digest));
     }
+
+    /// <summary>
+    /// Being superseded survives the clear. A read still in flight from the presentation that was
+    /// just taken down comes back to a gate that has forgotten what is on screen — it must not
+    /// have forgotten that a newer answer already beat it, or the stale answer lands on the new
+    /// presentation.
+    /// </summary>
+    [Fact]
+    public void A_pass_superseded_before_the_clear_is_still_superseded_after_it()
+    {
+        var gate = new FollowUpGate();
+        var first = gate.Begin();
+        var second = gate.Begin();
+        gate.MayDrawLive(second, Member, GeneratedCard.Digest);
+
+        gate.Cleared();
+
+        Assert.False(gate.MayDrawLive(first, Member, GeneratedCard.Digest));
+    }
+
+    /// <summary>
+    /// The two halves are different questions, and this is what tells them apart: the card is
+    /// empty again, so the saved copy may fill it, while the answer that drew it before still
+    /// outranks anything older.
+    /// </summary>
+    [Fact]
+    public void A_clear_empties_the_card_without_lowering_what_outranks_an_older_answer()
+    {
+        var gate = new FollowUpGate();
+        var first = gate.Begin();
+        var second = gate.Begin();
+        gate.MayDrawLive(second, Member, GeneratedCard.Digest);
+
+        gate.Cleared();
+
+        Assert.True(gate.MayDrawSaved(Member, GeneratedCard.Digest));
+        Assert.False(gate.MayDrawLive(first, Member, GeneratedCard.Digest));
+        Assert.True(gate.MayDrawLive(gate.Begin(), Member, GeneratedCard.Digest));
+    }
 }
