@@ -33,6 +33,7 @@ public class StatisticalAlertServiceTests
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
     private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly IAlertNotificationEnqueue _enqueue = Substitute.For<IAlertNotificationEnqueue>();
+    private readonly IBenignJudgementRepository _benign = Substitute.For<IBenignJudgementRepository>();
 
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -51,6 +52,9 @@ public class StatisticalAlertServiceTests
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.AlertPreferences.Returns(_alertPreferences);
         _unitOfWork.EnvironmentalReadings.Returns(_environmentalReadings);
+        _unitOfWork.BenignJudgements.Returns(_benign);
+        _benign.GetJudgedAsync(Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<DateOnly>>(), Arg.Any<CancellationToken>())
+            .Returns([]);
 
         // Defaults: one active London-anchored member with an established baseline, a sharp
         // step decline yesterday, no standing alerts, and a model that answers every rule.
@@ -979,4 +983,88 @@ public class StatisticalAlertServiceTests
 
         Assert.Equal(1, raised);
     }
+
+    // ── Remembering a benign verdict ──────────────────────────────────────────────
+
+    /// <summary>
+    /// A rule reading a day that has ended is remembered, because asking again cannot reach a
+    /// different answer — the same question about the same finished data, up to 288 times a day.
+    /// </summary>
+    [Fact]
+    public async Task ABenignVerdict_OnAFinishedDay_IsRemembered()
+    {
+        ModelJudges([Verdict(StatisticalAlertRules.ActivityDeclineRule, "low")]);
+
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _benign.Received(1).RecordAsync(
+            Arg.Is<BenignJudgement>(j =>
+                j.CardiMemberId == _memberId
+                && j.Rule == StatisticalAlertRules.ActivityDeclineRule
+                && j.LocalDate == new DateOnly(2026, 8, 10)),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A rule reading today is not. The morning is still in progress and the readings are still
+    /// arriving, so the existing behaviour — judge it again next pass — is the correct one, and
+    /// remembering would trade a real thing for a saved call.
+    /// </summary>
+    [Fact]
+    public async Task ABenignVerdict_OnADayStillInProgress_IsNotRemembered()
+    {
+        SetupLogs(new ActivityLog
+        {
+            CardiMemberId = _memberId,
+            Date = new DateOnly(2026, 8, 10),
+            Steps = 0,
+        });
+        ModelJudges([Verdict(StatisticalAlertRules.NoMorningActivityRule, "low")]);
+
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _benign.DidNotReceive().RecordAsync(
+            Arg.Is<BenignJudgement>(j => j.Rule == StatisticalAlertRules.NoMorningActivityRule),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// And a finding already remembered is not sent to the model at all — which is the whole
+    /// point: the saving is the inference, not the alert.
+    /// </summary>
+    [Fact]
+    public async Task ARememberedFinding_IsNotJudgedAgain()
+    {
+        _benign.GetJudgedAsync(Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<DateOnly>>(), Arg.Any<CancellationToken>())
+            .Returns([(StatisticalAlertRules.ActivityDeclineRule, new DateOnly(2026, 8, 10))]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<StatisticalAlertService.JudgementAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The rules left out of <see cref="StatisticalAlertRules.RulesOverFinishedPeriods"/> are
+    /// exactly the three that read a period still in progress. Pinned so a rule added later fails
+    /// here rather than silently defaulting into remembering a judgement about moving data.
+    /// </summary>
+    [Fact]
+    public void OnlyTheRulesReadingAPeriodStillInProgress_AreLeftOutOfTheMemory()
+    {
+        var notRemembered = StatisticalAlertRules.AllRules
+            .Where(rule => !StatisticalAlertRules.RulesOverFinishedPeriods.Contains(rule))
+            .OrderBy(rule => rule, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(
+            [
+                StatisticalAlertRules.EcgAtrialFibrillationRule,
+                StatisticalAlertRules.IrregularRhythmRule,
+                StatisticalAlertRules.NoMorningActivityRule,
+            ],
+            notRemembered);
+    }
 }
+

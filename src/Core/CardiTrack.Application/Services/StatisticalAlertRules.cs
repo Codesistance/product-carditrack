@@ -84,6 +84,43 @@ public static class StatisticalAlertRules
         DaytimeInactivityBlockRule,
     ];
 
+    /// <summary>
+    /// The rules whose window is a period that has ended — yesterday, or the night that has
+    /// finished — so the data behind a finding of theirs cannot change again today.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is what makes a benign verdict safe to remember. A verdict is about the readings as
+    /// they stand, and for most of this engine the readings keep arriving, which is why nothing
+    /// was persisted: judging again on the next pass is how a day that gets worse gets noticed.
+    /// But a rule reading yesterday is reading a day that is over, and asking the model about it
+    /// again at five-minute intervals until midnight cannot reach a different answer — it is the
+    /// same question about the same finished data, up to 288 times.
+    /// </para>
+    /// <para>
+    /// The three left out read today and are deliberately still re-judged: <see cref="NoMorningActivityRule"/>
+    /// is about a morning still in progress, and the two measured rules carry a device
+    /// classification the watch may post more of this afternoon.
+    /// </para>
+    /// <para>
+    /// Membership is stated rather than derived, and the test that every rule in
+    /// <see cref="AllRules"/> is classified one way or the other is what keeps a rule added later
+    /// from silently defaulting into remembering a judgement about data that was still moving.
+    /// </para>
+    /// </remarks>
+    public static readonly IReadOnlySet<string> RulesOverFinishedPeriods =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            ActivityDeclineRule,
+            IrregularSleepRule,
+            ElevatedHeartRateRule,
+            LongTermTrendRule,
+            HeartRateVariabilityDropRule,
+            OvernightBreathingUpRule,
+            ElevatedZoneWithoutMovementRule,
+            DaytimeInactivityBlockRule,
+        };
+
     /// <summary>Medium sensitivity: a reading more than 30% off its baseline is worth a word.</summary>
     public const double DeviationFraction = 0.30;
 

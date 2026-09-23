@@ -84,6 +84,7 @@ builder.Services.AddScoped<IRhythmEpisodeRepository, RhythmEpisodeRepository>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
+builder.Services.AddScoped<IBenignJudgementRepository, BenignJudgementRepository>();
 builder.Services.AddScoped<IMetricAlarmRepository, MetricAlarmRepository>();
 builder.Services.AddScoped<IMetricAlarmStateRepository, MetricAlarmStateRepository>();
 // UnitOfWork's constructor takes every repository, so each host must register all of them even

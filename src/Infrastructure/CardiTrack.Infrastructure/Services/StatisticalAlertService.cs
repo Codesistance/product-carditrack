@@ -232,6 +232,25 @@ public class StatisticalAlertService : IStatisticalAlertService
 
         await BackfillPassAsync(utcNow, ct);
 
+        // A benign judgement is only consulted about today and the night that ended this morning,
+        // so a row a week old answers no question anyone will ask. Swept here rather than in a job
+        // of its own: it is one indexed DELETE that usually matches nothing, and the pass that
+        // writes these rows is the only thing that knows they exist.
+        //
+        // Failure is not worth the pass. The table growing is a cost problem and a silent one; the
+        // judgements themselves are already written.
+        try
+        {
+            var swept = await _unitOfWork.BenignJudgements.DeleteOlderThanAsync(
+                utcNow - BenignJudgementRetention, ct);
+            if (swept > 0)
+                _logger.LogInformation("Swept {Swept} benign judgements older than a week.", swept);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Could not sweep old benign judgements; they will be retried next pass.");
+        }
+
         _logger.LogInformation(
             "Statistical judgement pass complete. Members evaluated: {MembersEvaluated}, alerts raised: {Raised}.",
             memberIds.Count, raised);
@@ -462,10 +481,25 @@ public class StatisticalAlertService : IStatisticalAlertService
         bool FiredOnLocalToday(Alert a) =>
             DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)) == localToday;
 
+        // The days a finding of this member's could be filed under: today, and the night that
+        // ended this morning. One read for all of them rather than one per finding.
+        var benign = await _unitOfWork.BenignJudgements.GetJudgedAsync(
+            memberId, [localToday, yesterday], ct);
+
+        // The key a benign judgement is remembered under, matching what the dedup above keys an
+        // alert on: the night a night-scoped finding named, and the local day otherwise.
+        DateOnly JudgementDay(StatisticalFinding finding) => finding.NightOf ?? localToday;
+
         var toJudge = new List<StatisticalFinding>();
         foreach (var finding in findings)
         {
             if (standing.Any(a => AlertRuleMarkers.Suppresses(a, finding.Type, finding.Rule)))
+                continue;
+
+            // Already judged not worth the family's attention, on data that has since finished
+            // changing. Asking again cannot reach a different answer — see
+            // StatisticalAlertRules.RulesOverFinishedPeriods for why only some rules qualify.
+            if (benign.Contains((finding.Rule, JudgementDay(finding))))
                 continue;
 
             // Same-data dedup, regardless of resolution or deletion: a rule reads one day's data,
@@ -548,6 +582,22 @@ public class StatisticalAlertService : IStatisticalAlertService
                 _logger.LogInformation(
                     "The model judged rule {Rule} on CardiMember {CardiMemberId} not worth attention today.",
                     finding.Rule, memberId);
+
+                // Remembered only where the data behind it has finished changing. For the rest,
+                // the paragraph above still holds and the finding is asked about again next pass.
+                if (StatisticalAlertRules.RulesOverFinishedPeriods.Contains(finding.Rule))
+                {
+                    await _unitOfWork.BenignJudgements.RecordAsync(
+                        new BenignJudgement
+                        {
+                            CardiMemberId = memberId,
+                            Rule = finding.Rule,
+                            LocalDate = JudgementDay(finding),
+                            JudgedAtUtc = utcNow,
+                        },
+                        ct);
+                }
+
                 continue;
             }
 
@@ -828,6 +878,13 @@ public class StatisticalAlertService : IStatisticalAlertService
     /// </para>
     /// </remarks>
     private static readonly TimeSpan ExplanationBackfillWindow = TimeSpan.FromDays(14);
+
+    /// <summary>
+    /// How long a benign judgement is kept. Only today and last night are ever consulted, so a
+    /// week is already generous — it is sized to survive a member's timezone, a clock change and a
+    /// pass that did not run, not to be a history anyone reads.
+    /// </summary>
+    private static readonly TimeSpan BenignJudgementRetention = TimeSpan.FromDays(7);
 
     /// <summary>
     /// How many alerts one pass will try to backfill an explanation for. Small on
