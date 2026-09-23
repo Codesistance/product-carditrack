@@ -26,6 +26,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     private readonly IOfflineReadCache? _cache;
     private readonly ITokenStore? _tokens;
     private readonly SessionGeneration? _session;
+    private readonly CacheWriteOrder _writeOrder;
     private readonly ILogger<CardiTrackApiClient> _logger;
 
     /// <summary>
@@ -41,12 +42,17 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         IOfflineReadCache? cache = null,
         ILogger<CardiTrackApiClient>? logger = null,
         ITokenStore? tokens = null,
-        SessionGeneration? session = null)
+        SessionGeneration? session = null,
+        CacheWriteOrder? writeOrder = null)
     {
         _http = http;
         _cache = cache;
         _tokens = tokens;
         _session = session;
+        // Shared by every client in the app when the container supplies it — see CacheWriteOrder
+        // for why an order kept per client would be no order at all. The fallback is for a client
+        // built by hand: one instance's reads are still ordered among themselves.
+        _writeOrder = writeOrder ?? new CacheWriteOrder();
         _logger = logger ?? NullLogger<CardiTrackApiClient>.Instance;
     }
 
@@ -326,6 +332,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// eviction gives, for the case that has no key.
     /// </remarks>
     private int _cacheEpoch;
+
 
     private static string[] MemberProfileKeys(Guid cardiMemberId) =>
     [
@@ -1089,6 +1096,10 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         // otherwise bar every other read in the batch from caching and quietly undo the warm.
         var evictions = EvictionsOf(path);
         var epoch = Volatile.Read(ref _cacheEpoch);
+
+        // This read's place in the order, taken before the request goes out.
+        var read = _writeOrder.Begin();
+
         HttpResponseMessage response;
         try
         {
@@ -1124,7 +1135,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         if (value is not null && cache && EvictionsOf(path) == evictions
             && Volatile.Read(ref _cacheEpoch) == epoch)
         {
-            await TrySaveCacheAsync(path, body, generation, ct);
+            // Ordered against every other read of this key, this client's and any other's —
+            // see CacheWriteOrder.
+            await _writeOrder.WriteAsync(path, read, () => TrySaveCacheAsync(path, body, generation, ct));
         }
         return value;
     }
