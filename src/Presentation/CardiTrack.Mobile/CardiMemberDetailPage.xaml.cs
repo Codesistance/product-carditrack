@@ -106,6 +106,16 @@ public partial class CardiMemberDetailPage : ContentPage
     private CardiMemberDetailResponse? _member;
 
     private readonly LoadGate _gate = new();
+
+    /// <summary>
+    /// The order of the follow-up loads — the summary, the suggestion and the question. Not the
+    /// gate above: that one releases when the member load settles, and these three are routinely
+    /// still in flight at that moment, so two passes can have reads out for the same card at once
+    /// and the older can land last (#1105). See <see cref="FollowUpGate"/> for why this is a bare
+    /// counter and why it is kept per card.
+    /// </summary>
+    private readonly FollowUpGate _followUps = new();
+
     private readonly RefreshFeedback _feedback;
 
     /// <summary>
@@ -378,13 +388,19 @@ public partial class CardiMemberDetailPage : ContentPage
             // keeps a skipped read invisible: the page is rebuilt on every arrival, so a load
             // that simply did not run would leave the summary on its placeholder and the
             // suggestion card hidden — a far worse trade than the request it saved.
+            //
+            // They are also the only loads here with no gate over them, so they carry their own
+            // order. Two passes can have reads out for the same card at once — this pass releases
+            // the gate when the *member* lands, with these three still out — and without a pass
+            // number the older answer could arrive last and draw over the newer one (#1105).
             var rendered = memberOnScreen.Task;
+            var pass = _followUps.Begin();
             _ = LoadThenRestoreAsync(
-                LoadDigestAsync(memberId, rendered, digestDue), anchor, focusAdvise);
+                LoadDigestAsync(memberId, pass, rendered, digestDue), anchor, focusAdvise);
             _ = LoadThenRestoreAsync(
-                LoadAdviseAsync(memberId, rendered, adviseDue), anchor, focusAdvise);
+                LoadAdviseAsync(memberId, pass, rendered, adviseDue), anchor, focusAdvise);
             _ = LoadThenRestoreAsync(
-                LoadQuestionnairesAsync(memberId, rendered, questionsDue), anchor, focusAdvise);
+                LoadQuestionnairesAsync(memberId, pass, rendered, questionsDue), anchor, focusAdvise);
 
             var outcome = await SnapshotRefresh.RunAsync(
                 _api, _gate, ticket,
@@ -743,12 +759,37 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>
+    /// Whether a follow-up load may put its live answer on screen: the page is still on the member
+    /// it was started for, and nothing newer has already drawn this card.
+    /// </summary>
+    /// <remarks>
+    /// The member is checked first and the pass second, because asking the gate is what records
+    /// the draw — a load that is not going to draw anything must not be written down as the card's
+    /// newest answer. For the same reason every caller keeps this last in its condition.
+    /// The route is checked as well as the pass, and not only because it is cheaper: a member id
+    /// arriving from Shell moves the page before any new pass has begun, so for that moment the
+    /// newest pass is one belonging to the CardiMember who has just been left.
+    /// </remarks>
+    private bool MayDrawLive(Guid memberId, FollowUpPass pass, GeneratedCard card) =>
+        memberId == _route.Id && _followUps.MayDrawLive(pass, memberId, card);
+
+    /// <summary>
+    /// Whether the device's saved copy of a card may still go up — see
+    /// <see cref="FollowUpGate.MayDrawSaved"/>. The card's own "is it up yet" test is what decides
+    /// whether to read the saved copy at all; this is the same question asked again on the way
+    /// back, because a live answer can have arrived while the peek was out.
+    /// </summary>
+    private bool MayDrawSaved(Guid memberId, GeneratedCard card) =>
+        memberId == _route.Id && _followUps.MayDrawSaved(memberId, card);
+
+    /// <summary>
     /// Best-effort, like the dashboard's live status line: no spinner, no error state. The
     /// placeholder <see cref="Apply"/> renders is a complete fallback on its own, so a 404
     /// (nothing generated yet) or a failed call just leaves the card to it. The read runs
     /// alongside the member's own rather than behind it; the drawing still waits for that render.
     /// </summary>
-    private async Task LoadDigestAsync(Guid memberId, Task<bool> memberOnScreen, bool fetchLive)
+    private async Task LoadDigestAsync(
+        Guid memberId, FollowUpPass pass, Task<bool> memberOnScreen, bool fetchLive)
     {
         // Started before anything is awaited — this round trip running alongside the member's own
         // is the whole point of the early start. Only the painting below waits.
@@ -770,8 +811,12 @@ public partial class CardiMemberDetailPage : ContentPage
             // written rather than as a placeholder for a round trip that is still out; the live
             // one lands on top and only re-fades when the words actually moved. No overlay for
             // these follow-up loads — the page's own replacement already had one.
+            //
+            // Asked twice, because the peek is itself a wait: a live answer — this pass's or
+            // another pass's — can arrive while it is out, and the saved copy going up afterwards
+            // would put the cache back over fresher words.
             var saved = _digestRendered ? null : await _api.PeekDigestAsync(memberId);
-            if (saved is not null && memberId == _route.Id)
+            if (saved is not null && MayDrawSaved(memberId, GeneratedCard.Digest))
                 ApplyDigest(saved);
 
             // The peek is why a skipped read is invisible: the page is rebuilt on every arrival,
@@ -789,7 +834,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 return;
 
             var digest = await fetch;
-            if (memberId != _route.Id)
+            if (!MayDrawLive(memberId, pass, GeneratedCard.Digest))
                 return;
 
             ApplyDigest(digest);
@@ -838,7 +883,8 @@ public partial class CardiMemberDetailPage : ContentPage
     /// blank <see cref="AdviseResponse.Suggestion"/> (<see cref="ApplyAdvise"/> hides the card for
     /// it) — a 404 means access was refused or the member doesn't exist.
     /// </summary>
-    private async Task LoadAdviseAsync(Guid memberId, Task<bool> memberOnScreen, bool fetchLive)
+    private async Task LoadAdviseAsync(
+        Guid memberId, FollowUpPass pass, Task<bool> memberOnScreen, bool fetchLive)
     {
         var fetch = fetchLive ? _api.GetAdviseAsync(memberId) : null;
 
@@ -859,7 +905,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // pass the cadence has skipped, the saved one is all there is — and all there needs
             // to be, the page having been rebuilt around it since it was written.
             var saved = AdviseCard.IsVisible ? null : await _api.PeekAdviseAsync(memberId);
-            if (saved is not null && memberId == _route.Id)
+            if (saved is not null && MayDrawSaved(memberId, GeneratedCard.Advise))
                 ApplyAdvise(saved);
 
             // No fallback to the network when the peek finds nothing — see LoadDigestAsync. It
@@ -870,7 +916,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 return;
 
             var advise = await fetch;
-            if (memberId != _route.Id)
+            if (!MayDrawLive(memberId, pass, GeneratedCard.Advise))
                 return;
 
             ApplyAdvise(advise);
@@ -1056,7 +1102,8 @@ public partial class CardiMemberDetailPage : ContentPage
     /// Best-effort in the same way as the summary — a question is an extra, and a failed call
     /// leaves the page looking exactly as it does for a member with nothing to answer.
     /// </remarks>
-    private async Task LoadQuestionnairesAsync(Guid memberId, Task<bool> memberOnScreen, bool fetchLive)
+    private async Task LoadQuestionnairesAsync(
+        Guid memberId, FollowUpPass pass, Task<bool> memberOnScreen, bool fetchLive)
     {
         // A refresh must not rebuild the card under an editor someone is typing in — QuestionCard
         // .Apply closes it and replaces its text, so this is someone's half-written answer. Same
@@ -1099,7 +1146,9 @@ public partial class CardiMemberDetailPage : ContentPage
             var saved = PendingQuestionCard.IsVisible
                 ? null
                 : await _api.PeekQuestionnairesAsync(memberId);
-            if (saved is not null && memberId == _route.Id && !PendingQuestionCard.IsEditing)
+            if (saved is not null
+                && !PendingQuestionCard.IsEditing
+                && MayDrawSaved(memberId, GeneratedCard.Questions))
                 ApplyQuestionnaires(saved);
 
             // No fallback to the network when the peek finds nothing — see LoadDigestAsync. A
@@ -1109,7 +1158,8 @@ public partial class CardiMemberDetailPage : ContentPage
                 return;
 
             var result = await fetch;
-            if (memberId != _route.Id || PendingQuestionCard.IsEditing)
+            if (PendingQuestionCard.IsEditing
+                || !MayDrawLive(memberId, pass, GeneratedCard.Questions))
                 return;
 
             ApplyQuestionnaires(result);
@@ -1193,7 +1243,8 @@ public partial class CardiMemberDetailPage : ContentPage
             // stops at the editing guard — see #1106. Left in place rather than removed, because
             // the reconciliation is the wanted behaviour and the open question is how to take a
             // card away from under someone's half-written answer, not whether to try.
-            _ = LoadQuestionnairesAsync(_route.Id, AlreadyOnScreen, fetchLive: true);
+            _ = LoadQuestionnairesAsync(
+                _route.Id, _followUps.Begin(), AlreadyOnScreen, fetchLive: true);
 
             // Nothing is recorded for it, because nothing is read. The editor is deliberately
             // still open here so the text can be retried, and the reload stops at the editing
