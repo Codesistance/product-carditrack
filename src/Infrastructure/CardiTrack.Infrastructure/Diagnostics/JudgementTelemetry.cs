@@ -48,8 +48,8 @@ public static class JudgementTelemetry
     /// <summary>
     /// What happened to each verdict, by <see cref="OutcomeTag"/> and rule. One counter with an
     /// outcome dimension rather than one counter per exit: the question asked of it is always a
-    /// proportion — how much of what the rules found is reaching a family — and five separate
-    /// series cannot be divided by each other on a dashboard without naming all five every time.
+    /// proportion — how much of what the rules found is reaching a family — and separate
+    /// series cannot be divided by each other on a dashboard without naming every one of them.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -61,7 +61,10 @@ public static class JudgementTelemetry
     /// successful exits do not log at all, so there was not even a denominator to compare against.
     /// </para>
     /// <para>
-    /// Cardinality is bounded and small: five outcomes by eleven rules. No member identifier, and
+    /// Cardinality is bounded and small: eight outcomes by eleven rules. The outcomes are
+    /// unmatched, severity_unmapped, benign, read_blank, rewrite_failed, rewrite_missing,
+    /// message_rejected and raised — the four that existed when this was written, plus the
+    /// three exits the clinical/rewrite split added and the successful one. No member identifier, and
     /// no model output — the same standard <see cref="AiTelemetry"/> and <see cref="PushTelemetry"/>
     /// hold to.
     /// </para>

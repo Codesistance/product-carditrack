@@ -4,8 +4,10 @@ using CardiTrack.Shared.Telemetry;
 namespace CardiTrack.Infrastructure.Diagnostics;
 
 /// <summary>
-/// How often written copy is thrown away by a register guard before anyone reads it, by surface
-/// and by which rule rejected it.
+/// How often written copy is thrown away before anyone reads it, by surface and by reason.
+/// The reason names the kind of failure — a named condition, an unglossed term, a call that threw
+/// — and deliberately not the rule or guard method that produced it: the dimensions are bounded
+/// and dashboard-facing, and a method name is neither.
 /// </summary>
 /// <remarks>
 /// <para>

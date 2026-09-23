@@ -1055,12 +1055,12 @@ public partial class DigestGenerationService : IDigestGenerationService
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<DaybookAiResponse>(prompt, ct);
         var read = generated.Result;
 
-        var rewritten = await RewriteJournalAsync(
+        var attempt = await RewriteJournalAsync(
             read.Finding, "day", "6-12", member, ct);
-        if (rewritten is null)
-            return JournalComposition.Discarded(generated.Usage);
+        if (attempt.Reply is null)
+            return JournalComposition.Discarded(generated.Usage, attempt.Usage);
 
-        var (rewrite, rewriteUsage) = rewritten.Value;
+        var (rewrite, rewriteUsage) = (attempt.Reply, attempt.Usage);
 
         // A daybook is written once, so a bad one is not replaced half an hour later; discarding
         // costs the member that day's review and nothing else.
@@ -1138,12 +1138,12 @@ public partial class DigestGenerationService : IDigestGenerationService
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<WeekbookAiResponse>(prompt, ct);
         var read = generated.Result;
 
-        var rewritten = await RewriteJournalAsync(
+        var attempt = await RewriteJournalAsync(
             read.Finding, "week", "6-12", member, ct);
-        if (rewritten is null)
-            return JournalComposition.Discarded(generated.Usage);
+        if (attempt.Reply is null)
+            return JournalComposition.Discarded(generated.Usage, attempt.Usage);
 
-        var (rewrite, rewriteUsage) = rewritten.Value;
+        var (rewrite, rewriteUsage) = (attempt.Reply, attempt.Usage);
 
         // A Weekbook is written once, so a bad one is not replaced next pass.
         return FinishJournalCopy(
@@ -1219,12 +1219,12 @@ public partial class DigestGenerationService : IDigestGenerationService
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<MonthbookAiResponse>(prompt, ct);
         var read = generated.Result;
 
-        var rewritten = await RewriteJournalAsync(
+        var attempt = await RewriteJournalAsync(
             read.Finding, "month", "8-14", member, ct);
-        if (rewritten is null)
-            return JournalComposition.Discarded(generated.Usage);
+        if (attempt.Reply is null)
+            return JournalComposition.Discarded(generated.Usage, attempt.Usage);
 
-        var (rewrite, rewriteUsage) = rewritten.Value;
+        var (rewrite, rewriteUsage) = (attempt.Reply, attempt.Usage);
 
         return FinishJournalCopy(
             memberId, monthEnd, DigestAudience.Monthbook, utcNow, member,
@@ -1292,13 +1292,22 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// own answers and the caregiver's notes, and can repeat a name out of them.
     /// </para>
     /// </remarks>
-    private async Task<(JournalRewritePrompt.JournalRewriteAiResponse Reply, AiUsage Usage)?> RewriteJournalAsync(
+    /// <summary>
+    /// The outcome of one Rewrite-slot attempt. <paramref name="Reply"/> is null when there is
+    /// nothing to store, but <paramref name="Usage"/> is set whenever a call was actually made —
+    /// including when the reply came back and was then rejected. A rejected book still cost a
+    /// billable call, and the ledger's job is to say what was spent rather than what was kept.
+    /// </summary>
+    private sealed record JournalRewriteAttempt(
+        JournalRewritePrompt.JournalRewriteAiResponse? Reply, AiUsage? Usage);
+
+    private async Task<JournalRewriteAttempt> RewriteJournalAsync(
         string finding, string period, string sentences, CardiMember member, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(finding))
         {
             CopyGuardTelemetry.Count($"{period}book", CopyGuardTelemetry.ReasonReadBlank);
-            return null;
+            return new JournalRewriteAttempt(null, null);
         }
 
         // FlattenWhole, not Flatten: a book runs to thousands of characters and Flatten's cap is
@@ -1326,10 +1335,10 @@ public partial class DigestGenerationService : IDigestGenerationService
                     "Discarded the {Period}book for CardiMember {CardiMemberId}: the rewrite named a "
                     + "reading the clinical read did not ({Reading}).",
                     period, member.Id, invented);
-                return null;
+                return new JournalRewriteAttempt(null, rewritten.Usage);
             }
 
-            return (rewritten.Result, rewritten.Usage);
+            return new JournalRewriteAttempt(rewritten.Result, rewritten.Usage);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -1338,7 +1347,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 ex,
                 "The {Period}book rewrite failed for CardiMember {CardiMemberId}; nothing stored.",
                 period, member.Id);
-            return null;
+            return new JournalRewriteAttempt(null, null);
         }
     }
 
