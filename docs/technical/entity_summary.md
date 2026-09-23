@@ -160,6 +160,16 @@ This document provides an overview of the CardiTrack domain entities. The number
 - Work persists as its **name** (`HasConversion<string>`), like the rest of the schema. Unique index on (CardiMemberId, Work), which is also the upsert's conflict target
 - No retention sweep by design; leaves with the member on erasure (`MemberErasureService`, manual runbook row 20a)
 
+#### 13b. **BenignJudgement** *(2026-09-23)*
+- One record that the statistical alert pass put a finding to the model and was told it was not worth the family's attention — the negative verdict, which has no alert row because a green alert is a card a caregiver can open
+- Contains: CardiMemberId, Rule, LocalDate, FindingFingerprint, JudgedAtUtc
+- **Carries no health data.** A member id, a rule id, a date and a one-way hash. The figures the verdict was reached on are hashed, not stored, and neither the severity nor the model's read is kept
+- **Keyed on the finding, not on the day.** `FindingFingerprint` is SHA-256 over the finding's rule, observation and metric values (`StatisticalAlertRules.JudgementFingerprint`). Readings that move produce a different fingerprint and the finding is judged again; readings that do not cost one inference instead of 288. The first shape of this keyed on the local day, on the reasoning that a rule reading yesterday reads settled data — false, because `DeviceSyncService`'s repair pass re-pulls complete days and a night's readings routinely land after local midnight, so a day-keyed row could have swallowed the re-judgement of a finding that had since worsened
+- **Why the day is still in the key.** The unique index is (CardiMemberId, Rule, LocalDate, FindingFingerprint). The day is not needed to disambiguate — every rule's observation names its own date bar `no_morning_activity`, which names the clock instead — but keeping it means a question that omits its date cannot carry a verdict into tomorrow
+- **It may never cost an alert.** Every call against this table is guarded: the read falls back to "nothing remembered" and the write is best-effort, so a transient error or the lag between a deploy and its migration costs re-judgement rather than a caregiver's alert
+- Unique rather than merely indexed, because two overlapping assessor executions can both judge the same finding — the pass holds no claim — and `RecordAsync` is an `ON CONFLICT DO NOTHING` upsert so the loser is a no-op rather than a failed member
+- Retention **7 days**, swept by the pass itself; leaves with the member on erasure (`MemberErasureService`, manual runbook row 19a) — no foreign key cascades behind it, so the delete is explicit
+
 ### Business Entities
 
 #### 14. **Subscription**
