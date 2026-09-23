@@ -81,9 +81,11 @@ section's facts under a different test. Four things changed since §2 was writte
    relative to not having the product is unchanged. **§2's conclusion holds.**
 2. **R1 severity, headline and message are now MedGemma's** (2026-09-19; DPIA A15; V4 entry in
    §5). The model is in the severity path of the main producer, not only the dev-only heart-rate
-   assessor. This **widens the profiling footprint** — every R1 alert is a model verdict on a
-   person's deviation from their own pattern — and with it the Arts. 13–15 duty to explain the
-   logic. It does not move the Art. 22 test: the output is still an `Alert` row awaiting a named
+   assessor. This **widens the profiling footprint** — every alert from the nine comparative
+   rules is now a model verdict on a person's deviation from their own pattern (the two measured
+   rhythm rules relay the device's own classification and are judged for severity only, so they
+   add model-written words but no new profiling) — and with it the Arts. 13–15 duty to explain
+   the logic. It does not move the Art. 22 test: the output is still an `Alert` row awaiting a named
    caregiver's acknowledgment, the eleven rules still decide whether a finding reaches the
    model at all (nine baseline thresholds, algorithm card §2; two device-measured rhythm
    findings, DPIA A26), and the fail-closed parse and strict mapping carry over (§3). R1 rows

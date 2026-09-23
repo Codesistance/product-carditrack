@@ -71,6 +71,7 @@ DPIA's inventory:
 | A24 | Dashboard status line | MedGemma + Gemini | dev | Yes — generated text |
 | A20 | Member chat — multi-turn, incl. the `settings` workflow that can switch alert rules and alarms on the caregiver's explicit yes | MedGemma + Gemini | dev | Yes — **the one surface that interacts directly with a natural person** (Art. 50(1)) |
 | A6 | Report narrative (PDF), chat-transcript export | Gemini (narrative); no model for transcript | dev and prod | Yes (narrative) |
+| A4 | Public AI chat — **retired**: `ChatController` answers 410 Gone and points callers to A20's `MemberChatController`; no model is called | none (was Gemini) | retired in every environment | No longer an AI system in operation; the DPIA row stands as processing history and is out of this document's scope |
 
 **Prod runs none of the MedGemma surfaces**: `infrastructure/environments/prod.tfvars` has
 `enable_pipeline_jobs = false` and grants no MedGemma invoker; the Vertex Gemini public slot is
@@ -205,12 +206,15 @@ Survey of the user-facing surfaces on 2026-09-23:
 | Family summary card | **None** found | `CardiMemberDetailPage.xaml` |
 | Alert detail (headline, message, A5 narrative card) | **None** — and since 2026-09-19 the headline and message are model-written for every R1 alert | `AlertDetailPage.xaml` |
 | Dashboard status line | **None** found | Dashboard hero card |
+| Journal — Daybook, Weekbook, Monthbook entries (A11 text) | **None** found | `JournalPage.xaml`, `JournalEntryPage.xaml` |
+| Member detail — "Trends to keep an eye on" / "The longer view" (A5 narrative) | **None** found | `CardiMemberDetailPage.xaml` |
+| Family questionnaire question and rationale (A19) | **None** found | `Controls/QuestionCard.xaml`, `QuestionPopupPage.xaml` |
 | PDF report narrative; chat-transcript export | **Present** — "Written by CardiTrack's AI assistant. Not a clinical assessment." / "AI-generated answers · Not a clinical assessment" | `PdfReportRenderer.cs`, `ChatTranscriptDocument.cs` |
 | `/privacy` | Describes "a medical language model writes a short assessment" — policy-level, not the product-surface disclosure 50(1) asks for | `Privacy.razor` |
 
 **Gaps recorded.** Two Art. 50 items are open, both live since 2 August 2026:
 
-- **50(1), product surface:** five in-app surfaces need one fixed line of chrome each, matching
+- **50(1), product surface:** eight in-app surfaces need one fixed line of chrome each, matching
   what the PDF already does. Copy, not logic, tracked as
   [issue #1244](https://github.com/Codesistance/product-carditrack/issues/1244).
 - **50(2), machine-readable marking:** no API response that serves generated text carries an
@@ -247,7 +251,7 @@ lifecycle (human oversight), and the V1–V4 validation protocol (accuracy).
 | OI-15 (a) | Are A13 / A15 Annex III high-risk (point 5(d))? | **No** — §6.1 | Owner + regulatory counsel |
 | OI-15 (b) | Annex I status | Follows OI-2; no separate decision | Owner + regulatory counsel |
 | OI-15 (c) | Do the text-generating surfaces fall under Art. 50(2), and what marking satisfies it? | Treat as yes; disclose in-product and mark in the API | Owner + counsel |
-| OI-15 (d) | Art. 50(1) disclosure copy on the five surfaces in §7.1 | Ship it (Mobile issue) | Owner |
+| OI-15 (d) | Art. 50(1) disclosure copy on the eight in-app surfaces in §7.1 | Ship it (#1244) | Owner |
 | OI-15 (e) | Art. 4 literacy record | Write it | Owner |
 
 Until OI-15 (a) is confirmed, the product must make **no AI Act compliance representation** in
@@ -271,7 +275,7 @@ written alongside this document.
   verify against the Official Journal at sign-off.
 - Commission guidelines on the definition of an AI system and on prohibited practices
   (February 2025) — for the rule-based-system boundary in §3.
-- Repository: [dpia.md](dpia.md) rows A5, A6, A11, A13–A15, A18–A20, A22, A24, A26 and open items
+- Repository: [dpia.md](dpia.md) rows A4 (retired), A5, A6, A11, A13–A15, A18–A20, A22, A24, A26 and open items
   OI-2, OI-3, OI-7; [art22_alerting_analysis.md](art22_alerting_analysis.md);
   [alerting_algorithm_card.md](alerting_algorithm_card.md); `docs/llm_design.md`;
   `infrastructure/environments/dev.tfvars`, `prod.tfvars`.
