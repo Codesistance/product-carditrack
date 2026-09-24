@@ -88,6 +88,13 @@ public interface IPopupService
     Task<bool> ConfirmInfoAsync(string message, string? title = null, string? confirmText = null, string? cancelText = null);
 
     /// <summary>
+    /// Info-styled two-button popup where Back is neither answer: true for the confirm button,
+    /// false for the cancel button, null when it was dismissed some other way (back, or the page
+    /// being taken away). For notices that must only count as read when a button was tapped.
+    /// </summary>
+    Task<bool?> AskInfoAsync(string message, string title, string confirmText, string cancelText);
+
+    /// <summary>
     /// Asks the user to pick one of several options — used for the M1-13 pause duration.
     /// Returns null when cancelled or dismissed via back.
     /// </summary>

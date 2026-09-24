@@ -316,7 +316,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - ✅ Settings toggle for session telemetry, on by default and switchable off at any time, saying in one line what is sent and that health data is not
   - ✅ Log and trace shipping respects the stored consent state, and a change applies without restarting the app
   - ✅ Sign-out forgets the choice and returns to the default, so one caregiver's "off" is not inherited by the next caregiver on the same phone
-  - ⬜ Telemetry disclosure during onboarding or first run — still open; today the Terms of Service, Privacy Policy and the Settings toggle are the only surfaces
+  - ✅ Telemetry notice on first run (2026-09-24): the first time a signed-in caregiver reaches the dashboard, a modal says what is sent (never health data) and that **Send session telemetry** in Settings → Privacy turns it off, with **Got it** and **Open Settings**. Not a consent step — no on/off control. Seen is recorded per caregiver on the phone (Back does not count) and cleared on sign-out (`TelemetryNotice`, `DashboardPage`)
 
 ---
 
@@ -691,7 +691,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 ### Future (Post-MVP)
 - [ ] Story 8.1-8.3: Enterprise features
 - [ ] Story 7.3: Pause monitoring
-- [ ] Story 7.4: Telemetry consent (on by default with a Settings opt-out; in-app first-run notice still open)
+- [ ] Story 7.4: Telemetry consent (on by default with a Settings opt-out; one-time dashboard notice shipped)
 - [ ] Advanced ML features
 
 ---

@@ -284,6 +284,7 @@ public partial class SettingsPage : ContentPage
         Try(() => Preferences.Default.Remove("PrimaryCardiMemberId"), "primary member");
         Try(() => Preferences.Default.Remove("VerifyEmailNudgeDismissed"), "verify-email nudge");
         Try(() => Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey), "disclosure hint");
+        Try(() => Preferences.Default.Remove(DashboardPage.TelemetryNoticeSeenKey), "telemetry notice");
         Try(() => Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey), "wizard resume flag");
         Try(DiagnosticsConsent.Clear, "diagnostics consent");
         await TryAsync(() => _drafts.ClearAsync(), "member draft");
@@ -611,6 +612,7 @@ public partial class SettingsPage : ContentPage
             // The account is the record of the health-data disclosure; this is only the hint that
             // it was confirmed, and the next caregiver on this phone must be asked afresh.
             Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey);
+            Preferences.Default.Remove(DashboardPage.TelemetryNoticeSeenKey);
             Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
             // The choice is the person's, not the phone's: the next caregiver who signs in here
             // gets the documented default and their own switch, not this one's "off".

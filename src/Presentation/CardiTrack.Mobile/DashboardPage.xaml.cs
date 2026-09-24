@@ -4,6 +4,7 @@ using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Diagnostics;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
@@ -11,6 +12,7 @@ using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
+using Serilog;
 
 namespace CardiTrack.Mobile;
 
@@ -34,6 +36,16 @@ public partial class DashboardPage : ContentPage
     /// acknowledgement to the next; sign-out clears it anyway, like <see cref="VerifyEmailDismissedKey"/>.
     /// </summary>
     internal const string HealthDataDisclosureConfirmedKey = "HealthDataDisclosureConfirmedFor";
+
+    /// <summary>
+    /// Holds the <see cref="TelemetryNotice"/> scope of the caregiver who acknowledged the
+    /// telemetry notice on this phone. Per caregiver for the same reason as the disclosure hint;
+    /// sign-out clears it too.
+    /// </summary>
+    internal const string TelemetryNoticeSeenKey = "TelemetryNoticeSeenFor";
+
+    /// <summary>Set while the telemetry notice is up, so the OnAppearing its closing raises cannot open a second.</summary>
+    private bool _telemetryNoticeOpen;
     private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
 
@@ -124,6 +136,7 @@ public partial class DashboardPage : ContentPage
         UpdateGreeting();
         UpdateVerifyEmailBanner();
         _ = RefreshDisclosureBannerAsync();
+        _ = ShowTelemetryNoticeIfDueAsync();
 
         // Arriving on the screen is a pull, like the tick and the resume. This used to skip the
         // load when the last one was under a couple of minutes old, which meant a caregiver who
@@ -216,6 +229,59 @@ public partial class DashboardPage : ContentPage
         var scope = HealthDataDisclosureScope.For(_authService.CurrentUserEmail);
         return scope is not null
             && Preferences.Default.Get(HealthDataDisclosureConfirmedKey, string.Empty) == scope;
+    }
+
+    /// <summary>
+    /// Tells the caregiver, once, that session telemetry is on and where to turn it off. A notice,
+    /// not a choice: "Got it" or "Open Settings" both record it as seen — the second because the
+    /// caregiver has plainly read it and is on their way to the switch, and a notice that met them
+    /// again on the way back would be nagging. Back records nothing, so it returns next time.
+    /// Waits while anything else is modal over the dashboard (the device-setup wizard that can
+    /// follow sign-in, another popup): it will come round on the next appearance instead.
+    /// </summary>
+    private async Task ShowTelemetryNoticeIfDueAsync()
+    {
+        try
+        {
+            var email = _authService.CurrentUserEmail;
+            if (_telemetryNoticeOpen
+                || _popups.IsShowing
+                || Navigation.ModalStack.Count > 0
+                || TelemetryNotice.IsSeen(Preferences.Default.Get(TelemetryNoticeSeenKey, string.Empty), email))
+                return;
+
+            _telemetryNoticeOpen = true;
+            bool? acknowledged;
+            try
+            {
+                // Confirm is "Got it", cancel is "Open Settings"; null is Back.
+                acknowledged = await _popups.AskInfoAsync(
+                    TelemetryNotice.Message,
+                    TelemetryNotice.Title,
+                    confirmText: TelemetryNotice.AcknowledgeText,
+                    cancelText: TelemetryNotice.OpenSettingsText);
+            }
+            finally
+            {
+                _telemetryNoticeOpen = false;
+            }
+
+            if (acknowledged is null)
+                return;
+
+            if (TelemetryNotice.SeenValueFor(email) is { } seen)
+                Preferences.Default.Set(TelemetryNoticeSeenKey, seen);
+
+            // GoToTabAsync, not the nav bar's route: this is a content link, so Back from Settings
+            // owes the caregiver the dashboard they came from.
+            if (acknowledged == false)
+                await Shell.Current.GoToTabAsync(AppShell.SettingsRoute);
+        }
+        catch (Exception ex)
+        {
+            // Fire-and-forget from OnAppearing: a notice failing must not take the dashboard with it.
+            Log.Warning(ex, "Showing the telemetry notice failed.");
+        }
     }
 
     private void RememberDisclosureConfirmed()
