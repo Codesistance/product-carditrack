@@ -1944,8 +1944,9 @@ public class MemberChatService : IMemberChatService
         // a caregiver quoting a caption has not been shown it. Code reads this; no prompt does.
         // Lazy, because only the status rung reads it and a long conversation is a lot to decrypt
         // for every other message.
-        var assistantTurns = withTurns!.Turns.Where(t => t.Role == ChatTurnRole.Assistant).ToList();
-        var earlierReplies = new Lazy<IReadOnlyList<string>>(() => assistantTurns
+        var allTurns = withTurns!.Turns;
+        var earlierReplies = new Lazy<IReadOnlyList<string>>(() => allTurns
+            .Where(t => t.Role == ChatTurnRole.Assistant)
             .Select(t => NamePlaceholder.Redact(Reveal(t.Content), memberName) ?? string.Empty)
             .ToList());
 
