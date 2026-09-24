@@ -4,6 +4,7 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Npgsql;
 
 namespace CardiTrack.Infrastructure.Repositories;
 
@@ -25,6 +26,68 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
                         && s.LastTurnAtUtc >= activeSinceUtc)
             .OrderByDescending(s => s.LastTurnAtUtc)
             .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<MemberChatSessionOpenOutcome> TryOpenAsync(
+        MemberChatSession added, DateTime activeSinceUtc, CancellationToken ct = default)
+    {
+        await _dbSet
+            .Where(s => s.UserId == added.UserId
+                        && s.CardiMemberId == added.CardiMemberId
+                        && s.Id != added.Id
+                        && s.EndedAtUtc == null
+                        && s.LastTurnAtUtc < activeSinceUtc)
+            .ExecuteUpdateAsync(u => u.SetProperty(s => s.EndedAtUtc, s => (DateTime?)s.LastTurnAtUtc), ct);
+
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+            return MemberChatSessionOpenOutcome.Opened;
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation
+        })
+        {
+            // Lost the race to a concurrent first message. Detached so a later save on this
+            // context does not try the same insert again.
+            _context.Entry(added).State = EntityState.Detached;
+            return MemberChatSessionOpenOutcome.AlreadyOpen;
+        }
+    }
+
+    public async Task ReopenAsync(
+        MemberChatSession session, DateTime activeSinceUtc, DateTime utcNow, CancellationToken ct = default)
+    {
+        session.EndedAtUtc = null;
+        session.LastTurnAtUtc = utcNow;
+
+        // Three tries: each lost race means a first message opened a session between the close
+        // and the save, and one losing three in a row is not a race this can win by retrying.
+        for (var attempt = 1; ; attempt++)
+        {
+            await _dbSet
+                .Where(s => s.UserId == session.UserId
+                            && s.CardiMemberId == session.CardiMemberId
+                            && s.Id != session.Id
+                            && s.EndedAtUtc == null)
+                .ExecuteUpdateAsync(u => u.SetProperty(
+                    s => s.EndedAtUtc,
+                    s => s.LastTurnAtUtc < activeSinceUtc ? (DateTime?)s.LastTurnAtUtc : utcNow), ct);
+
+            try
+            {
+                await _context.SaveChangesAsync(ct);
+                return;
+            }
+            catch (DbUpdateException ex) when (attempt < 3 && ex.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation
+            })
+            {
+                // The reopened row is still modified in the change tracker; the next save retries it.
+            }
+        }
     }
 
     public async Task<MemberChatSession?> GetByIdWithTurnsAsync(Guid sessionId, CancellationToken ct = default)

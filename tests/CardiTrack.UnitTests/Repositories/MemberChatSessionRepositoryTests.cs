@@ -25,6 +25,18 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
         LastTurnAtUtc = lastTurnAtUtc,
     };
 
+    /// <summary>
+    /// A conversation that went quiet and was closed at its last turn — what every quiet session
+    /// becomes once a newer one opens, since only one per caregiver and member may stay open
+    /// (#1119). Tests that need several past sessions for one pair seed these.
+    /// </summary>
+    private static MemberChatSession Closed(Guid userId, Guid memberId, DateTime lastTurnAtUtc)
+    {
+        var session = Session(userId, memberId, lastTurnAtUtc);
+        session.EndedAtUtc = lastTurnAtUtc;
+        return session;
+    }
+
     private static MemberChatTurn Turn(Guid sessionId, ChatTurnRole role, string content, DateTime createdAtUtc) => new()
     {
         Id = Guid.NewGuid(),
@@ -111,7 +123,7 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
         var memberId = Guid.NewGuid();
         var now = DateTime.UtcNow;
 
-        var older = Session(userId, memberId, now.AddDays(-2));
+        var older = Closed(userId, memberId, now.AddDays(-2));
         var newer = Session(userId, memberId, now.AddDays(-1));
         var otherCaregivers = Session(Guid.NewGuid(), memberId, now.AddDays(-1));
         var aboutSomeoneElse = Session(userId, Guid.NewGuid(), now.AddDays(-1));
@@ -155,7 +167,7 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
         var active = Session(userId, memberId, now);
         var endedJustNow = Session(userId, memberId, now.AddMinutes(-5));
         endedJustNow.EndedAtUtc = now;
-        var lapsed = Session(userId, memberId, now.AddHours(-3));
+        var lapsed = Closed(userId, memberId, now.AddHours(-3));
 
         var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
         foreach (var s in new[] { active, endedJustNow, lapsed })
@@ -207,16 +219,16 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
         var memberId = Guid.NewGuid();
         var now = DateTime.UtcNow;
 
-        var lapsedUnthemed = Session(userId, memberId, now.AddHours(-4));
+        var lapsedUnthemed = Closed(userId, memberId, now.AddHours(-4));
         // Last turn *older* than the lapsed session's, ended just now: "newest activity" counts
         // the ending, so this must still queue first — the ordering coalesces EndedAtUtc over
         // LastTurnAtUtc.
         var endedUnthemed = Session(userId, memberId, now.AddHours(-8));
         endedUnthemed.EndedAtUtc = now;
-        var lapsedThemed = Session(userId, memberId, now.AddHours(-5));
+        var lapsedThemed = Closed(userId, memberId, now.AddHours(-5));
         lapsedThemed.Theme = "already-labelled-ciphertext";
         var stillActive = Session(userId, memberId, now);
-        var lapsedNoQuestion = Session(userId, memberId, now.AddHours(-6));
+        var lapsedNoQuestion = Closed(userId, memberId, now.AddHours(-6));
 
         var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
         var turnRepo = scope.ServiceProvider.GetRequiredService<IMemberChatTurnRepository>();

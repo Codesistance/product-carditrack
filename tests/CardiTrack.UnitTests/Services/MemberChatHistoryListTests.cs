@@ -207,13 +207,13 @@ public class MemberChatHistoryListTests
         var before = DateTime.UtcNow;
         var result = await CreateSut().ContinueSessionAsync(_userId, _memberId, sessionId);
 
-        Assert.Null(completed.EndedAtUtc);
-        Assert.True(completed.LastTurnAtUtc >= before, "continuing must bring the session back inside the active window");
-        Assert.NotNull(active.EndedAtUtc);
+        // The repository reopens it and closes the active one — only one session may be open, and
+        // the index is checked row by row (MemberChatSessionOpenTests covers the SQL).
+        await _sessions.Received(1).ReopenAsync(
+            completed, Arg.Is<DateTime>(d => d < before), Arg.Is<DateTime>(d => d >= before), Arg.Any<CancellationToken>());
         Assert.Equal(sessionId, result.SessionId);
         var turn = Assert.Single(result.Turns);
         Assert.Equal("How did he sleep?", turn.Content);
-        await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
     /// <summary>Same existence-hiding 404 as reading a session: another caregiver's conversation,
@@ -237,7 +237,7 @@ public class MemberChatHistoryListTests
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().ContinueSessionAsync(_userId, _memberId, session.Id));
 
-        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _sessions.DidNotReceiveWithAnyArgs().ReopenAsync(default!, default, default, default);
     }
 
     [Fact]
