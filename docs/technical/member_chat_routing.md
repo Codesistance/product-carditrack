@@ -522,7 +522,7 @@ Nothing above asks whether a reply answered the question. The copy guards say wh
 After the reply is written, one structured Rewrite-slot call (`IChatAnswerChecker`, `ChatAnswerCheckerService`) reads the name-redacted question, conversation and reply, and returns:
 
 - **answered**: `full`, `partial` or `no`
-- **cause**, when not full: `notAddressed` (the data could have answered it) or `notInData` (the app does not hold what was asked)
+- **cause**, when not full: `notAddressed` (the data could have answered it) or `notInData` (member chat cannot read what was asked — scoped to chat's sources, not the whole product: the digests read hourly steps, chat does not)
 - **intent**, **missing** and a line of **reasoning**: internal only
 
 It runs on the replies that claim to answer: `status`, `analysis`, `inference`, `investigation` and `advise`. The steers redirect, `clarify` asks, and `journal` and `settings` act on a request whose outcome is its own answer. "Not in data" is judged against a fixed statement of what the product records (`ChatAnswerCheckerService.WhatTheAppRecords`), not against what one member happens to have.

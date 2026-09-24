@@ -920,6 +920,30 @@ public class MemberChatRoutedDispatchTests
         Assert.Equal("not_in_data", span.GetTagItem(MemberChatTelemetry.AnswerGapTag));
     }
 
+    /// <summary>
+    /// The check judges the reply as the caregiver sees it: a reply past the turn cap is cut
+    /// before it is checked, so a detail in the cut tail cannot count as answered.
+    /// </summary>
+    [Fact]
+    public async Task AReplyPastTheCap_IsCheckedAsDisplayed()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        var longReply = new string('a', 5_000) + " He was most active around 10am.";
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(longReply, new AiUsage()));
+        string? checkedReply = null;
+        _checker.CheckAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Do<string>(r => checkedReply = r), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<ChatAnswerAssessment>(
+                new ChatAnswerAssessment { Completeness = AnswerCompleteness.Full }, new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "when was he active?");
+
+        Assert.NotNull(checkedReply);
+        Assert.DoesNotContain("10am", checkedReply, StringComparison.Ordinal);
+        Assert.Equal(reply.Reply, checkedReply);
+    }
+
     /// <summary>A steer redirects rather than answers, so there is nothing to check.</summary>
     [Fact]
     public async Task ASteer_IsNotChecked()

@@ -59,10 +59,13 @@ public class ChatAnswerCheckerServiceTests
         Assert.Contains("Caregiver: how did CardiTrackCardiMember sleep?", prompt, StringComparison.Ordinal);
         Assert.Contains("--- Reply shown ---", prompt, StringComparison.Ordinal);
         Assert.Contains(ChatAnswerCheckerService.WhatTheAppRecords, prompt, StringComparison.Ordinal);
-        Assert.Contains("does not hold hour-by-hour activity", prompt, StringComparison.Ordinal);
+        Assert.Contains("cannot read hour-by-hour activity or steps here", prompt, StringComparison.Ordinal);
         // All three untrusted sections are framed as text to assess, never as instructions.
         Assert.Contains(MedicalPromptBlocks.ChatMessageGuardrail, prompt, StringComparison.Ordinal);
-        Assert.Contains(MedicalPromptBlocks.ChatHistoryGuardrail, prompt, StringComparison.Ordinal);
+        // The history holds both sides, so it is framed as the conversation, not as the
+        // caregiver's questions — an earlier reply must not pass as caregiver input.
+        Assert.Contains(MedicalPromptBlocks.ChatConversationGuardrail, prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(MedicalPromptBlocks.ChatHistoryGuardrail, prompt, StringComparison.Ordinal);
         Assert.Contains("\"Reply shown\" is the app's own reply", prompt, StringComparison.Ordinal);
     }
 
@@ -71,7 +74,7 @@ public class ChatAnswerCheckerServiceTests
     {
         var prompt = ChatAnswerCheckerService.BuildPrompt("how did he sleep", null, "About 6h 10m last night.");
 
-        Assert.DoesNotContain(MedicalPromptBlocks.ChatHistoryGuardrail, prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(MedicalPromptBlocks.ChatConversationGuardrail, prompt, StringComparison.Ordinal);
     }
 
     [Fact]

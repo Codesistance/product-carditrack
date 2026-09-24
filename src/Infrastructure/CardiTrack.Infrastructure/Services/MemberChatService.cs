@@ -755,9 +755,11 @@ public class MemberChatService : IMemberChatService
 
         try
         {
-            // The reply has the name resolved back in for the caregiver; it goes out the way
-            // every other Rewrite-slot input does, with the name swapped for the placeholder.
-            var reply = NamePlaceholder.Redact(result.Reply, memberName) ?? result.Reply;
+            // Judged as displayed: capped the way SendMessageAsync caps it before saving, so a
+            // detail in a cut tail cannot count as answered. The name is resolved back in for the
+            // caregiver; it goes out like every other Rewrite-slot input, as the placeholder.
+            var shown = CapReply(result.Reply);
+            var reply = NamePlaceholder.Redact(shown, memberName) ?? shown;
             var checkedAnswer = await _answerChecker.CheckAsync(forModel, history.Full, reply, ct);
 
             MemberChatTelemetry.TagAnswerCheck(checkedAnswer.Result);
