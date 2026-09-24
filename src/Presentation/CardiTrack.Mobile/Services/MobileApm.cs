@@ -142,8 +142,9 @@ public static class MobileApm
                 // from a device whether an intake accepted anything.
                 Verbosity = SdkVerbosity.DEBUG,
 #endif
-                // Marks our API as first-party so mobile spans join the API's OTel traces, via
-                // W3C traceparent headers.
+                // Marks our API as first-party, so a mobile request carrying W3C traceparent headers
+                // joins the API's OTel traces. The headers are injected by automatic resource
+                // tracking, which is off below, so the link is latent; the privacy copy allows for it.
                 FirstPartyHosts =
                 [
                     new FirstPartyHost

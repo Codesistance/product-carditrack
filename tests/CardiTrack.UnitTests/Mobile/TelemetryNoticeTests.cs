@@ -39,8 +39,9 @@ public class TelemetryNoticeTests
     [Fact]
     public void Message_DoesNotClaimTheDataIsUnlinkedFromTheAccount()
     {
-        // Mobile spans join API traces that carry the pseudonymous account ID, so "not linked to
-        // your account" would be false; the notice says it can be matched when investigating.
+        // FirstPartyHosts would join mobile requests to API traces carrying the pseudonymous
+        // account ID if trace headers are sent, so "not linked to your account" is not a promise
+        // the notice can make; it says a match may be possible instead.
         Assert.DoesNotContain("linked to your account", TelemetryNotice.Message);
         Assert.Contains("match it to your account", TelemetryNotice.Message);
     }

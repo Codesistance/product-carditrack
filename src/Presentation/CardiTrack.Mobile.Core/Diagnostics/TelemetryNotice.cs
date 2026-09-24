@@ -20,8 +20,8 @@ public static class TelemetryNotice
     public const string Message =
         "CardiTrack sends us information about how the app is running — the screens you open, "
         + "errors, crashes and how quickly it responds — so we can find and fix problems. It never "
-        + "includes health data, your name or your email, though we can match it to your account "
-        + "when we look into a problem.\n\n"
+        + "includes health data, your name or your email, though it may be possible to "
+        + "match it to your account when we look into a problem.\n\n"
         + "If you'd rather it didn't, turn off Send session telemetry in Settings › Privacy. "
         + "You can change it any time.";
 

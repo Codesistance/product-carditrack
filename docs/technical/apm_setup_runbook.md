@@ -354,8 +354,10 @@ telemetry** (`DiagnosticsConsent`, which also calls `DdSdk.SetTrackingConsent` s
 lands without a restart; sign-out or session expiry drops it to `NotGranted` until the next sign-in). A
 device with the toggle off ships no logs, traces or RUM sessions at all — when mobile telemetry is
 missing from Datadog, check the toggle on the device before suspecting the stamping. The app sets
-`FirstPartyHosts` for the API host with Datadog + W3C `traceparent` tracing headers, so
-mobile spans join the API's OTel traces.
+`FirstPartyHosts` for the API host with Datadog + W3C `traceparent` tracing headers. The
+headers are injected by automatic resource tracking, which is off (see above), so today
+mobile spans are not expected to join the API's OTel traces; the privacy copy is worded to
+stay true if that changes, since API spans carry the pseudonymous `enduser.id`.
 
 ### Error logs reach Datadog through the API instead
 
