@@ -313,8 +313,10 @@ one configuration, not a platform fork. The rule that matters: **the native SDKs
 endpoint verbatim — nothing is appended** — so the app composes the full per-feature URL
 itself (`https://<IntakeHost>/api/v2/rum`, `/api/v2/logs`, `/api/v2/spans`;
 `Mobile.Core/Diagnostics/DatadogIntake.cs`). A bare host handed straight to the SDK posts
-every batch to the site root and gets `404`. Give `IntakeHost` as a bare DNS name — a scheme,
-path or port is rejected and disables monitoring. When it is set it routes every feature
+every batch to the site root and gets `404`. `IntakeHost` must be one of Datadog's own
+browser-intake hosts (`browser-intake[-<site>]-datadoghq.com`, `browser-intake-datadoghq.eu`,
+`browser-intake[-<site>]-ddog-gov.com`) given as a bare name — any other domain, or a scheme,
+path or port, is rejected and disables monitoring, since telemetry goes wherever it points. When it is set it routes every feature
 regardless of `Site`, and the core SDK sits at the `Eu1` default, which nothing is sent to.
 
 Consequences:

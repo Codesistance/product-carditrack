@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace CardiTrack.Mobile.Core.Diagnostics;
 
 /// <summary>
@@ -5,7 +7,7 @@ namespace CardiTrack.Mobile.Core.Diagnostics;
 /// SDKs use a custom endpoint verbatim — nothing is appended — so each feature needs its own
 /// full URL; a bare host posts every batch to the site root and gets a 404.
 /// </summary>
-public sealed class DatadogIntake
+public sealed partial class DatadogIntake
 {
     public string Host { get; }
 
@@ -18,17 +20,22 @@ public sealed class DatadogIntake
     private DatadogIntake(string host) => Host = host;
 
     /// <summary>
-    /// Accepts a bare DNS host name only: a scheme, path or port would double up with the
-    /// URL composed here, and misrouted telemetry is worse than none.
+    /// Accepts only a Datadog browser-intake host (browser-intake[-site]-datadoghq.com,
+    /// browser-intake-datadoghq.eu, browser-intake[-site]-ddog-gov.com). Telemetry goes wherever
+    /// this points, so a scheme, path, port or any other domain is refused: misrouted telemetry
+    /// is worse than none.
     /// </summary>
     public static bool TryCreate(string? host, out DatadogIntake? intake)
     {
         intake = null;
-        var trimmed = host?.Trim();
-        if (string.IsNullOrEmpty(trimmed) || Uri.CheckHostName(trimmed) != UriHostNameType.Dns)
+        var trimmed = host?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(trimmed) || !IntakeHostPattern().IsMatch(trimmed))
             return false;
 
         intake = new DatadogIntake(trimmed);
         return true;
     }
+
+    [GeneratedRegex(@"^browser-intake-(?:[a-z0-9]+-)?(?:datadoghq\.com|datadoghq\.eu|ddog-gov\.com)$")]
+    private static partial Regex IntakeHostPattern();
 }

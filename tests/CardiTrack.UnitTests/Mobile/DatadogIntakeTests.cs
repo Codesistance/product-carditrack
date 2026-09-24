@@ -18,15 +18,27 @@ public class DatadogIntakeTests
     }
 
     [Fact]
-    public void TryCreate_TrimsSurroundingWhitespace()
+    public void TryCreate_TrimsAndLowercases()
     {
-        Assert.True(DatadogIntake.TryCreate("  browser-intake-uk1-datadoghq.com  ", out var intake));
+        Assert.True(DatadogIntake.TryCreate("  Browser-Intake-UK1-DatadogHQ.com  ", out var intake));
         Assert.Equal("browser-intake-uk1-datadoghq.com", intake!.Host);
     }
 
+    [Theory]
+    [InlineData("browser-intake-datadoghq.com")]
+    [InlineData("browser-intake-us3-datadoghq.com")]
+    [InlineData("browser-intake-datadoghq.eu")]
+    [InlineData("browser-intake-ddog-gov.com")]
+    [InlineData("browser-intake-us2-ddog-gov.com")]
+    public void TryCreate_AcceptsDatadogsOwnIntakeHosts(string host)
+    {
+        Assert.True(DatadogIntake.TryCreate(host, out _));
+    }
+
     /// <summary>
-    /// A scheme or path would double up with what the app composes, and a port or anything
-    /// else that is not a host name has no place here — better off than misrouted.
+    /// Telemetry goes wherever this points. A scheme or path would double up with what the app
+    /// composes, and any domain that is not Datadog's intake — however valid a host name —
+    /// would hand logs and crash reports to someone else: better off than misrouted.
     /// </summary>
     [Theory]
     [InlineData(null)]
@@ -36,6 +48,10 @@ public class DatadogIntakeTests
     [InlineData("browser-intake-uk1-datadoghq.com/api/v2/rum")]
     [InlineData("browser-intake-uk1-datadoghq.com:443")]
     [InlineData("not a host")]
+    [InlineData("telemetry.example.com")]
+    [InlineData("browser-intake-uk1-datadoghq.com.example.com")]
+    [InlineData("browser-intake-uk1-datadoghq.co")]
+    [InlineData("evil-browser-intake-uk1-datadoghq.com")]
     public void TryCreate_RejectsAnythingButABareHostName(string? host)
     {
         Assert.False(DatadogIntake.TryCreate(host, out var intake));

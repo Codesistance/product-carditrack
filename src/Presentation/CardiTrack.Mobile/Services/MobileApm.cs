@@ -89,7 +89,7 @@ public static class MobileApm
         if (!string.IsNullOrWhiteSpace(intakeHost) && !DatadogIntake.TryCreate(intakeHost, out intake))
         {
             Log.Warning(
-                "MobileApm: Datadog IntakeHost '{IntakeHost}' is not a bare host name — monitoring disabled " +
+                "MobileApm: Datadog IntakeHost '{IntakeHost}' is not a Datadog browser-intake host — monitoring disabled " +
                 "rather than shipping telemetry to the wrong place.",
                 intakeHost);
             return;
