@@ -35,4 +35,13 @@ public class TelemetryNoticeTests
         Assert.Contains("never", TelemetryNotice.Message);
         Assert.Contains("health data", TelemetryNotice.Message);
     }
+
+    [Fact]
+    public void Message_DoesNotClaimTheDataIsUnlinkedFromTheAccount()
+    {
+        // Mobile spans join API traces that carry the pseudonymous account ID, so "not linked to
+        // your account" would be false; the notice says it can be matched when investigating.
+        Assert.DoesNotContain("linked to your account", TelemetryNotice.Message);
+        Assert.Contains("match it to your account", TelemetryNotice.Message);
+    }
 }

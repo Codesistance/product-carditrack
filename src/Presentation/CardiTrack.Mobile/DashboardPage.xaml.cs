@@ -236,8 +236,9 @@ public partial class DashboardPage : ContentPage
     /// not a choice: "Got it" or "Open Settings" both record it as seen — the second because the
     /// caregiver has plainly read it and is on their way to the switch, and a notice that met them
     /// again on the way back would be nagging. Back records nothing, so it returns next time.
-    /// Waits while anything else is modal over the dashboard (the device-setup wizard that can
-    /// follow sign-in, another popup): it will come round on the next appearance instead.
+    /// Waits while anything else is modal over the dashboard, or about to be — the device-setup
+    /// wizard that can follow sign-in is pushed from the shell's Loaded event, which can arrive
+    /// after this runs: it will come round on the next appearance instead.
     /// </summary>
     private async Task ShowTelemetryNoticeIfDueAsync()
     {
@@ -247,6 +248,7 @@ public partial class DashboardPage : ContentPage
             if (_telemetryNoticeOpen
                 || _popups.IsShowing
                 || Navigation.ModalStack.Count > 0
+                || PostLoginRouter.DeviceSetupResumePending
                 || TelemetryNotice.IsSeen(Preferences.Default.Get(TelemetryNoticeSeenKey, string.Empty), email))
                 return;
 

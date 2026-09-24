@@ -1,3 +1,4 @@
+using CardiTrack.Mobile.Core.Diagnostics;
 using Serilog;
 #if ANDROID || IOS
 using Datadog.Maui;
@@ -39,6 +40,12 @@ public static class DiagnosticsConsent
     public const string GrantedKey = "DiagnosticsConsentGranted";
 
     /// <summary>
+    /// Whose choice <see cref="GrantedKey"/> is — a one-way per-caregiver token, so a session that
+    /// expires cannot hand one caregiver's "off" to the next (<see cref="TelemetryChoiceOwner"/>).
+    /// </summary>
+    public const string OwnerKey = "DiagnosticsConsentOwner";
+
+    /// <summary>
     /// On unless the caregiver has turned it off. Disclosed in the Terms of Service and the
     /// Privacy Policy, with Settings → Privacy as the way out.
     /// </summary>
@@ -75,6 +82,8 @@ public static class DiagnosticsConsent
     public static void Set(bool granted)
     {
         Preferences.Default.Set(GrantedKey, granted);
+        if (CurrentOwner is { } owner)
+            Preferences.Default.Set(OwnerKey, owner);
         Apply();
     }
 
@@ -84,23 +93,49 @@ public static class DiagnosticsConsent
     /// </summary>
     private static bool IsSignedIn { get; set; }
 
+    /// <summary>The signed-in caregiver's owner token, recorded with any choice they make.</summary>
+    private static string? CurrentOwner { get; set; }
+
     /// <summary>
     /// A caregiver is signed in: from here their stored choice (on unless they turned it off)
     /// applies. Called by <see cref="PostLoginRouter"/>, which every kind of sign-in passes through.
     /// </summary>
-    public static void SignedIn()
+    public static void SignedIn(string? email)
     {
+        CurrentOwner = TelemetryNotice.SeenValueFor(email);
+        try
+        {
+            var prefs = Preferences.Default;
+            switch (TelemetryChoiceOwner.OnSignIn(prefs.ContainsKey(GrantedKey), prefs.Get(OwnerKey, string.Empty), email))
+            {
+                case TelemetryChoiceAction.Adopt when CurrentOwner is { } owner:
+                    prefs.Set(OwnerKey, owner);
+                    break;
+                case TelemetryChoiceAction.Forget:
+                    prefs.Remove(GrantedKey);
+                    prefs.Remove(OwnerKey);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Unreadable falls to off in IsGranted, which is the safe direction.
+            Log.Warning(ex, "DiagnosticsConsent: could not reconcile the stored choice with the caregiver signing in.");
+        }
+
         IsSignedIn = true;
         Apply();
     }
 
     /// <summary>
     /// The session ended without the Settings sign-out — it expired. Stops collection until the
-    /// next sign-in; the caregiver's stored choice is left alone, since they did not sign out.
+    /// next sign-in; the stored choice is left alone, since they did not sign out, and
+    /// <see cref="SignedIn"/> forgets it if somebody else is the next to sign in.
     /// </summary>
     public static void SignedOut()
     {
         IsSignedIn = false;
+        CurrentOwner = null;
         Apply();
     }
 
@@ -112,6 +147,7 @@ public static class DiagnosticsConsent
     public static void Clear()
     {
         Preferences.Default.Remove(GrantedKey);
+        Preferences.Default.Remove(OwnerKey);
         SignedOut();
     }
 

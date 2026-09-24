@@ -41,5 +41,7 @@ public class PrivacyPageTests : BunitContext
         Assert.Contains("never includes health readings", text);
         Assert.Contains("turn this off at any time", text);
         Assert.Contains("Settings → Privacy → Send session telemetry", text);
+        Assert.Contains("match it to your account", text);
+        Assert.DoesNotContain("not linked to your account", text);
     }
 }
