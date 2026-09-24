@@ -161,7 +161,8 @@ jobs:
   build-api:
     name: Build API
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    # Also runs for a web, worker or pipeline deploy: they feed the migrator (see run-db-migrations).
+    if: (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.pipeline == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -177,7 +178,8 @@ jobs:
   test-unit:
     name: Unit Tests
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    # Also runs for a web, worker or pipeline deploy: they feed the migrator (see run-db-migrations).
+    if: (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.pipeline == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -205,7 +207,8 @@ jobs:
   test-integration:
     name: Integration Tests
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    # Also runs for a web, worker or pipeline deploy: they feed the migrator (see run-db-migrations).
+    if: (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.pipeline == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -232,7 +235,8 @@ jobs:
   check-migrations:
     name: EF Migration Check
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    # Also runs for a web, worker or pipeline deploy: they feed the migrator (see run-db-migrations).
+    if: (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.pipeline == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -255,7 +259,8 @@ jobs:
   security-api:
     name: Security Scan (API)
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    # Also runs for a web, worker or pipeline deploy: they feed the migrator (see run-db-migrations).
+    if: (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.pipeline == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -975,7 +980,7 @@ jobs:
       - test-integration
       - security-api
       - check-migrations
-    if: github.ref == 'refs/heads/main' && needs.changes.outputs.api == 'true'
+    if: github.ref == 'refs/heads/main' && (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.pipeline == 'true')
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.push.outputs.image }}
@@ -1203,8 +1208,11 @@ jobs:
   # ── Main only: DB Migrations + Deploy Dev ───────────────────────────────────
   run-db-migrations:
     name: DB Migrations (Dev)
+    # Runs for every lane that opens the database, not only api: web, worker and pipeline
+    # deploys wait on this job's success (see deploy-web-dev). `dotnet ef database update`
+    # applies nothing when nothing is pending, so a run with no new migration is cheap.
     needs: [changes, push-migrator-image]
-    if: github.ref == 'refs/heads/main' && needs.changes.outputs.api == 'true'
+    if: github.ref == 'refs/heads/main' && (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.pipeline == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -1313,13 +1321,14 @@ jobs:
     # Waits on run-db-migrations like every service that opens the database (Web wires the
     # DbContext too): schema-dependent code must never boot ahead of its schema. The #209
     # deploy proved the race is real — the Worker's startup pass hit a table 18 seconds
-    # before the migrator created it. Migrations may legitimately not run here (a change
-    # that touches no src/Infrastructure path cannot contain a migration, but flips e.g.
-    # web without api) — but "skipped" is not the test for that. GitHub also skips the
-    # migration job when a job upstream of it in the api lane fails, and on 2026-09-21 that
-    # deployed a pipeline image whose EF model selected a column the migrator had not yet
-    # created, for 24 minutes across three failed executions. So the gate asks the change
-    # filter directly: either the api lane was never wanted, or the migrations succeeded.
+    # before the migrator created it. So migrations must have SUCCEEDED, never merely been
+    # skipped. "Skipped" used to pass, on the theory that a lane deployed without api carried
+    # no migration — but the lane flags are dispatch checkboxes, not a paths filter, and say
+    # nothing about pending schema; and GitHub also skips the migrator when a job upstream of
+    # it fails. On 2026-09-21 the second case deployed a pipeline image whose EF model
+    # selected a column the migrator had not yet created, for 24 minutes across three failed
+    # executions. The migrator lane now runs whenever any database-opening lane is selected,
+    # and is a no-op when nothing is pending.
     # !cancelled() is what makes GitHub evaluate this condition at all when a needed job
     # was skipped; it also removes the implicit success() on the other needs, so the image
     # push is re-checked explicitly.
@@ -1329,7 +1338,7 @@ jobs:
       && github.ref == 'refs/heads/main'
       && needs.changes.outputs.web == 'true'
       && needs.push-web-image.result == 'success'
-      && (needs.changes.outputs.api != 'true' || needs.run-db-migrations.result == 'success')
+      && needs.run-db-migrations.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -1405,7 +1414,7 @@ jobs:
       && github.ref == 'refs/heads/main'
       && needs.changes.outputs.worker == 'true'
       && needs.push-worker-image.result == 'success'
-      && (needs.changes.outputs.api != 'true' || needs.run-db-migrations.result == 'success')
+      && needs.run-db-migrations.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -1471,7 +1480,7 @@ jobs:
       && github.ref == 'refs/heads/main'
       && needs.changes.outputs.pipeline == 'true'
       && needs.push-pipeline-image.result == 'success'
-      && (needs.changes.outputs.api != 'true' || needs.run-db-migrations.result == 'success')
+      && needs.run-db-migrations.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
