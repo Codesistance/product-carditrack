@@ -37,6 +37,21 @@ public class TelemetryNoticeTests
     }
 
     [Fact]
+    public void Message_ListsEveryFieldThePrivacyPolicyDiscloses()
+    {
+        Assert.Contains("phone's model and system", TelemetryNotice.Message);
+        Assert.Contains("random session ID", TelemetryNotice.Message);
+        Assert.Contains("rough location (country and city)", TelemetryNotice.Message);
+    }
+
+    [Fact]
+    public void Message_StaysUnderThePopupTruncationLimit()
+    {
+        // AppPopupPage cuts messages at 600 characters; the notice must never be cut short.
+        Assert.True(TelemetryNotice.Message.Length <= 600, $"{TelemetryNotice.Message.Length} chars");
+    }
+
+    [Fact]
     public void Message_DoesNotClaimTheDataIsUnlinkedFromTheAccount()
     {
         // FirstPartyHosts would join mobile requests to API traces carrying the pseudonymous

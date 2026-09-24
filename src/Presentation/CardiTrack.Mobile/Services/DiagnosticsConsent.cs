@@ -81,12 +81,32 @@ public static class DiagnosticsConsent
     /// </summary>
     public static void Set(bool granted)
     {
-        Preferences.Default.Set(GrantedKey, granted);
-        // Always written, even with no identity (as TelemetryChoiceOwner.Unidentified): an empty
-        // owner means "saved before owners existed", which the next caregiver would adopt.
-        Preferences.Default.Set(OwnerKey, CurrentOwner);
-        Apply();
+        // Held for the session first, so the switch takes effect even if saving it fails: an
+        // "off" that could not be written must still stop collection now.
+        SessionChoice = granted;
+        try
+        {
+            Preferences.Default.Set(GrantedKey, granted);
+            // Always written, even with no identity (as TelemetryChoiceOwner.Unidentified): an
+            // empty owner means "saved before owners existed", which the next caregiver would adopt.
+            Preferences.Default.Set(OwnerKey, CurrentOwner);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "DiagnosticsConsent: could not save the choice — applying it for this session only.");
+        }
+        finally
+        {
+            Apply();
+        }
     }
+
+    /// <summary>
+    /// The choice made on the Settings switch during this session, which wins over the stored one
+    /// so a failed save cannot undo it. Cleared at sign-in and sign-out, where the stored choice
+    /// (or the default) is the one that applies.
+    /// </summary>
+    private static bool? SessionChoice { get; set; }
 
     /// <summary>
     /// Whether a caregiver is signed in on this run. Only ever set on the main thread. A property
@@ -124,6 +144,7 @@ public static class DiagnosticsConsent
             Log.Warning(ex, "DiagnosticsConsent: could not reconcile the stored choice with the caregiver signing in.");
         }
 
+        SessionChoice = null;
         IsSignedIn = true;
         Apply();
     }
@@ -135,6 +156,7 @@ public static class DiagnosticsConsent
     /// </summary>
     public static void SignedOut()
     {
+        SessionChoice = null;
         IsSignedIn = false;
         CurrentOwner = TelemetryChoiceOwner.Unidentified;
         Apply();
@@ -171,7 +193,7 @@ public static class DiagnosticsConsent
 
         try
         {
-            DdSdk.SetTrackingConsent(IsSignedIn && IsGranted ? TrackingConsent.Granted : TrackingConsent.NotGranted);
+            DdSdk.SetTrackingConsent(IsSignedIn && (SessionChoice ?? IsGranted) ? TrackingConsent.Granted : TrackingConsent.NotGranted);
         }
         catch (Exception ex)
         {
