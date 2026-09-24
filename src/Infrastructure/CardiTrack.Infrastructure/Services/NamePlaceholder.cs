@@ -115,6 +115,27 @@ internal static partial class NamePlaceholder
     internal static bool CanRedactAgainst([NotNullWhen(true)] string? name) =>
         !string.IsNullOrWhiteSpace(name);
 
+    /// <summary>
+    /// Redacts a caregiver's own message for a Rewrite-slot call, refusing the call outright when
+    /// there is no name to redact against.
+    /// </summary>
+    /// <remarks>
+    /// The chat-side twin of <see cref="CanRedactAgainst"/>. A caregiver who types "how is Moses"
+    /// has put the member's name in the one string these paths send to Vertex, and
+    /// <see cref="Redact"/> hands it back untouched when the member row is gone or nameless — a
+    /// silent no-op on the DPIA A20 boundary (#1246). Refusing is what the caller would do anyway
+    /// a moment later: the turn's write guard answers 404 for a member the product no longer
+    /// holds, so this only moves that answer ahead of the model call instead of after it.
+    /// </remarks>
+    /// <exception cref="KeyNotFoundException">The member has no name on file.</exception>
+    internal static string RedactMessageOrRefuse(string message, string? name)
+    {
+        if (!CanRedactAgainst(name))
+            throw new KeyNotFoundException("We couldn't find what you were looking for.");
+
+        return Redact(message, name) ?? message;
+    }
+
     internal static string? Redact(string? text, string? name)
     {
         if (string.IsNullOrEmpty(text) || string.IsNullOrWhiteSpace(name))

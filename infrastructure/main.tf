@@ -109,6 +109,10 @@ module "deployments" {
   # Cloud Run - API
   api_service_name    = local.api_service_name
   api_container_image = var.api_container_image
+  # Derived from the MedGemma budget so the two cannot drift: one minute past the slowest call a
+  # member-chat send waits on. The mobile send timeout (CardiTrackApiClient.MemberChatSendTimeout)
+  # sits a further minute out.
+  api_request_timeout_seconds = var.medgemma_timeout_seconds + 60
   api_env_vars = merge(
     {
       "ASPNETCORE_ENVIRONMENT"              = title(var.environment)

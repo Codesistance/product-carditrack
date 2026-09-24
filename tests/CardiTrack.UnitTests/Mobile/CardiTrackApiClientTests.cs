@@ -1847,9 +1847,21 @@ public class CardiTrackApiClientTests
         Assert.Equal("Steady night.", response.Reply);
         Assert.Equal($"/api/v1/member-chat/members/{memberId}/messages",
             http.Requests.Single().Uri!.AbsolutePath);
-        // The reply is a chain of CPU-served model calls; the client-wide default would hang
-        // up on a legitimately slow answer. See CardiTrackApiClient.MemberChatSendTimeout.
-        Assert.Equal(TimeSpan.FromSeconds(960), requestedTimeout);
+        // The reply is a chain of model calls; the client-wide default would hang up on a
+        // legitimately slow answer. See CardiTrackApiClient.MemberChatSendTimeout.
+        Assert.Equal(CardiTrackApiClient.MemberChatSendTimeout, requestedTimeout);
+    }
+
+    [Fact]
+    public void MemberChatSendTimeout_OutlastsTheServer_AndFitsUnderTheClientCeiling()
+    {
+        // The API's Cloud Run request timeout is medgemma_timeout_seconds (900) + 60. The app must
+        // be the last layer to give up, and HttpClient.Timeout — which no per-request budget can
+        // extend — must leave room for it. A 190s ceiling once capped this send silently.
+        var serverCeiling = TimeSpan.FromSeconds(900 + 60);
+
+        Assert.True(CardiTrackApiClient.MemberChatSendTimeout > serverCeiling);
+        Assert.True(CardiTrackApiClient.HttpClientCeiling > CardiTrackApiClient.MemberChatSendTimeout);
     }
 
     [Fact]

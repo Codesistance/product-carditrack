@@ -72,7 +72,7 @@ public sealed class AlertSettingsChatActions
         }
 
         var planned = await _alertPlanner.PlanAsync(
-            NamePlaceholder.Redact(flattened, member?.Name) ?? flattened, questionsOnlyHistory, snapshot, ct);
+            NamePlaceholder.RedactMessageOrRefuse(flattened, member?.Name), questionsOnlyHistory, snapshot, ct);
 
         var plan = planned.Result;
         if (plan.Name is { } givenName)

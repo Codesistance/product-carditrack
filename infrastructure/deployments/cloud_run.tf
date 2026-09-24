@@ -123,6 +123,17 @@ variable "cloud_run_max_instances" {
   default     = 10
 }
 
+variable "api_request_timeout_seconds" {
+  description = "Cloud Run request timeout for the API service. Must outlast the slowest call the API waits on (a MedGemma generation), and must sit below the mobile app's member-chat send timeout."
+  type        = number
+  default     = 300
+
+  validation {
+    condition     = var.api_request_timeout_seconds >= 1 && var.api_request_timeout_seconds <= 3600
+    error_message = "api_request_timeout_seconds must be between 1 and 3600 (Cloud Run's ceiling)."
+  }
+}
+
 variable "cloud_run_labels" {
   description = "Labels for Cloud Run services"
   type        = map(string)
@@ -239,6 +250,13 @@ resource "google_cloud_run_v2_service" "api" {
       min_instance_count = var.cloud_run_min_instances
       max_instance_count = var.cloud_run_max_instances
     }
+
+    # Explicit, not the platform's 300s default. A member-chat send waits on a MedGemma generation
+    # the API allows up to AI:Private:TimeoutSeconds for; left at 300s, Cloud Run could end the
+    # request with a 504 while that call was still inside its own budget. The caller passes
+    # medgemma_timeout_seconds + 60 — the "outer layer outlasts the inner one" rule the MedGemma
+    # service applies (common/cloud_run.tf) — and the app's send timeout sits a further step out.
+    timeout = "${var.api_request_timeout_seconds}s"
   }
 
   labels = var.cloud_run_labels

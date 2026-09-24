@@ -81,6 +81,14 @@ the shared string in `TelemetryNames` (CardiTrack.Shared).
   the truncation error asks for before anyone raises `MaxOutputTokens` or `ContextTokens`
   (a reply filling the whole ceiling is usually a model that did not stop, and raising the
   ceiling costs every other read on the slot). Bounded cardinality: the values are type names.
+- **Which answer it fed (member chat)** — the chat send's own request span carries
+  `chat.route_source` (`router`, `triage_fallback`, `refused`, `no_question`,
+  `journal_resume`, `pending_confirmation`), `chat.routed` / `chat.runner_up` (the router's
+  answer, before the dispatch rules act on it) and `chat.workflow` (what actually answered),
+  all catalogue labels or fixed constants (`MemberChatTelemetry`). Together with the
+  per-call `carditrack.ai.reply_schema` a trace reads end to end: which calls ran and what
+  they decided. `@chat.workflow:clarify` over all sends is the clarify rate the routing design
+  turns on ([member_chat_routing.md](./member_chat_routing.md) §8).
 - **Log line** — one Information completion log per call (model, elapsed ms, token
   counts, done_reason, Ollama server-side timings, trace id), enabled by the Serilog
   override `CardiTrack.Infrastructure.ExternalClients.Medical → Information` in the API

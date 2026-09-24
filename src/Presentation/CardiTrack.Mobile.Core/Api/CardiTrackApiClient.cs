@@ -357,17 +357,24 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// <summary>
     /// How long a member-chat send may run before the app hangs up. The clinical read is the one
     /// call in this chain that can't move off the self-hosted MedGemma instance, so this has to
-    /// outlast that call's own server-side ceiling — AI:Private:TimeoutSeconds (900s as of the
-    /// concurrency fix in cloud_run.tf: a single-instance Ollama admits one request at a time, so
-    /// a queued-behind-another-caller generation can legitimately take close to the full 900s
-    /// before returning). The previous 180s was set from "observed dev sends run one to two
-    /// minutes" before that contention was diagnosed, and could — and did — cut a caller off
-    /// while the server was still working: giving up here doesn't stop the generation, it just
-    /// means nobody is listening for the answer it produces. Same "the outer layer must outlast
-    /// the inner one by a margin" rule Terraform applies to the Cloud Run request timeout
-    /// (medgemma_timeout_seconds + 60s), applied one layer further out.
+    /// outlast the server's own ceiling for the whole request. That ceiling is the API's Cloud Run
+    /// request timeout, which Terraform derives as AI:Private:TimeoutSeconds + 60 (900 + 60 = 960s)
+    /// so that a queued-behind-another-caller generation — a single-instance Ollama admits one
+    /// request at a time — can legitimately take close to its full 900s and still be answered.
+    /// This sits one more minute out, the same "the outer layer must outlast the inner one by a
+    /// margin" rule applied at every layer: giving up first here doesn't stop the generation, it
+    /// just means nobody is listening for the answer it produces.
     /// </summary>
-    private static readonly TimeSpan MemberChatSendTimeout = TimeSpan.FromSeconds(960);
+    public static readonly TimeSpan MemberChatSendTimeout = TimeSpan.FromSeconds(1020);
+
+    /// <summary>
+    /// The value for <see cref="HttpClient.Timeout"/>. That timeout is a hard, client-wide ceiling
+    /// that a per-request <see cref="TimeoutHandler"/> budget can only shorten, never extend, so it
+    /// has to sit above the slowest request this client makes. Derived from the send timeout
+    /// rather than restated: when it was a separate literal (190s) it silently capped the
+    /// member-chat send at a fifth of its intended budget.
+    /// </summary>
+    public static readonly TimeSpan HttpClientCeiling = MemberChatSendTimeout + TimeSpan.FromSeconds(30);
 
     public async Task<MemberChatMessageResponse> SendMemberChatMessageAsync(
         Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default)

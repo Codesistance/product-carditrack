@@ -89,6 +89,28 @@ public partial class MemberChatPage : ContentView
         // No OnAppearing on a ContentView — the host adds this to its tree only at the moment
         // it's shown (see MemberChatLauncher), so construction time is the right time to load.
         _loadTask = LoadAsync();
+
+        // Opening chat is the strongest signal there is that a clinical read is about to be
+        // needed. The login-time warm-up (PostLoginRouter) has usually long lapsed by now — the
+        // medical model scales to zero after idle, and a send that finds it cold waited over a
+        // minute (66 s observed in dev) for the load alone. The API debounces repeats, so
+        // reopening the sheet costs nothing extra.
+        _ = WarmAssistantAsync();
+    }
+
+    private async Task WarmAssistantAsync()
+    {
+        try
+        {
+            await _api.PrepareAssistantAsync();
+        }
+        catch (Exception)
+        {
+            // Invisible to the caregiver by design, like the login-time call: an offline open is
+            // ordinary, and a send that follows is what reports a real problem. Started
+            // fire-and-forget, so the catch is also what keeps it from surfacing as an
+            // unobserved task exception.
+        }
     }
 
     private void OnBackTapped(object? sender, EventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
