@@ -60,6 +60,8 @@ public partial class App : Microsoft.Maui.Controls.Application
         _returningToSignIn = true;
         try
         {
+            // First, so nothing more is sent under a session that has already ended.
+            DiagnosticsConsent.SignedOut();
             // DismissModalsAsync swallows its own failures, so the root still swaps when the
             // wizard refuses to come down — better a sign-in page behind a stuck modal than
             // no sign-in page at all.

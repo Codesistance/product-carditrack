@@ -8,11 +8,19 @@ namespace CardiTrack.Mobile.Services;
 
 /// <summary>
 /// Whether the app sends session telemetry (Datadog logs, network traces and RUM — views,
-/// errors, crash reports) about how it is running. On by default and disclosed in the Terms of
-/// Service and Privacy Policy the caregiver agrees to at sign-up; they can turn it off at any
-/// time in Settings → Privacy, and it takes effect at once.
+/// errors, crash reports) about how it is running. Off until a caregiver is signed in; from then
+/// on by default, as disclosed in the Terms of Service and Privacy Policy they agreed to and the
+/// one-time dashboard notice, and they can turn it off at any time in Settings → Privacy.
 /// </summary>
 /// <remarks>
+/// <para>
+/// Nothing is sent before sign-in. The UK statistical-purposes exception (PECR reg. 6 as amended
+/// by the Data (Use and Access) Act 2025) replaces consent with clear information and a simple
+/// way to object; before sign-in the caregiver has seen neither, and the switch is behind
+/// sign-in. Crashes on those screens are still caught by the error-log relay
+/// (<c>AppLogging</c>), which is fault detection — "strictly necessary" under the same Act —
+/// and not governed by this switch (docs/compliance/dpia.md A9, R-A8).
+/// </para>
 /// <para>
 /// The off state is <see cref="TrackingConsent.NotGranted"/>, not Pending. Pending would still
 /// collect and hold events on the device in the hope of a later yes — so a caregiver who turned
@@ -67,21 +75,47 @@ public static class DiagnosticsConsent
     public static void Set(bool granted)
     {
         Preferences.Default.Set(GrantedKey, granted);
-        Apply(granted);
+        Apply();
     }
 
     /// <summary>
-    /// Forgets the choice on sign-out and returns the SDK to the default. A caregiver's "off"
-    /// is theirs, not the phone's: the next person to sign in here gets the documented default
-    /// and their own switch, not a setting somebody else chose.
+    /// Whether a caregiver is signed in on this run. Only ever set on the main thread. A property
+    /// rather than a field: on targets without the SDK nothing reads it, and a field would warn.
+    /// </summary>
+    private static bool IsSignedIn { get; set; }
+
+    /// <summary>
+    /// A caregiver is signed in: from here their stored choice (on unless they turned it off)
+    /// applies. Called by <see cref="PostLoginRouter"/>, which every kind of sign-in passes through.
+    /// </summary>
+    public static void SignedIn()
+    {
+        IsSignedIn = true;
+        Apply();
+    }
+
+    /// <summary>
+    /// The session ended without the Settings sign-out — it expired. Stops collection until the
+    /// next sign-in; the caregiver's stored choice is left alone, since they did not sign out.
+    /// </summary>
+    public static void SignedOut()
+    {
+        IsSignedIn = false;
+        Apply();
+    }
+
+    /// <summary>
+    /// Forgets the choice on sign-out and stops collection until the next sign-in. A caregiver's
+    /// "off" is theirs, not the phone's: the next person to sign in here gets the documented
+    /// default and their own switch, not a setting somebody else chose.
     /// </summary>
     public static void Clear()
     {
         Preferences.Default.Remove(GrantedKey);
-        Apply(DefaultGranted);
+        SignedOut();
     }
 
-    private static void Apply(bool granted)
+    private static void Apply()
     {
 #if ANDROID || IOS
         // Nothing was initialised when ApmEngine/ApmData are unset or malformed, and the
@@ -92,7 +126,7 @@ public static class DiagnosticsConsent
 
         try
         {
-            DdSdk.SetTrackingConsent(granted ? TrackingConsent.Granted : TrackingConsent.NotGranted);
+            DdSdk.SetTrackingConsent(IsSignedIn && IsGranted ? TrackingConsent.Granted : TrackingConsent.NotGranted);
         }
         catch (Exception ex)
         {

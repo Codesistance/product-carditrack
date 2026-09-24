@@ -348,10 +348,10 @@ Consequences:
 
 Notes: the app's Android minimum is API 31 today (raised for the splash-screen API);
 Datadog and Firebase themselves only require API 23. `Site` defaults to
-`Eu1` when omitted; tracking consent starts at `Granted` (on by default since 2026-09-24) and
-drops to `NotGranted` when the caregiver turns off Settings → Privacy → **Send session
+`Eu1` when omitted; tracking consent starts at `NotGranted`, is raised at sign-in to `Granted`
+(on by default since 2026-09-24; nothing is sent before sign-in) and drops to `NotGranted` when the caregiver turns off Settings → Privacy → **Send session
 telemetry** (`DiagnosticsConsent`, which also calls `DdSdk.SetTrackingConsent` so the change
-lands without a restart; sign-out removes the stored choice and returns to the default). A
+lands without a restart; sign-out or session expiry drops it to `NotGranted` until the next sign-in). A
 device with the toggle off ships no logs, traces or RUM sessions at all — when mobile telemetry is
 missing from Datadog, check the toggle on the device before suspecting the stamping. The app sets
 `FirstPartyHosts` for the API host with Datadog + W3C `traceparent` tracing headers, so

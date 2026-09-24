@@ -49,6 +49,11 @@ public sealed class PostLoginRouter
         if (await OfferedToCancelDeletionAsync(current, ct))
             return;
 
+        // Past the deletion gate, so an account that is only here to cancel its deletion is not
+        // counted as a session. Every sign-in comes through here, which makes this the one place
+        // session telemetry learns someone is signed in; nothing is sent before it.
+        DiagnosticsConsent.SignedIn();
+
         OnboardingStatusResponse status;
         try
         {
