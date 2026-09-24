@@ -7,27 +7,42 @@ using Datadog.Maui.Configuration;
 namespace CardiTrack.Mobile.Services;
 
 /// <summary>
-/// Whether the caregiver has agreed to send diagnostics (crash-adjacent logs and network
-/// traces) to Datadog. Opt-in: off until they turn it on in Settings, and off again for
-/// the next caregiver who signs in on the same phone.
+/// Whether the app sends session telemetry (Datadog logs, network traces and RUM — views,
+/// errors, crash reports) about how it is running. On by default and disclosed in the Terms of
+/// Service and Privacy Policy the caregiver agrees to at sign-up; they can turn it off at any
+/// time in Settings → Privacy, and it takes effect at once.
 /// </summary>
 /// <remarks>
-/// The off state is <see cref="TrackingConsent.NotGranted"/>, not Pending. Pending would
-/// still collect and hold events on the device in the hope of a later yes — which is
-/// collection without consent, exactly what an opt-in toggle is supposed to prevent. The
-/// cost is that diagnostics from before the toggle was turned on are never recoverable,
-/// which is the right trade for a health app.
+/// <para>
+/// The off state is <see cref="TrackingConsent.NotGranted"/>, not Pending. Pending would still
+/// collect and hold events on the device in the hope of a later yes — so a caregiver who turned
+/// it off would still be recorded, which is not what "off" means.
+/// </para>
+/// <para>
+/// The stored value is only ever the caregiver's objection: absent means the default (on), and
+/// sign-out removes it so one caregiver's choice is not inherited by — or imposed on — the next
+/// person to sign in on the same phone. Nothing the SDK is handed carries health data, and
+/// Session Replay is not enabled (<see cref="MobileApm"/>).
+/// </para>
 /// </remarks>
 public static class DiagnosticsConsent
 {
-    /// <summary>Preference key. Absent means not granted — the toggle ships off.</summary>
+    /// <summary>Preference key. Absent means the default applies.</summary>
     public const string GrantedKey = "DiagnosticsConsentGranted";
 
     /// <summary>
-    /// Reads the stored choice, defaulting to no. Guarded because the first read happens inside
-    /// <c>MauiProgram.CreateMauiApp</c> — before the app is built — and a platform preference
-    /// store that is not ready there would otherwise take the whole app down over a setting.
-    /// Unreadable falls to no, which is the safe direction: it under-collects, never over-.
+    /// On unless the caregiver has turned it off. Disclosed in the Terms of Service and the
+    /// Privacy Policy, with Settings → Privacy as the way out.
+    /// </summary>
+    public const bool DefaultGranted = true;
+
+    /// <summary>
+    /// Reads the stored choice, falling back to <see cref="DefaultGranted"/>. Guarded because the
+    /// first read happens inside <c>MauiProgram.CreateMauiApp</c> — before the app is built — and
+    /// a platform preference store that is not ready there would otherwise take the whole app
+    /// down over a setting. Unreadable falls to no rather than the default: a store we cannot
+    /// read might be holding a caregiver's "off", and honouring an objection we cannot see beats
+    /// overriding one.
     /// </summary>
     public static bool IsGranted
     {
@@ -35,7 +50,7 @@ public static class DiagnosticsConsent
         {
             try
             {
-                return Preferences.Default.Get(GrantedKey, false);
+                return Preferences.Default.Get(GrantedKey, DefaultGranted);
             }
             catch (Exception ex)
             {
@@ -56,13 +71,14 @@ public static class DiagnosticsConsent
     }
 
     /// <summary>
-    /// Forgets the choice on sign-out and stops collection immediately. The next caregiver
-    /// on this phone is asked afresh rather than inheriting a yes they never gave.
+    /// Forgets the choice on sign-out and returns the SDK to the default. A caregiver's "off"
+    /// is theirs, not the phone's: the next person to sign in here gets the documented default
+    /// and their own switch, not a setting somebody else chose.
     /// </summary>
     public static void Clear()
     {
         Preferences.Default.Remove(GrantedKey);
-        Apply(false);
+        Apply(DefaultGranted);
     }
 
     private static void Apply(bool granted)

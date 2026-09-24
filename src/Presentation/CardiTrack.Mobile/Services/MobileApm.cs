@@ -126,8 +126,8 @@ public static class MobileApm
             {
                 ClientToken = clientToken,
                 Environment = AppConfig.EnvironmentName,
-                // Opt-in: nothing is collected until the caregiver turns diagnostics on in
-                // Settings, and DiagnosticsConsent.Set flips this at runtime from there.
+                // On by default (disclosed in the Terms and Privacy Policy); the caregiver can turn
+                // it off in Settings, and DiagnosticsConsent.Set flips this at runtime from there.
                 TrackingConsent = DiagnosticsConsent.IsGranted
                     ? TrackingConsent.Granted
                     : TrackingConsent.NotGranted,

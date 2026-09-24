@@ -612,8 +612,8 @@ public partial class SettingsPage : ContentPage
             // it was confirmed, and the next caregiver on this phone must be asked afresh.
             Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey);
             Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
-            // Consent is the person's, not the phone's: stop collecting now, and make the next
-            // caregiver who signs in here say yes for themselves.
+            // The choice is the person's, not the phone's: the next caregiver who signs in here
+            // gets the documented default and their own switch, not this one's "off".
             DiagnosticsConsent.Clear();
             // Holds a name, DOB and medical notes — must not survive into the next session.
             await _drafts.ClearAsync();
