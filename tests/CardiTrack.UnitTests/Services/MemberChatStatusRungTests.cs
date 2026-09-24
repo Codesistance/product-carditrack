@@ -143,9 +143,97 @@ public class MemberChatStatusRungTests
             reply.Reply.IndexOf("70 bpm", StringComparison.Ordinal)
             < reply.Reply.IndexOf("Steps are lower", StringComparison.Ordinal),
             "the reading the caregiver asked about has to come before a caption about another one.");
-        Assert.Contains("On the whole: Settling — Steps are lower today than yesterday.", reply.Reply, StringComparison.Ordinal);
+        Assert.EndsWith("yesterday it was 68 bpm. Steps are lower today than yesterday.", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("On the whole", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("Settling", reply.Reply, StringComparison.Ordinal);
         await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
     }
+
+    /// <summary>
+    /// The conversation remembers the caption: an earlier reply that carried it — stored with the
+    /// member's name in it, recalled with the name redacted — keeps the next status answer from
+    /// closing on the same sentence again.
+    /// </summary>
+    [Fact]
+    public async Task ACaptionAnEarlierReplyCarried_IsNotAppendedAgain()
+    {
+        RouteStatus(StatusMetric.Steps);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        StatusLineIs("Moses's heart rate is up today.", TimeSpan.FromHours(1));
+        ReadingsAre(new ActivityLog { Date = today, Steps = 3000, SleepMinutes = 300 });
+
+        var session = new MemberChatSession
+        {
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddMinutes(-3),
+            LastTurnAtUtc = DateTime.UtcNow.AddMinutes(-2),
+        };
+        session.Turns.Add(new MemberChatTurn
+        {
+            SessionId = session.Id,
+            Role = ChatTurnRole.Assistant,
+            Content = PromptContextFactory.Encryption.Encrypt(
+                "The most recent sleep I have for Moses is 5h, last night. Moses's heart rate is up today."),
+            CreatedAtUtc = DateTime.UtcNow.AddMinutes(-2),
+        });
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(session);
+        _sessions.GetByIdWithTurnsAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "has he moved much?");
+
+        Assert.Equal("The most recent step count I have for Moses is 3,000 steps, today so far.", reply.Reply);
+    }
+
+    /// <summary>
+    /// Only the app's own replies count as having said the caption: a caregiver who quotes it has
+    /// not been shown it, so the answer still carries it.
+    /// </summary>
+    [Fact]
+    public async Task ACaptionTheCaregiverQuoted_IsStillAppended()
+    {
+        RouteStatus(StatusMetric.Steps);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        StatusLineIs("Moses's heart rate is up today.", TimeSpan.FromHours(1));
+        ReadingsAre(new ActivityLog { Date = today, Steps = 3000 });
+
+        var session = new MemberChatSession
+        {
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddMinutes(-3),
+            LastTurnAtUtc = DateTime.UtcNow.AddMinutes(-2),
+        };
+        session.Turns.Add(new MemberChatTurn
+        {
+            SessionId = session.Id,
+            Role = ChatTurnRole.User,
+            Content = PromptContextFactory.Encryption.Encrypt("My sister said Moses's heart rate is up today?"),
+            CreatedAtUtc = DateTime.UtcNow.AddMinutes(-2),
+        });
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(session);
+        _sessions.GetByIdWithTurnsAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "has he moved much?");
+
+        Assert.EndsWith("today so far. Moses's heart rate is up today.", reply.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// "Said" means said as a sentence of its own. A reply that mentions the same words inside
+    /// another sentence has not shown the caption, so it is not treated as a repeat.
+    /// </summary>
+    [Theory]
+    [InlineData("The most recent sleep I have is 5h. His heart rate is up today.", true)]
+    [InlineData("His heart rate is up today and he slept 5h.", false)]
+    [InlineData("his heart rate is up today", true)]
+    [InlineData("Steps first.\nHis heart rate is up today…", true)]
+    [InlineData("I can't tell whether his heart rate is up today.", false)]
+    [InlineData("I can't tell whether his heart rate is up today or not.", false)]
+    public void ACaptionCountsAsSaid_OnlyAsASentenceOfItsOwn(string earlierReply, bool expected) =>
+        Assert.Equal(expected, MemberChatReplies.ContainsSentence(earlierReply, "His heart rate is up today."));
 
     /// <summary>
     /// "His specific measurements" is a request for the figures, not for the sentence that
@@ -221,8 +309,52 @@ public class MemberChatStatusRungTests
         var aboutHeart = MemberChatReplies.StatusReply(
             "Dad", StatusMetric.RestingHeartRate, allReadings: false, line, readings, today);
 
-        Assert.DoesNotContain("On the whole", aboutSteps, StringComparison.Ordinal);
-        Assert.Contains("On the whole: Steps are lower today than yesterday.", aboutHeart, StringComparison.Ordinal);
+        Assert.DoesNotContain("Steps are lower", aboutSteps, StringComparison.Ordinal);
+        Assert.EndsWith("70 bpm, today so far. Steps are lower today than yesterday.", aboutHeart, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Any mention counts, not just the caption's first reading. A caption led by heart rate that
+    /// goes on to say the member slept very little restated the sleep figure a sleep answer had
+    /// just given (2026-09-24), because only its leading reading was compared.
+    /// </summary>
+    [Fact]
+    public void ACaptionThatMentionsTheAskedReadingAnywhere_IsNotAppended()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var line = new MemberStatusLine
+        {
+            Headline = "Elevated heart rate and short sleep",
+            Message = "His heart rate is up today, and he slept very little last night.",
+        };
+        var readings = new[] { new ActivityLog { Date = today, SleepMinutes = 194, Steps = 3000 } };
+
+        var aboutSleep = MemberChatReplies.StatusReply(
+            "Dad", StatusMetric.Sleep, allReadings: false, line, readings, today);
+
+        Assert.Equal("The most recent sleep I have for Dad is 3h 14m, last night.", aboutSleep);
+    }
+
+    /// <summary>
+    /// A caption this conversation has already shown is not appended again: asked about sleep
+    /// and then about activity, the same sentence closed both answers word for word (2026-09-24).
+    /// Without a metric the readings answer instead of the caption.
+    /// </summary>
+    [Fact]
+    public void ACaptionAlreadySaid_IsNotRepeated()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var line = new MemberStatusLine { Message = "His heart rate is up today." };
+        var readings = new[] { new ActivityLog { Date = today, Steps = 3000 } };
+
+        var aboutSteps = MemberChatReplies.StatusReply(
+            "Dad", StatusMetric.Steps, allReadings: false, line, readings, today, captionAlreadySaid: true);
+        var aboutTheDay = MemberChatReplies.StatusReply(
+            "Dad", namedMetric: null, allReadings: false, line, readings, today, captionAlreadySaid: true);
+
+        Assert.DoesNotContain("heart rate is up", aboutSteps, StringComparison.Ordinal);
+        Assert.DoesNotContain("heart rate is up", aboutTheDay, StringComparison.Ordinal);
+        Assert.StartsWith("The most recent readings I have for Dad", aboutTheDay, StringComparison.Ordinal);
     }
 
     /// <summary>Sleep belongs to the morning it ended on, so today's row is last night.</summary>
@@ -320,7 +452,7 @@ public class MemberChatStatusRungTests
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "How are they doing today?");
 
-        Assert.StartsWith("Settling — Winding down for the night.", reply.Reply, StringComparison.Ordinal);
+        Assert.StartsWith("Winding down for the night.", reply.Reply, StringComparison.Ordinal);
         Assert.Contains("4,905 steps", reply.Reply, StringComparison.Ordinal);
         Assert.Contains("a resting heart rate of 70 bpm", reply.Reply, StringComparison.Ordinal);
         Assert.Contains("today so far", reply.Reply, StringComparison.Ordinal);
@@ -340,7 +472,7 @@ public class MemberChatStatusRungTests
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "How are they doing today?");
 
-        Assert.StartsWith("Settling — Winding down for the night.", reply.Reply, StringComparison.Ordinal);
+        Assert.StartsWith("Winding down for the night.", reply.Reply, StringComparison.Ordinal);
         Assert.Contains("don't have any recent readings for Moses", reply.Reply, StringComparison.Ordinal);
     }
 
@@ -478,7 +610,10 @@ public class MemberChatStatusRungTests
         var reply = MemberChatReplies.StatusLineReply(
             "Dad", line, [new ActivityLog { Date = today, Steps = 812, RestingHeartRate = 68 }], today);
 
-        Assert.StartsWith("Quieter than usual — Steps are very low today.", reply, StringComparison.Ordinal);
+        // The sentence, not the headline: glued in front of it the dashboard's title read as a
+        // title, a dash and a capital mid-sentence (2026-09-24).
+        Assert.StartsWith("Steps are very low today. The most recent readings", reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("Quieter than usual", reply, StringComparison.Ordinal);
         Assert.Contains("today so far: 812 steps and a resting heart rate of 68 bpm", reply, StringComparison.Ordinal);
     }
 

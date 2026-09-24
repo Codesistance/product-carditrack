@@ -336,7 +336,9 @@ internal static partial class MedicalPromptBlocks
         + " for he or she, " + PronounPlaceholder.Object + " for him or her, and "
         + PronounPlaceholder.Possessive + " for his or her."
         + " They stand in for words you are not given, exactly as the name does, and no other"
-        + " pronoun for the person is right." + NL;
+        + " pronoun for the person is right."
+        + " " + PronounPlaceholder.Subject + " is one person: give its verb the form he or she takes ("
+        + PronounPlaceholder.Subject + " walks, does, has, is, was)." + NL;
 
     /// <summary>The caregiver register's voice line: who is writing, and in whose words.</summary>
     internal const string RegisterCaregiverVoice =

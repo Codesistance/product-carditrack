@@ -95,6 +95,15 @@ internal static partial class PronounPlaceholder
         if (WordsFor(gender, firstName) is not { } words)
             return text;
 
+        // Every word this resolves to is singular — he, she, or the name — but the token is spelled
+        // "They", and a model writing it reaches for the verb that goes with "they": "than
+        // CardiTrackCardiMemberThey typically do" became "than he typically do" in front of a
+        // caregiver (2026-09-24). The auxiliaries are fixed here, before the swap, while the token
+        // still marks exactly which verbs belong to the member; a lexical verb ("they walk") has
+        // no rule code can apply safely, so the brief asks for the singular form as well.
+        text = SubjectVerbPattern().Replace(text, match =>
+            match.Groups["lead"].Value + Singular(match.Groups["verb"].Value));
+
         return TokenPattern().Replace(text, match =>
         {
             var word = match.Groups["form"].Value.ToUpperInvariant() switch
@@ -157,6 +166,24 @@ internal static partial class PronounPlaceholder
         return true;
     }
 
+    /// <summary>The singular form of a plural auxiliary, keeping the apostrophe the model used.</summary>
+    private static string Singular(string verb)
+    {
+        var apostrophe = verb.Contains('’') ? "’" : "'";
+        return verb.ToLowerInvariant().Replace('’', '\'') switch
+        {
+            "do" => "does",
+            "have" => "has",
+            "are" => "is",
+            "were" => "was",
+            "don't" => $"doesn{apostrophe}t",
+            "haven't" => $"hasn{apostrophe}t",
+            "aren't" => $"isn{apostrophe}t",
+            "weren't" => $"wasn{apostrophe}t",
+            _ => verb,
+        };
+    }
+
     private static string Capitalise(string word) =>
         word.Length == 0 ? word : char.ToUpperInvariant(word[0]) + word[1..];
 
@@ -191,6 +218,15 @@ internal static partial class PronounPlaceholder
         @"CardiTrack[\s_-]*Cardi[\s_-]*Member[_-]*(?<form>They|Them|Their)(?:['’]s)?\b(?!['’])",
         RegexOptions.IgnoreCase)]
     private static partial Regex TokenPattern();
+
+    /// <summary>
+    /// The subject token, then at most one adverb ("typically", "usually", "also", "still"), then a
+    /// plural auxiliary. Captured as <c>lead</c> (token and gap, kept as written) and <c>verb</c>.
+    /// </summary>
+    [GeneratedRegex(
+        @"(?<lead>CardiTrack[\s_-]*Cardi[\s_-]*Member[_-]*They\b(?!['’])\s+(?:(?:\w+ly|also|still|often|never|always|just)\s+)?)(?<verb>don['’]t|haven['’]t|aren['’]t|weren['’]t|do|have|are|were)\b",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex SubjectVerbPattern();
 
     /// <summary>
     /// What a leftover looks like: the token in any shape at all, whatever follows it. See

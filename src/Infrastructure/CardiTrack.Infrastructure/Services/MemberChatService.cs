@@ -1089,7 +1089,7 @@ public class MemberChatService : IMemberChatService
             MemberChatWorkflow.Status when aboutThisMoment =>
                 await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow, ct),
             MemberChatWorkflow.Status =>
-                await AnswerStatusLineAsync(route, triageUsage, cardiMemberId, member, utcNow, ct),
+                await AnswerStatusLineAsync(route, triageUsage, cardiMemberId, member, history, utcNow, ct),
             // The row already read above when advise was a clarify candidate; a direct route to
             // advise reads it here instead — once, either way.
             MemberChatWorkflow.Advise =>
@@ -1423,6 +1423,7 @@ public class MemberChatService : IMemberChatService
         AiUsage triageUsage,
         Guid cardiMemberId,
         CardiMember? member,
+        ChatHistory history,
         DateTime utcNow,
         CancellationToken ct)
     {
@@ -1431,8 +1432,14 @@ public class MemberChatService : IMemberChatService
         var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
         var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
 
+        // The earlier replies are name-redacted, so the caption is redacted the same way before
+        // looking for it — as a sentence of its own, not a phrase inside another one.
+        var captionAlreadySaid = line is not null && history.EarlierReplies is { } earlier
+            && NamePlaceholder.Redact(line.Message, member?.Name) is { } redacted
+            && earlier.Value.Any(reply => MemberChatReplies.ContainsSentence(reply, redacted));
+
         var reply = MemberChatReplies.StatusReply(
-            name, route.NamedMetric, route.AllReadings, line, recent, today);
+            name, route.NamedMetric, route.AllReadings, line, recent, today, captionAlreadySaid);
 
         return new MemberChatWorkflowResult
         {
@@ -1932,6 +1939,17 @@ public class MemberChatService : IMemberChatService
         if (turns is not { Count: > 0 })
             return new ChatHistory(null, null);
 
+        // Every reply this conversation has shown, not just the recalled window and never the
+        // caregiver's own words: what the app has already said is a fact about its replies, and
+        // a caregiver quoting a caption has not been shown it. Code reads this; no prompt does.
+        // Lazy, because only the status rung reads it and a long conversation is a lot to decrypt
+        // for every other message.
+        var allTurns = withTurns!.Turns;
+        var earlierReplies = new Lazy<IReadOnlyList<string>>(() => allTurns
+            .Where(t => t.Role == ChatTurnRole.Assistant)
+            .Select(t => NamePlaceholder.Redact(Reveal(t.Content), memberName) ?? string.Empty)
+            .ToList());
+
         var lastAssistant = turns.LastOrDefault(t => t.Role == ChatTurnRole.Assistant);
         var lastAssistantWasClarify = lastAssistant?.Workflow == MemberChatWorkflow.Clarify;
 
@@ -1958,7 +1976,7 @@ public class MemberChatService : IMemberChatService
 
         return new ChatHistory(
             Block(questionsOnly: false), Block(questionsOnly: true), lastAssistantWasClarify,
-            pendingChange, pendingTurnId);
+            pendingChange, pendingTurnId, earlierReplies);
     }
 
     /// <summary>
@@ -2001,7 +2019,8 @@ public class MemberChatService : IMemberChatService
         string? QuestionsOnly,
         bool LastAssistantWasClarify = false,
         PendingAlertChange? PendingChange = null,
-        Guid? PendingTurnId = null);
+        Guid? PendingTurnId = null,
+        Lazy<IReadOnlyList<string>>? EarlierReplies = null);
 
     private static string BuildMaliciousCheckPrompt(string question, string? historyBlock) =>
         historyBlock is null
