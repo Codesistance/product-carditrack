@@ -306,17 +306,17 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - Auto-resume with reminder
   - Easy reactivation
 
-**Story 7.4: Telemetry Consent** _(P1 — shipped: Settings toggle, default off)_
+**Story 7.4: Telemetry Consent** _(P1 — shipped: Settings toggle, on by default with an opt-out since 2026-09-24)_
 - **As an** app user
 - **I want to** control whether crash reports and usage telemetry are collected from my device
-- **So that** monitoring my family doesn't mean being monitored myself without consent
-- **Current state (shipped):** Datadog telemetry is **logs, traces and RUM** (views, errors, crash reports — no action or resource tracking); crashes/ANRs also come from Play Console vitals. Consent is **opt-in and off by default**: the SDK initialises at `TrackingConsent.NotGranted` and is raised to `Granted` only by Settings → Privacy → **Send diagnostics**.
-- **Why it matters:** honours the "consent-first" design principle (Principle 4) and the transparency framing of Story 7.1; opt-in analytics consent is also what a store review asks for.
+- **So that** monitoring my family doesn't mean being monitored myself without knowing it or being able to say no
+- **Current state (shipped):** Datadog telemetry is **logs, traces and RUM** (views, errors, crash reports — no action or resource tracking); crashes/ANRs also come from Play Console vitals. Since 2026-09-24 it is **on by default with an always-available opt-out** (opt-in 2026-09-14 → 2026-09-24): the SDK initialises at `TrackingConsent.Granted`, it is disclosed in the Terms of Service and Privacy Policy, and Settings → Privacy → **Send session telemetry** drops it to `NotGranted` at once. No user identity is attached.
+- **Why it matters:** this is no longer consent-first (Principle 4) — it rests on transparency (Story 7.1's framing, the Terms and Privacy Policy) and an opt-out that is always one tap away in Settings; the caregiver can still say no, and "off" is a real off. The lawful basis for the default is pending legal confirmation (DPIA R-A8).
 - **Acceptance Criteria:**
-  - ✅ Settings toggle to opt in to diagnostics, defaulting off, saying in one line what is sent and that health data is not
+  - ✅ Settings toggle for session telemetry, on by default and switchable off at any time, saying in one line what is sent and that health data is not
   - ✅ Log and trace shipping respects the stored consent state, and a change applies without restarting the app
-  - ✅ Sign-out forgets the choice, so the next caregiver on the same phone is asked afresh
-  - ⬜ Telemetry disclosure during onboarding or first run — still open; today the toggle is the only surface
+  - ✅ Sign-out forgets the choice and returns to the default, so one caregiver's "off" is not inherited by the next caregiver on the same phone
+  - ⬜ Telemetry disclosure during onboarding or first run — still open; today the Terms of Service, Privacy Policy and the Settings toggle are the only surfaces
 
 ---
 
@@ -691,7 +691,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 ### Future (Post-MVP)
 - [ ] Story 8.1-8.3: Enterprise features
 - [ ] Story 7.3: Pause monitoring
-- [ ] Story 7.4: Telemetry consent (flagged gap — currently granted by default with no UI)
+- [ ] Story 7.4: Telemetry consent (on by default with a Settings opt-out; in-app first-run notice still open)
 - [ ] Advanced ML features
 
 ---

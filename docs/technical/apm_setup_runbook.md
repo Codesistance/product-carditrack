@@ -335,11 +335,12 @@ Consequences:
   (That tracker is also what injects trace headers, so RUM does not link to API traces.)
 - Session sample rate is 100%. The data-protection ADR
   ([§7.4](data_protection_architecture.md#74-third-party-egress-controls)) asked for an
-  "operationally sufficient" rate when RUM last shipped without consent; sessions now exist
-  only for caregivers who opted in.
-- Everything the SDK ships waits for the caregiver's opt-in (notes below), so the API relay
-  in the next section stays the path for a crash that happens before anyone reaches the
-  toggle. The on-device Serilog file remains the fuller record: Settings → Privacy → **Share
+  "operationally sufficient" rate when RUM last shipped without consent; sessions are now on
+  by default (disclosed in the Terms of Service and Privacy Policy) and stop for any caregiver
+  who turns them off.
+- Everything the SDK ships stops when the caregiver turns the toggle off (notes below), so the
+  API relay in the next section stays the path for a crash on a device where it is off. The
+  on-device Serilog file remains the fuller record: Settings → Privacy → **Share
   app logs** gets it off the handset without a developer machine.
 - Debug builds set the SDK's verbosity to debug: logcat / the Xcode console then show each
   batch upload's status, which is the only way to see from a device that an intake accepted
@@ -347,17 +348,18 @@ Consequences:
 
 Notes: the app's Android minimum is API 31 today (raised for the splash-screen API);
 Datadog and Firebase themselves only require API 23. `Site` defaults to
-`Eu1` when omitted; tracking consent starts at `NotGranted` and is raised to `Granted` only
-when the caregiver turns on Settings → Privacy → **Send diagnostics** (`DiagnosticsConsent`,
-which also calls `DdSdk.SetTrackingConsent` so the change lands without a restart). A build
-with the toggle off ships no logs, traces or RUM sessions at all — when mobile telemetry is
+`Eu1` when omitted; tracking consent starts at `Granted` (on by default since 2026-09-24) and
+drops to `NotGranted` when the caregiver turns off Settings → Privacy → **Send session
+telemetry** (`DiagnosticsConsent`, which also calls `DdSdk.SetTrackingConsent` so the change
+lands without a restart; sign-out removes the stored choice and returns to the default). A
+device with the toggle off ships no logs, traces or RUM sessions at all — when mobile telemetry is
 missing from Datadog, check the toggle on the device before suspecting the stamping. The app sets
 `FirstPartyHosts` for the API host with Datadog + W3C `traceparent` tracing headers, so
 mobile spans join the API's OTel traces.
 
 ### Error logs reach Datadog through the API instead
 
-The SDK ships nothing until the caregiver opts in, so the app also relays its own
+The SDK ships nothing once the caregiver turns the toggle off, so the app also relays its own
 **Error-and-above** Serilog events —
 including the unhandled exception `AppLogging.HookUnhandledExceptions` writes just before the
 process dies — to `POST /api/v1/mobile/diagnostics/logs`. The API re-logs each entry and its
@@ -381,7 +383,7 @@ being written to our own logs. A 401 or 404 from the endpoint makes the app drop
 stop for the rest of the process (the build's key is not this environment's, or the environment
 has no relay); transport failures leave the queue for the next launch.
 
-**Not behind the Send diagnostics toggle.** That toggle governs the SDK's session telemetry and
+**Not behind the Send session telemetry toggle.** That toggle governs the SDK's session telemetry and
 lives in Settings, behind sign-in — the crash this exists for happens on the sign-in screen. The
 relay carries what a crash needs to be read and nothing about the person: the log line, the
 exception chain and frames, build and runtime identity, handset, current screen, thread and
