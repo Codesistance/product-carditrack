@@ -129,8 +129,8 @@ variable "api_request_timeout_seconds" {
   default     = 300
 
   validation {
-    condition     = var.api_request_timeout_seconds >= 1 && var.api_request_timeout_seconds <= 3600
-    error_message = "api_request_timeout_seconds must be between 1 and 3600 (Cloud Run's ceiling)."
+    condition     = floor(var.api_request_timeout_seconds) == var.api_request_timeout_seconds && var.api_request_timeout_seconds >= 1 && var.api_request_timeout_seconds <= 3600
+    error_message = "api_request_timeout_seconds must be a whole number between 1 and 3600 (Cloud Run's ceiling)."
   }
 }
 

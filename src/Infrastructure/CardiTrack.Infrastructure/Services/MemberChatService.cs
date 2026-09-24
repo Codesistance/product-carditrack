@@ -1644,6 +1644,15 @@ public class MemberChatService : IMemberChatService
         if (string.IsNullOrWhiteSpace(flattened))
             return FallbackWaitingSentences;
 
+        // The same DPIA A20 boundary as the send: this prompt carries the caregiver's own words,
+        // and "how is Moses sleeping?" names the member. With no name on file to redact against
+        // the canned lines stand in — waiting copy never fails, and never crosses unredacted.
+        var memberName = (await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId))?.Name;
+        if (!NamePlaceholder.CanRedactAgainst(memberName))
+            return FallbackWaitingSentences;
+        var forModel = NamePlaceholder.Redact(flattened, memberName) ?? flattened;
+        var firstName = NamePlaceholder.FirstName(memberName);
+
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
         budget.CancelAfter(WaitingSentencesBudget);
 
@@ -1653,12 +1662,14 @@ public class MemberChatService : IMemberChatService
                 {WaitingSentencesInstructions}
 
                 --- {MedicalPromptBlocks.ChatQuestionLabel} ---
-                {flattened}
+                {forModel}
                 """, budget.Token);
 
+            // A line that echoes the placeholder gets the first name back; one that still carries
+            // a form of it Resolve could not place is dropped rather than shown.
             var sentences = generated.Sentences
-                .Select(s => s?.Trim().ReplaceLineEndings(" "))
-                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => NamePlaceholder.Resolve(s?.Trim().ReplaceLineEndings(" "), firstName))
+                .Where(s => !string.IsNullOrWhiteSpace(s) && !NamePlaceholder.IsPresentIn(s))
                 .Select(s => s!.Length > MaxWaitingSentenceLength ? $"{s[..MaxWaitingSentenceLength]}…" : s)
                 .Take(WaitingSentenceCount)
                 .ToList();
