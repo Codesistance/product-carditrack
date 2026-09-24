@@ -86,18 +86,35 @@ public static class DiagnosticsConsent
         SessionChoice = granted;
         try
         {
-            Preferences.Default.Set(GrantedKey, granted);
-            // Always written, even with no identity (as TelemetryChoiceOwner.Unidentified): an
-            // empty owner means "saved before owners existed", which the next caregiver would adopt.
+            // Owner first: an owner stored without a choice is inert (no choice, nothing to
+            // adopt), whereas a choice stored without its owner reads as pre-owner legacy data
+            // and would be adopted by the next caregiver. Always written, even with no identity
+            // (as TelemetryChoiceOwner.Unidentified), for the same reason.
             Preferences.Default.Set(OwnerKey, CurrentOwner);
+            Preferences.Default.Set(GrantedKey, granted);
         }
         catch (Exception ex)
         {
             Log.Warning(ex, "DiagnosticsConsent: could not save the choice — applying it for this session only.");
+            // Leave no half-written pair behind for the next sign-in to misread.
+            TryRemoveStoredChoice();
         }
         finally
         {
             Apply();
+        }
+    }
+
+    private static void TryRemoveStoredChoice()
+    {
+        try
+        {
+            Preferences.Default.Remove(GrantedKey);
+            Preferences.Default.Remove(OwnerKey);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "DiagnosticsConsent: could not remove the stored choice.");
         }
     }
 
@@ -169,17 +186,10 @@ public static class DiagnosticsConsent
     /// </summary>
     public static void Clear()
     {
-        try
-        {
-            Preferences.Default.Remove(GrantedKey);
-            Preferences.Default.Remove(OwnerKey);
-        }
-        finally
-        {
-            // Whatever happened to the stored choice, collection stops now: a failed preference
-            // write must not leave the SDK sending after sign-out.
-            SignedOut();
-        }
+        // Never throws: sign-out calls this before ending the session, and a preference store
+        // that fails must not abort the sign-out. Collection stops regardless.
+        TryRemoveStoredChoice();
+        SignedOut();
     }
 
     private static void Apply()

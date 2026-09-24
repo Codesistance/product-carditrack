@@ -194,6 +194,9 @@ public sealed class PostLoginRouter
         {
             // Nothing else will load for them, so leaving them inside the app would be a worse
             // answer than the sign-in page they came from.
+            // Stop session telemetry first: this can run again during a live session (a retry),
+            // after an earlier pass already signed telemetry in.
+            await MainThread.InvokeOnMainThreadAsync(DiagnosticsConsent.SignedOut);
             await _auth.SignOutAsync();
             await MainThread.InvokeOnMainThreadAsync(() =>
                 WindowNavigation.SetRootPage(current, new NavigationPage(new SignInPage())));
@@ -208,6 +211,9 @@ public sealed class PostLoginRouter
         catch (ApiException ex)
         {
             await _popups.ShowWarningAsync(ex.Message, "Couldn't stop the deletion");
+            // Stop session telemetry first: this can run again during a live session (a retry),
+            // after an earlier pass already signed telemetry in.
+            await MainThread.InvokeOnMainThreadAsync(DiagnosticsConsent.SignedOut);
             await _auth.SignOutAsync();
             await MainThread.InvokeOnMainThreadAsync(() =>
                 WindowNavigation.SetRootPage(current, new NavigationPage(new SignInPage())));
