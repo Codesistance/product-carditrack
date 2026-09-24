@@ -59,6 +59,12 @@ public partial class AppPopupPage : ContentPage
     /// <summary>Completes when the popup is dismissed; true unless Cancel/back dismissed it.</summary>
     public Task<bool> Result => _result.Task;
 
+    /// <summary>
+    /// Whether one of the buttons closed it, as opposed to back, a scrim tap or the page being
+    /// taken away — for the callers where a Back is neither answer.
+    /// </summary>
+    public bool ClosedByButton { get; private set; }
+
     private static string Truncate(string message)
     {
         if (message.Length <= MaxMessageLength)
@@ -108,9 +114,19 @@ public partial class AppPopupPage : ContentPage
             await CloseAsync(true);
     }
 
-    private async void OnConfirmClicked(object? sender, EventArgs e) => await CloseAsync(true);
+    private async void OnConfirmClicked(object? sender, EventArgs e)
+    {
+        if (!_closing)
+            ClosedByButton = true;
+        await CloseAsync(true);
+    }
 
-    private async void OnCancelClicked(object? sender, EventArgs e) => await CloseAsync(false);
+    private async void OnCancelClicked(object? sender, EventArgs e)
+    {
+        if (!_closing)
+            ClosedByButton = true;
+        await CloseAsync(false);
+    }
 
     private async Task CloseAsync(bool confirmed)
     {

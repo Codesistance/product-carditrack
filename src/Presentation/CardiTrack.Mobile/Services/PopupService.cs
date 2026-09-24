@@ -299,6 +299,27 @@ public sealed class PopupService : IPopupService
             }
         });
 
+    public Task<bool?> AskInfoAsync(string message, string title, string confirmText, string cancelText) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return (bool?)null; // No window yet (early startup) — nothing to attach to.
+
+            var popup = new AppPopupPage(PopupSeverity.Info, title, message, confirmText, cancelText);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(popup, animated: false);
+                var confirmed = await popup.Result;
+                return popup.ClosedByButton ? confirmed : (bool?)null;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
     // Not static: the open count it keeps is this service's own state.
     private Task<bool> ShowAsync(PopupSeverity severity, string title, string message, string confirmText, string? cancelText) =>
         MainThread.InvokeOnMainThreadAsync(async () =>

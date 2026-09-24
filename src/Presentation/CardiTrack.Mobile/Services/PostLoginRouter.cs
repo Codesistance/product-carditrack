@@ -49,6 +49,11 @@ public sealed class PostLoginRouter
         if (await OfferedToCancelDeletionAsync(current, ct))
             return;
 
+        // Past the deletion gate, so an account that is only here to cancel its deletion is not
+        // counted as a session. Every sign-in comes through here, which makes this the one place
+        // session telemetry learns someone is signed in; nothing is sent before it.
+        DiagnosticsConsent.SignedIn(_auth.CurrentUserEmail);
+
         OnboardingStatusResponse status;
         try
         {
@@ -102,8 +107,13 @@ public sealed class PostLoginRouter
 
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
+            // Raised before the root swap, because the swap is what makes the dashboard appear:
+            // its OnAppearing can run before the shell's Loaded below, and has to see that a
+            // wizard is about to go up over it.
+            var resuming = route.ResumeDeviceSetup && root is AppShell;
+            DeviceSetupResumePending = resuming;
             WindowNavigation.SetRootPage(current, root);
-            if (!route.ResumeDeviceSetup || root is not AppShell shell)
+            if (!resuming || root is not AppShell shell)
                 return;
 
             // Push the wizard only once the shell is on screen — pushing a modal in the
@@ -184,6 +194,9 @@ public sealed class PostLoginRouter
         {
             // Nothing else will load for them, so leaving them inside the app would be a worse
             // answer than the sign-in page they came from.
+            // Stop session telemetry first: this can run again during a live session (a retry),
+            // after an earlier pass already signed telemetry in.
+            await MainThread.InvokeOnMainThreadAsync(DiagnosticsConsent.SignedOut);
             await _auth.SignOutAsync();
             await MainThread.InvokeOnMainThreadAsync(() =>
                 WindowNavigation.SetRootPage(current, new NavigationPage(new SignInPage())));
@@ -198,6 +211,9 @@ public sealed class PostLoginRouter
         catch (ApiException ex)
         {
             await _popups.ShowWarningAsync(ex.Message, "Couldn't stop the deletion");
+            // Stop session telemetry first: this can run again during a live session (a retry),
+            // after an earlier pass already signed telemetry in.
+            await MainThread.InvokeOnMainThreadAsync(DiagnosticsConsent.SignedOut);
             await _auth.SignOutAsync();
             await MainThread.InvokeOnMainThreadAsync(() =>
                 WindowNavigation.SetRootPage(current, new NavigationPage(new SignInPage())));
@@ -219,6 +235,14 @@ public sealed class PostLoginRouter
             _logger?.LogDebug(ex, "Preparing the assistant after login failed.");
         }
     }
+
+    /// <summary>
+    /// True from the moment a sign-in decides to reopen the device-setup wizard until that attempt
+    /// has finished. The wizard is pushed from the shell's Loaded event, which can arrive after the
+    /// dashboard has already appeared, so a screen that opens its own modal on arrival — the
+    /// telemetry notice — checks this as well as the modal stack. Main thread only.
+    /// </summary>
+    internal static bool DeviceSetupResumePending { get; private set; }
 
     private async Task ResumeDeviceSetupAsync(AppShell shell)
     {
@@ -245,6 +269,10 @@ public sealed class PostLoginRouter
             // Resuming device setup is best-effort: record it and leave the dashboard's
             // "Connect a device" card as the way in.
             _logger?.LogWarning(ex, "Resuming device setup after login failed.");
+        }
+        finally
+        {
+            DeviceSetupResumePending = false;
         }
     }
 }

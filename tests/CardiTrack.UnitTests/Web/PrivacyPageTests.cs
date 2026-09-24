@@ -26,4 +26,22 @@ public class PrivacyPageTests : BunitContext
         Assert.Contains("never computes the numbers", text);
         Assert.Contains("There is no low, medium, or high sensitivity setting yet", text);
     }
+
+    [Fact]
+    public void PrivacyPage_DisclosesDefaultOnAppTelemetry_AndHowToTurnItOff()
+    {
+        var cut = Render<Privacy>();
+        var text = string.Join(
+            ' ',
+            cut.FindAll("p").Select(p =>
+                string.Join(' ', p.TextContent.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))));
+
+        Assert.Contains("App diagnostics", cut.Markup);
+        Assert.Contains("on by default", text);
+        Assert.Contains("never includes health readings", text);
+        Assert.Contains("turn this off at any time", text);
+        Assert.Contains("Settings → Privacy → Send session telemetry", text);
+        Assert.Contains("match it to your account", text);
+        Assert.DoesNotContain("not linked to your account", text);
+    }
 }

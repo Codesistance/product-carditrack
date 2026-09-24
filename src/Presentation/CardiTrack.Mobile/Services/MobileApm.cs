@@ -126,23 +126,25 @@ public static class MobileApm
             {
                 ClientToken = clientToken,
                 Environment = AppConfig.EnvironmentName,
-                // Opt-in: nothing is collected until the caregiver turns diagnostics on in
-                // Settings, and DiagnosticsConsent.Set flips this at runtime from there.
-                TrackingConsent = DiagnosticsConsent.IsGranted
-                    ? TrackingConsent.Granted
-                    : TrackingConsent.NotGranted,
+                // Always off at startup: nobody is known to be signed in yet (silent sign-in runs
+                // later). DiagnosticsConsent.SignedIn raises it to their choice, on by default, and
+                // Settings flips it from there. Crashes before sign-in go through the error-log relay.
+                TrackingConsent = TrackingConsent.NotGranted,
                 Service = "carditrack-mobile",
                 Site = site,
                 // Datadog's crash reporting rides on RUM: without RUM there is nothing to carry
-                // the reports, and Play Console vitals is the source for crashes and ANRs.
+                // the reports, and Play Console vitals is the source for crashes and ANRs. Like the
+                // rest of the SDK it is off before sign-in, where the error-log relay covers
+                // managed crashes and Play Console vitals native ones.
                 NativeCrashReportEnabled = rumEnabled,
 #if DEBUG
                 // Each batch upload's status in logcat / the Xcode console — the only way to see
                 // from a device whether an intake accepted anything.
                 Verbosity = SdkVerbosity.DEBUG,
 #endif
-                // Marks our API as first-party so mobile spans join the API's OTel traces, via
-                // W3C traceparent headers.
+                // Marks our API as first-party, so a mobile request carrying W3C traceparent headers
+                // joins the API's OTel traces. The headers are injected by automatic resource
+                // tracking, which is off below, so the link is latent; the privacy copy allows for it.
                 FirstPartyHosts =
                 [
                     new FirstPartyHost

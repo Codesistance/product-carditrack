@@ -203,10 +203,11 @@
                 <Border Style="{StaticResource ElevatedCard}">
                     <VerticalStackLayout Spacing="10">
                         <Label Text="Privacy" Style="{StaticResource DashboardSectionTitle}"/>
-                        <!-- Diagnostics are opt-in and ship off. On, the app sends its own logs and
-                             network timings so a crash can be traced; it never sends health data —
-                             the monitoring SDK is handed none, and Session Replay is not enabled.
-                             Off is a real off: nothing is collected and held waiting for a yes. -->
+                        <!-- Session telemetry is on by default and disclosed in the Terms of Service
+                             and Privacy Policy. On, the app sends its own logs, network timings and
+                             screen views so a crash can be traced; it never sends health data — the
+                             monitoring SDK is handed none, and Session Replay is not enabled. Off is a
+                             real off, at any time: nothing is collected and held waiting for a yes. -->
                         <Label Text="What this phone says about how the app is running."
                                Style="{StaticResource Body2}"/>
                         <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
@@ -215,7 +216,7 @@
                                     <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
                                         <Label Text="Send session telemetry"
                                                Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
-                                        <Label Text="How the app behaves in a session you opted into — never health data. Crash reports from before sign-in still go through so a freeze on the login screen can be fixed."
+                                        <Label Text="On by default. Which screens you open, errors, crashes and how fast the app responds — never health data. Turn off any time. Crash reports from before sign-in still go through so a freeze on the login screen can be fixed."
                                                Style="{StaticResource Body2}" FontSize="13"
                                                LineBreakMode="WordWrap"/>
                                     </VerticalStackLayout>

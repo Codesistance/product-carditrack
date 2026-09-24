@@ -58,7 +58,7 @@ public static class AppLogging
         // Error and above, not Warning like the file: the file is the caregiver's to share, the
         // relay sends unprompted, so it carries the least that still names a crash. Queued
         // here, sent by FlushDiagnostics and the unhandled handler below. Not gated on the
-        // Send-diagnostics toggle — that governs the Datadog SDK's session telemetry, and the
+        // Send session telemetry toggle — that governs the Datadog SDK's session telemetry, and the
         // crash this exists for happens on the sign-in screen, before the toggle can be reached
         // (docs/compliance/dpia.md A9).
         Diagnostics = CreateRelay();

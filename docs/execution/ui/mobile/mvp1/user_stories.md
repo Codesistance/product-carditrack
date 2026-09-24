@@ -295,7 +295,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the ten shipped surf
 | 11.2 | Elevated Resting Heart Rate | — | Built (`AlertDetailPage`, resting-HR / granular HR chart) |
 | 11.3 | No Morning Activity | — | Built (`AlertDetailPage`, red / no-morning branch) |
 
-> **Telemetry consent (shipped):** Datadog telemetry is logs, traces and RUM (views, errors, crash reports — no action or resource tracking); crashes/ANRs also come from Play Console vitals. Consent is **opt-in and off by default**: the SDK initialises at `TrackingConsent.NotGranted`, and Settings → Privacy → **Send diagnostics** is the one control that raises it. Sign-out forgets the choice. What remains open is a first-run disclosure — see Story 7.4 in the canonical [user_stories.md](../user_stories.md).
+> **Telemetry consent (shipped):** Datadog telemetry is logs, traces and RUM (views, errors, crash reports — no action or resource tracking); crashes/ANRs also come from Play Console vitals. Since 2026-09-24 it is **on by default with an always-available opt-out** (opt-in before that): nothing is sent before sign-in, then the SDK is `TrackingConsent.Granted`, it is disclosed in the Terms of Service and Privacy Policy, and Settings → Privacy → **Send session telemetry** turns it off at once (`NotGranted`). Sign-out forgets the choice and stops collection until the next sign-in. A one-time dashboard notice (`TelemetryNotice`) tells each caregiver what is sent and where to turn it off — see Story 7.4 in the canonical [user_stories.md](../user_stories.md).
 
 ---
 

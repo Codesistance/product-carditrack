@@ -1,3 +1,4 @@
+using CardiTrack.Mobile.Core.Diagnostics;
 using Serilog;
 #if ANDROID || IOS
 using Datadog.Maui;
@@ -7,27 +8,56 @@ using Datadog.Maui.Configuration;
 namespace CardiTrack.Mobile.Services;
 
 /// <summary>
-/// Whether the caregiver has agreed to send diagnostics (crash-adjacent logs and network
-/// traces) to Datadog. Opt-in: off until they turn it on in Settings, and off again for
-/// the next caregiver who signs in on the same phone.
+/// Whether the app sends session telemetry (Datadog logs, network traces and RUM — views,
+/// errors, crash reports) about how it is running. Off until a caregiver is signed in; from then
+/// on by default, as disclosed in the Terms of Service and Privacy Policy they agreed to and the
+/// one-time dashboard notice, and they can turn it off at any time in Settings → Privacy.
 /// </summary>
 /// <remarks>
-/// The off state is <see cref="TrackingConsent.NotGranted"/>, not Pending. Pending would
-/// still collect and hold events on the device in the hope of a later yes — which is
-/// collection without consent, exactly what an opt-in toggle is supposed to prevent. The
-/// cost is that diagnostics from before the toggle was turned on are never recoverable,
-/// which is the right trade for a health app.
+/// <para>
+/// Nothing is sent before sign-in. The UK statistical-purposes exception (PECR reg. 6 as amended
+/// by the Data (Use and Access) Act 2025) replaces consent with clear information and a simple
+/// way to object; before sign-in the caregiver has seen neither, and the switch is behind
+/// sign-in. Crashes on those screens are still caught by the error-log relay
+/// (<c>AppLogging</c>), which is fault detection — "strictly necessary" under the same Act —
+/// and not governed by this switch (docs/compliance/dpia.md A9, R-A8).
+/// </para>
+/// <para>
+/// The off state is <see cref="TrackingConsent.NotGranted"/>, not Pending. Pending would still
+/// collect and hold events on the device in the hope of a later yes — so a caregiver who turned
+/// it off would still be recorded, which is not what "off" means.
+/// </para>
+/// <para>
+/// The stored value is only ever the caregiver's objection: absent means the default (on), and
+/// sign-out removes it so one caregiver's choice is not inherited by — or imposed on — the next
+/// person to sign in on the same phone. Nothing the SDK is handed carries health data, and
+/// Session Replay is not enabled (<see cref="MobileApm"/>).
+/// </para>
 /// </remarks>
 public static class DiagnosticsConsent
 {
-    /// <summary>Preference key. Absent means not granted — the toggle ships off.</summary>
+    /// <summary>Preference key. Absent means the default applies.</summary>
     public const string GrantedKey = "DiagnosticsConsentGranted";
 
     /// <summary>
-    /// Reads the stored choice, defaulting to no. Guarded because the first read happens inside
-    /// <c>MauiProgram.CreateMauiApp</c> — before the app is built — and a platform preference
-    /// store that is not ready there would otherwise take the whole app down over a setting.
-    /// Unreadable falls to no, which is the safe direction: it under-collects, never over-.
+    /// Whose choice <see cref="GrantedKey"/> is — a one-way per-caregiver token, so a session that
+    /// expires cannot hand one caregiver's "off" to the next (<see cref="TelemetryChoiceOwner"/>).
+    /// </summary>
+    public const string OwnerKey = "DiagnosticsConsentOwner";
+
+    /// <summary>
+    /// On unless the caregiver has turned it off. Disclosed in the Terms of Service and the
+    /// Privacy Policy, with Settings → Privacy as the way out.
+    /// </summary>
+    public const bool DefaultGranted = true;
+
+    /// <summary>
+    /// Reads the stored choice, falling back to <see cref="DefaultGranted"/>. Guarded because the
+    /// first read happens inside <c>MauiProgram.CreateMauiApp</c> — before the app is built — and
+    /// a platform preference store that is not ready there would otherwise take the whole app
+    /// down over a setting. Unreadable falls to no rather than the default: a store we cannot
+    /// read might be holding a caregiver's "off", and honouring an objection we cannot see beats
+    /// overriding one.
     /// </summary>
     public static bool IsGranted
     {
@@ -35,7 +65,7 @@ public static class DiagnosticsConsent
         {
             try
             {
-                return Preferences.Default.Get(GrantedKey, false);
+                return Preferences.Default.Get(GrantedKey, DefaultGranted);
             }
             catch (Exception ex)
             {
@@ -51,21 +81,118 @@ public static class DiagnosticsConsent
     /// </summary>
     public static void Set(bool granted)
     {
-        Preferences.Default.Set(GrantedKey, granted);
-        Apply(granted);
+        // Held for the session first, so the switch takes effect even if saving it fails: an
+        // "off" that could not be written must still stop collection now.
+        SessionChoice = granted;
+        try
+        {
+            // Owner first: an owner stored without a choice is inert (no choice, nothing to
+            // adopt), whereas a choice stored without its owner reads as pre-owner legacy data
+            // and would be adopted by the next caregiver. Always written, even with no identity
+            // (as TelemetryChoiceOwner.Unidentified), for the same reason.
+            Preferences.Default.Set(OwnerKey, CurrentOwner);
+            Preferences.Default.Set(GrantedKey, granted);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "DiagnosticsConsent: could not save the choice — applying it for this session only.");
+            // Leave no half-written pair behind for the next sign-in to misread.
+            TryRemoveStoredChoice();
+        }
+        finally
+        {
+            Apply();
+        }
+    }
+
+    private static void TryRemoveStoredChoice()
+    {
+        try
+        {
+            Preferences.Default.Remove(GrantedKey);
+            Preferences.Default.Remove(OwnerKey);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "DiagnosticsConsent: could not remove the stored choice.");
+        }
     }
 
     /// <summary>
-    /// Forgets the choice on sign-out and stops collection immediately. The next caregiver
-    /// on this phone is asked afresh rather than inheriting a yes they never gave.
+    /// The choice made on the Settings switch during this session, which wins over the stored one
+    /// so a failed save cannot undo it. Cleared at sign-in and sign-out, where the stored choice
+    /// (or the default) is the one that applies.
+    /// </summary>
+    private static bool? SessionChoice { get; set; }
+
+    /// <summary>
+    /// Whether a caregiver is signed in on this run. Only ever set on the main thread. A property
+    /// rather than a field: on targets without the SDK nothing reads it, and a field would warn.
+    /// </summary>
+    private static bool IsSignedIn { get; set; }
+
+    /// <summary>The signed-in caregiver's owner token, recorded with any choice they make.</summary>
+    private static string CurrentOwner { get; set; } = TelemetryChoiceOwner.Unidentified;
+
+    /// <summary>
+    /// A caregiver is signed in: from here their stored choice (on unless they turned it off)
+    /// applies. Called by <see cref="PostLoginRouter"/>, which every kind of sign-in passes through.
+    /// </summary>
+    public static void SignedIn(string? email)
+    {
+        CurrentOwner = TelemetryChoiceOwner.OwnerFor(email);
+        try
+        {
+            var prefs = Preferences.Default;
+            switch (TelemetryChoiceOwner.OnSignIn(prefs.ContainsKey(GrantedKey), prefs.Get(OwnerKey, string.Empty), email))
+            {
+                case TelemetryChoiceAction.Adopt:
+                    prefs.Set(OwnerKey, CurrentOwner);
+                    break;
+                case TelemetryChoiceAction.Forget:
+                    prefs.Remove(GrantedKey);
+                    prefs.Remove(OwnerKey);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Unreadable falls to off in IsGranted, which is the safe direction.
+            Log.Warning(ex, "DiagnosticsConsent: could not reconcile the stored choice with the caregiver signing in.");
+        }
+
+        SessionChoice = null;
+        IsSignedIn = true;
+        Apply();
+    }
+
+    /// <summary>
+    /// The session ended without the Settings sign-out — it expired. Stops collection until the
+    /// next sign-in; the stored choice is left alone, since they did not sign out, and
+    /// <see cref="SignedIn"/> forgets it if somebody else is the next to sign in.
+    /// </summary>
+    public static void SignedOut()
+    {
+        SessionChoice = null;
+        IsSignedIn = false;
+        CurrentOwner = TelemetryChoiceOwner.Unidentified;
+        Apply();
+    }
+
+    /// <summary>
+    /// Forgets the choice on sign-out and stops collection until the next sign-in. A caregiver's
+    /// "off" is theirs, not the phone's: the next person to sign in here gets the documented
+    /// default and their own switch, not a setting somebody else chose.
     /// </summary>
     public static void Clear()
     {
-        Preferences.Default.Remove(GrantedKey);
-        Apply(false);
+        // Never throws: sign-out calls this before ending the session, and a preference store
+        // that fails must not abort the sign-out. Collection stops regardless.
+        TryRemoveStoredChoice();
+        SignedOut();
     }
 
-    private static void Apply(bool granted)
+    private static void Apply()
     {
 #if ANDROID || IOS
         // Nothing was initialised when ApmEngine/ApmData are unset or malformed, and the
@@ -76,7 +203,7 @@ public static class DiagnosticsConsent
 
         try
         {
-            DdSdk.SetTrackingConsent(granted ? TrackingConsent.Granted : TrackingConsent.NotGranted);
+            DdSdk.SetTrackingConsent(IsSignedIn && (SessionChoice ?? IsGranted) ? TrackingConsent.Granted : TrackingConsent.NotGranted);
         }
         catch (Exception ex)
         {

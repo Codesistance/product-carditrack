@@ -284,6 +284,7 @@ public partial class SettingsPage : ContentPage
         Try(() => Preferences.Default.Remove("PrimaryCardiMemberId"), "primary member");
         Try(() => Preferences.Default.Remove("VerifyEmailNudgeDismissed"), "verify-email nudge");
         Try(() => Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey), "disclosure hint");
+        Try(() => Preferences.Default.Remove(DashboardPage.TelemetryNoticeSeenKey), "telemetry notice");
         Try(() => Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey), "wizard resume flag");
         Try(DiagnosticsConsent.Clear, "diagnostics consent");
         await TryAsync(() => _drafts.ClearAsync(), "member draft");
@@ -605,16 +606,19 @@ public partial class SettingsPage : ContentPage
             // Before the session goes: the call is authenticated, and after SignOutAsync there is
             // no token left to make it with.
             await ReleasePushRegistrationAsync();
+            // Before the session goes, not after it: a sign-out that throws part-way must still
+            // have stopped telemetry. The choice is the person's, not the phone's, so it is
+            // forgotten too — the next caregiver who signs in here gets the documented default
+            // and their own switch, not this one's "off".
+            DiagnosticsConsent.Clear();
             await _authService.SignOutAsync();
             Preferences.Default.Remove("PrimaryCardiMemberId");
             Preferences.Default.Remove("VerifyEmailNudgeDismissed");
             // The account is the record of the health-data disclosure; this is only the hint that
             // it was confirmed, and the next caregiver on this phone must be asked afresh.
             Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey);
+            Preferences.Default.Remove(DashboardPage.TelemetryNoticeSeenKey);
             Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
-            // Consent is the person's, not the phone's: stop collecting now, and make the next
-            // caregiver who signs in here say yes for themselves.
-            DiagnosticsConsent.Clear();
             // Holds a name, DOB and medical notes — must not survive into the next session.
             await _drafts.ClearAsync();
             // Nor may an unsent note about somebody's alert: the next caregiver on this phone
