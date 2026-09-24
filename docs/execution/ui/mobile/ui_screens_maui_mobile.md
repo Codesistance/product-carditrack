@@ -1358,7 +1358,7 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 
 ## Telemetry & Consent (MVP 1 note)
 
-Datadog telemetry ships **logs + traces only** — RUM was removed in PR #185, and with it Datadog crash reporting (`NativeCrashReportEnabled=false`); crashes and ANRs come from **Play Console vitals** instead. Tracking consent is **opt-in and off by default** — the SDK initialises at `TrackingConsent.NotGranted` and Settings → Privacy → **Send diagnostics** is the one control that raises it, applying without a restart and cleared on sign-out. Beneath it, **Share app logs** zips the on-device Serilog files and opens the share sheet; it is deliberately not gated on the toggle, which governs what the app sends unprompted rather than what the caregiver hands over themselves. No separate diagnostics screen exists, and a first-run telemetry disclosure is still open (Story 7.4).
+Datadog telemetry ships **logs, traces and RUM** (views, errors, crash reports — no action or resource tracking); crashes and ANRs also come from **Play Console vitals**. Tracking consent is **opt-in and off by default** — the SDK initialises at `TrackingConsent.NotGranted` and Settings → Privacy → **Send diagnostics** is the one control that raises it, applying without a restart and cleared on sign-out. Beneath it, **Share app logs** zips the on-device Serilog files and opens the share sheet; it is deliberately not gated on the toggle, which governs what the app sends unprompted rather than what the caregiver hands over themselves. No separate diagnostics screen exists, and a first-run telemetry disclosure is still open (Story 7.4).
 
 ---
 

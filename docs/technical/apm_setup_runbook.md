@@ -265,7 +265,7 @@ gcloud run services describe carditrack-dev-api --region=europe-west2 --project=
 
 ## 5. Mobile app monitoring
 
-The MAUI app ships logs and traces via the same generic Engine + Data contract as the
+The MAUI app ships logs, traces and RUM via the same generic Engine + Data contract as the
 server, stamped into builds by CI:
 
 - `carditrack-<env>-apm-mobile-engine` — **Terraform-owned**: the `apm_mobile_engine`
@@ -275,64 +275,88 @@ server, stamped into builds by CI:
   runtime secrets here.
 
 For Datadog (Android/iOS only; Session Replay deliberately disabled — health data must not
-be screen-recorded):
+be screen-recorded), `carditrack-<env>-apm-mobile-data` holds:
 
-**Do not populate the mobile data secret — mobile monitoring is inert on this org.**
-The org is on UK1, and an unnameable `Site` disables monitoring outright (details
-below), so a client token buys nothing here. Leave `carditrack-<env>-apm-mobile-data`
-at its `REPLACE_ME` placeholder: placeholder data stamps as empty at build time, which
-disables monitoring cleanly (a bad engine name or malformed JSON likewise logs and
-skips at app startup — monitoring must never brick the app). Mobile diagnostics come
-from the **on-device Serilog log files**, **Play Console → Quality → Android vitals**,
-and the **error-log relay through the API** (below) instead.
+```json
+{"ClientToken":"pub...","ApplicationId":"<RUM application id>","Site":"Uk1","IntakeHost":"browser-intake-uk1-datadoghq.com"}
+```
 
-### `Site` must be one the SDK can name — UK1 cannot be reached
+- `ClientToken` — the org's mobile client token (Organization Settings → Client Tokens).
+  Required; without it monitoring is off.
+- `ApplicationId` — the RUM application (Digital Experience → Add an Application; one
+  application serves both platforms, the SDK tags the source). Present → RUM sessions, views,
+  errors and Datadog crash reporting; absent → logs and traces only.
+- `Site` — the routing on a site the SDK can name; informational on UK1 (next section).
+- `IntakeHost` — the bare intake host for a site the SDK cannot name (next section).
 
-**This org is on UK1 (`uk1.datadoghq.com`), and the mobile SDK cannot ship to it.** The
-`DatadogSite` enum in `Datadog.Maui` names only `Us1`, `Us3`, `Us5`, `Eu1`, `Ap1`, `Ap2`
-and `Us1Fed` — and so does the native `dd-sdk-android-core` enum underneath it
-(`us1/us3/us5/eu1/ap1/ap2` plus the gov sites, verified by extracting the 3.10.0 AAR).
-There is no UK1 entry at any layer.
+To keep an environment off, leave the secret at its `REPLACE_ME` placeholder: placeholder
+data stamps as empty at build time, which disables monitoring cleanly (a bad engine name or
+malformed JSON likewise logs and skips at app startup — monitoring must never brick the app).
+Mobile diagnostics also come from the **on-device Serilog log files**, **Play Console →
+Quality → Android vitals**, and the **error-log relay through the API** (below).
 
-`CustomEndpoint` is **not** a workaround, despite being on the config surface for Logs,
-Traces, RUM and Session Replay: `Datadog.Maui` 0.2.0 never calls the native
-`useCustomEndpoint` for any feature (no such reference exists in the assembly), so every
-feature targets the site-derived intake no matter what is configured. Only 0.2.0 has ever
-been published, so no package bump fixes this.
+### UK1 is reached through `IntakeHost`, not `Site`
 
-Consequences, all confirmed on a device (2026-08-11):
+**This org is on UK1 (`uk1.datadoghq.com`), and no layer of the mobile SDK can name it.** The
+`DatadogSite` enum in `Datadog.Maui` 0.2.0 names only `Us1`, `Us3`, `Us5`, `Eu1`, `Ap1`, `Ap2`
+and `Us1Fed`, and the native SDKs it bundles predate UK1 (`dd-sdk-android-core` 3.10.0 —
+UK1 arrived in 3.12.0; the iOS wrapper is built against `dd-sdk-ios` ≥ 3.11.0 — UK1 arrived
+in 3.15.0). 0.2.0 is the only version ever published. A `Site` the enum cannot name is routed
+by the SDK to a fallback region's intake — a different org — which is why, **without an
+`IntakeHost`, an unnameable `Site` disables monitoring outright** (the reason is logged at
+startup to the on-device Serilog file, readable from a Release build).
 
-- Setting `"Site":"Uk1"` **disables monitoring outright** — an unnameable site is fatal by
-  design, so telemetry is never misdelivered to another region. The reason is logged at
-  startup to the on-device Serilog file, readable from a Release build.
-- RUM was removed for this reason: it only ever returned `404` from the intake, because the
-  app fell back to the `Eu1` intake where the UK1 application ID does not exist.
-- **Datadog crash reporting went with it** (`NativeCrashReportEnabled = false`) — crash
-  reporting is a RUM feature. Play Console → **Quality → Android vitals → Crashes and ANRs**
-  is the source for mobile crashes and ANRs; on iOS it is **TestFlight / Xcode Organizer**,
-  whose reports arrive as raw addresses and need the build's `.dSYM` (see
+`IntakeHost` sidesteps the enum: every feature (Logs, Trace, RUM) is pointed at that host
+through the SDK's per-feature custom endpoint, which the native Kotlin and Swift wrappers
+apply on both platforms (`useCustomEndpoint` / `Configuration.customEndpoint`) — so this is
+one configuration, not a platform fork. The rule that matters: **the native SDKs use a custom
+endpoint verbatim — nothing is appended** — so the app composes the full per-feature URL
+itself (`https://<IntakeHost>/api/v2/rum`, `/api/v2/logs`, `/api/v2/spans`;
+`Mobile.Core/Diagnostics/DatadogIntake.cs`). A bare host handed straight to the SDK posts
+every batch to the site root and gets `404`. Give `IntakeHost` as a bare DNS name — a scheme,
+path or port is rejected and disables monitoring. When it is set it routes every feature
+regardless of `Site`, and the core SDK sits at the `Eu1` default, which nothing is sent to.
+
+Consequences:
+
+- **Datadog crash reporting is on whenever RUM is** (`NativeCrashReportEnabled` follows
+  `ApplicationId`) — crash reporting is a RUM feature. Play Console → **Quality → Android
+  vitals → Crashes and ANRs** remains a second source; on iOS it is **TestFlight / Xcode
+  Organizer**, whose reports arrive as raw addresses and need the build's `.dSYM` (see
   [apps/mobile/readme.md](../apps/mobile/readme.md#symbolicating-an-ios-crash)).
-- The SDK's crash reporting went with RUM, so the app relays its own Error+ lines and
-  unhandled exceptions through the API instead (next section). The on-device Serilog file
-  remains the fuller record: Settings → Privacy → **Share app logs** gets it off the
-  handset without a developer machine.
-- Any fix that reaches the native `useCustomEndpoint` directly is Android-only (the native
-  bindings ship as `Datadog.Android.*` packages; there is no iOS equivalent here), which the
-  project's Android/iOS parity rule rules out.
+- RUM views are named from the Shell route (query string stripped, so a member id never
+  reaches a view name) or the page class — never `Page.Title`, which can be a member's name.
+  Automatic action tracking is **off**: an action is named after the control it hit, and a
+  tapped member card's text is that member's name. Automatic resource tracking is **off** too:
+  the SDK ships request URLs verbatim, query string included, so journal search text and
+  caregiver invite tokens would reach Datadog, and its resource mapper cannot rewrite a URL.
+  (That tracker is also what injects trace headers, so RUM does not link to API traces.)
+- Session sample rate is 100%. The data-protection ADR
+  ([§7.4](data_protection_architecture.md#74-third-party-egress-controls)) asked for an
+  "operationally sufficient" rate when RUM last shipped without consent; sessions now exist
+  only for caregivers who opted in.
+- Everything the SDK ships waits for the caregiver's opt-in (notes below), so the API relay
+  in the next section stays the path for a crash that happens before anyone reaches the
+  toggle. The on-device Serilog file remains the fuller record: Settings → Privacy → **Share
+  app logs** gets it off the handset without a developer machine.
+- Debug builds set the SDK's verbosity to debug: logcat / the Xcode console then show each
+  batch upload's status, which is the only way to see from a device that an intake accepted
+  anything.
 
 Notes: the app's Android minimum is API 31 today (raised for the splash-screen API);
 Datadog and Firebase themselves only require API 23. `Site` defaults to
 `Eu1` when omitted; tracking consent starts at `NotGranted` and is raised to `Granted` only
 when the caregiver turns on Settings → Privacy → **Send diagnostics** (`DiagnosticsConsent`,
 which also calls `DdSdk.SetTrackingConsent` so the change lands without a restart). A build
-with the toggle off ships no logs or traces at all — when mobile telemetry is missing from
-Datadog, check the toggle on the device before suspecting the stamping. The app sets
+with the toggle off ships no logs, traces or RUM sessions at all — when mobile telemetry is
+missing from Datadog, check the toggle on the device before suspecting the stamping. The app sets
 `FirstPartyHosts` for the API host with Datadog + W3C `traceparent` tracing headers, so
 mobile spans join the API's OTel traces.
 
 ### Error logs reach Datadog through the API instead
 
-Since the SDK cannot ship here, the app relays its own **Error-and-above** Serilog events —
+The SDK ships nothing until the caregiver opts in, so the app also relays its own
+**Error-and-above** Serilog events —
 including the unhandled exception `AppLogging.HookUnhandledExceptions` writes just before the
 process dies — to `POST /api/v1/mobile/diagnostics/logs`. The API re-logs each entry and its
 Datadog sink ships those events as **`service:carditrack-mobile`** rather than `api`

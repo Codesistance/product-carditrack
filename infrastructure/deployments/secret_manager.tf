@@ -59,9 +59,10 @@ locals {
     "devices-fitbit-client-secret" = "REPLACE_ME"
     "apm-data"                     = "REPLACE_ME" # APM connection JSON, e.g. {"IngestUrl":"...","IngestToken":"..."} — see scripts/set-apm-secrets.sh
     # Mobile monitoring connection JSON for the engine named by apm-mobile-engine —
-    # embed-safe client identifiers only (Datadog: {"ClientToken":"...","Site":"Eu1"}),
-    # stamped into builds by CI. Site must be one the SDK can name; UK1 cannot be reached
-    # from mobile at all — see docs/technical/apm_setup_runbook.md §5.
+    # embed-safe client identifiers only, stamped into builds by CI. Datadog:
+    # {"ClientToken":"...","ApplicationId":"...","Site":"Uk1","IntakeHost":"browser-intake-uk1-datadoghq.com"}
+    # — the SDK cannot name UK1, so IntakeHost routes every feature there; ApplicationId
+    # turns RUM on. See docs/technical/apm_setup_runbook.md §5.
     "apm-mobile-data" = "REPLACE_ME"
   }
 

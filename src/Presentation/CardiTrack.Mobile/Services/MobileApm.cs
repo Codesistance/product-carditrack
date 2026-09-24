@@ -1,3 +1,4 @@
+using CardiTrack.Mobile.Core.Diagnostics;
 using CardiTrack.Shared.Json;
 using Newtonsoft.Json.Linq;
 using Serilog;
@@ -59,19 +60,19 @@ public static class MobileApm
     }
 
     /// <summary>
-    /// Datadog logs and traces. Data: {"ClientToken":"pub...","Site":"Eu1"} — the client
-    /// token is a write-only identifier, safe to embed. Session Replay is deliberately NOT
-    /// enabled: health data must not be recorded.
+    /// Datadog logs and traces, plus RUM with native crash reporting when the data names a
+    /// RUM application. Data: {"ClientToken":"pub...","ApplicationId":"...","Site":"Uk1",
+    /// "IntakeHost":"browser-intake-uk1-datadoghq.com"} — client token and application id
+    /// are write-only identifiers, safe to embed. Session Replay is deliberately NOT enabled:
+    /// health data must not be recorded.
     /// </summary>
     /// <remarks>
-    /// RUM is deliberately not enabled. It only ever returned 404 from the intake, because
-    /// this org's site (UK1) has no member in Datadog.Maui's DatadogSite enum — nor in the
-    /// dd-sdk-android core enum it wraps, which names only us1/us3/us5/eu1/ap1/ap2 and the
-    /// gov sites. The documented workaround, CustomEndpoint, is inert: Datadog.Maui 0.2.0
-    /// (the only version ever published) never calls the native useCustomEndpoint on any
-    /// feature, so every feature targets the site-derived intake regardless of what is
-    /// configured here. Removing RUM also removes Datadog crash reporting, which is a RUM
-    /// feature — Play Console vitals remains the source for crashes and ANRs.
+    /// IntakeHost exists because this org's site, UK1, has no member in Datadog.Maui's
+    /// DatadogSite enum or in the native SDKs it bundles, and a site the SDK cannot name is
+    /// routed to a fallback region — a different org. With an IntakeHost every feature is
+    /// pointed at that host through the SDK's per-feature custom endpoint, which the native
+    /// wrappers apply; the URLs are composed by <see cref="DatadogIntake"/>, whose remarks
+    /// explain why they must be full per-feature URLs and never the bare host.
     /// </remarks>
     private static void ConfigureDatadog(MauiAppBuilder builder, JObject data)
     {
@@ -83,28 +84,42 @@ public static class MobileApm
             return;
         }
 
+        DatadogIntake? intake = null;
+        var intakeHost = data.Value<string>("IntakeHost");
+        if (!string.IsNullOrWhiteSpace(intakeHost) && !DatadogIntake.TryCreate(intakeHost, out intake))
+        {
+            Log.Warning(
+                "MobileApm: Datadog IntakeHost '{IntakeHost}' is not a bare host name — monitoring disabled " +
+                "rather than shipping telemetry to the wrong place.",
+                intakeHost);
+            return;
+        }
+
         var siteName = data.Value<string>("Site");
 
-        // A site the enum cannot name would silently ship this app's telemetry to whatever
-        // the fallback resolved to — a different org in a different region — so refuse to
-        // start monitoring at all rather than misdeliver it. CustomEndpoint used to be the
-        // documented escape hatch here; it is not one (see the remarks above), so an
-        // unnameable site is now simply fatal to monitoring. Omitting Site entirely keeps
-        // the documented Eu1 default. IsDefined is what rejects a numeric Site: TryParse
-        // happily turns "42" into an enum value no member names.
+        // Without an IntakeHost the site is the only thing routing telemetry, and one the enum
+        // cannot name would silently ship it to whatever the fallback resolved to — a different
+        // org in a different region — so refuse to start monitoring rather than misdeliver it.
+        // With an IntakeHost every feature is routed explicitly and the site is informational,
+        // so an unnameable one (Uk1) just leaves the core at the documented Eu1 default, which
+        // nothing is sent to. IsDefined is what rejects a numeric Site: TryParse happily turns
+        // "42" into an enum value no member names.
         if (!Enum.TryParse<DatadogSite>(siteName, ignoreCase: true, out var site) || !Enum.IsDefined(site))
         {
-            if (!string.IsNullOrWhiteSpace(siteName))
+            if (!string.IsNullOrWhiteSpace(siteName) && intake is null)
             {
                 Log.Warning(
-                    "MobileApm: Datadog site '{Site}' is not one of {KnownSites} — monitoring disabled " +
-                    "rather than shipping telemetry to the wrong site.",
+                    "MobileApm: Datadog site '{Site}' is not one of {KnownSites} and no IntakeHost is set — " +
+                    "monitoring disabled rather than shipping telemetry to the wrong site.",
                     siteName, string.Join(", ", Enum.GetNames<DatadogSite>()));
                 return;
             }
 
             site = DatadogSite.Eu1;
         }
+
+        var applicationId = data.Value<string>("ApplicationId");
+        var rumEnabled = !string.IsNullOrWhiteSpace(applicationId);
 
         builder
             .UseDatadog(new DdSdkConfiguration
@@ -118,11 +133,16 @@ public static class MobileApm
                     : TrackingConsent.NotGranted,
                 Service = "carditrack-mobile",
                 Site = site,
-                // Datadog's own crash reporting rides on RUM, which is not enabled — Play
-                // Console vitals is the source for mobile crashes and ANRs instead.
-                NativeCrashReportEnabled = false,
-                // Marks our API as first-party so mobile spans join the API's OTel traces,
-                // via W3C traceparent headers.
+                // Datadog's crash reporting rides on RUM: without RUM there is nothing to carry
+                // the reports, and Play Console vitals is the source for crashes and ANRs.
+                NativeCrashReportEnabled = rumEnabled,
+#if DEBUG
+                // Each batch upload's status in logcat / the Xcode console — the only way to see
+                // from a device whether an intake accepted anything.
+                Verbosity = SdkVerbosity.DEBUG,
+#endif
+                // Marks our API as first-party so mobile spans join the API's OTel traces, via
+                // W3C traceparent headers.
                 FirstPartyHosts =
                 [
                     new FirstPartyHost
@@ -132,10 +152,36 @@ public static class MobileApm
                     },
                 ],
             })
-            .UseDatadogLogs()
-            .UseDatadogTrace();
+            .UseDatadogLogs(intake is null ? null : new DdLogsConfiguration { CustomEndpoint = intake.Logs })
+            .UseDatadogTrace(intake is null ? null : new DdTraceConfiguration { CustomEndpoint = intake.Traces });
+
+        if (rumEnabled)
+        {
+            builder.UseDatadogRum(new DdRumConfiguration
+            {
+                ApplicationId = applicationId!,
+                SessionSampleRate = 100.0,
+                CustomEndpoint = intake?.Rum,
+                // Views are named from the Shell route (query string stripped, so a member id
+                // never reaches a view name) or the page class — never Page.Title, which can be
+                // a member's name.
+                AutomaticViewTracking = true,
+                // An action is named after the control it hit, and a tapped member card's text
+                // is that member's name.
+                AutomaticActionTracking = false,
+                // Resource URLs ship verbatim — journal search text and caregiver invite tokens
+                // included — and the resource mapper cannot rewrite a URL the native start event
+                // already carries.
+                AutomaticResourceTracking = false,
+                TrackBackgroundEvents = false,
+            });
+        }
 
         IsConfigured = true;
+        Log.Information(
+            "MobileApm: Datadog configured — logs, traces{Rum:l} via {Route:l}.",
+            rumEnabled ? ", RUM and crash reporting" : " (no ApplicationId, so no RUM)",
+            intake is null ? $"site {site}" : $"intake host {intake.Host}");
 #endif
     }
 }

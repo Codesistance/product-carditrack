@@ -14,13 +14,13 @@
 		<!-- <Auth0Audience>https://api.carditrack.com</Auth0Audience> -->
 
 		<!-- Mobile APM (optional — unset means monitoring is off, which is the norm for
-		     local builds). Logs and traces only; RUM is not enabled. Raw JSON is accepted
-		     here; CI stamps the same value base64-encoded. Embed-safe identifiers only,
-		     never runtime secrets. Site must be one DatadogSite can name (Us1/Us3/Us5/Eu1/
-		     Ap1/Ap2/Us1Fed) — anything else disables monitoring, and CustomEndpoint is NOT
-		     a way around that: Datadog.Maui 0.2.0 never applies it. See
+		     local builds). Logs and traces always; RUM (sessions, views, errors, crash
+		     reporting) when ApplicationId is set. Raw JSON is accepted here; CI stamps the
+		     same value base64-encoded. Embed-safe identifiers only, never runtime secrets.
+		     Our org is on UK1, which the SDK cannot name: give the bare intake host as
+		     IntakeHost and every feature is routed there (Site is then informational). See
 		     docs/technical/apm_setup_runbook.md §5. Android/iOS only. -->
 		<!-- <ApmEngine>Datadog</ApmEngine> -->
-		<!-- <ApmData>{"ClientToken":"pub...","Site":"Eu1"}</ApmData> -->
+		<!-- <ApmData>{"ClientToken":"pub...","ApplicationId":"...","Site":"Uk1","IntakeHost":"browser-intake-uk1-datadoghq.com"}</ApmData> -->
 	</PropertyGroup>
 </Project>
