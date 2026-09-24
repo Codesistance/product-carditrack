@@ -179,7 +179,9 @@ jobs:
     name: Unit Tests
     needs: changes
     # Also runs for a web, worker or pipeline deploy: they feed the migrator (see run-db-migrations).
-    if: (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.pipeline == 'true')
+    # And for webhook, whose image push needs this job; it opens no database, so only this job
+    # widens for it, not the migrator lane.
+    if: (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.pipeline == 'true' || needs.changes.outputs.webhook == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read

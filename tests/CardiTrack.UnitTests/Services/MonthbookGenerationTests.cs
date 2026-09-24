@@ -6,6 +6,7 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.UnitTests.Observability;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -128,11 +129,11 @@ public class MonthbookGenerationTests
                 new AiUsage { ModelName = "test-medical" }));
     }
 
-    private DigestGenerationService CreateSut() =>
+    private DigestGenerationService CreateSut(ILogger<DigestGenerationService>? logger = null) =>
         new(_unitOfWork, _medicalAi, _rewriteAi,
             PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
-            InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance, new PassThroughWriteGuard());
+            InertAdviseGenerator.Create(), logger ?? NullLogger<DigestGenerationService>.Instance, new PassThroughWriteGuard());
 
     private async Task AssertNothingWritten()
     {
@@ -183,6 +184,55 @@ public class MonthbookGenerationTests
 
         await _members.DidNotReceive().GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>());
         await _members.DidNotReceive().GetByIdAsync(Arg.Any<Guid>());
+    }
+
+    /// <summary>
+    /// Reading nothing must still say so: a pass with no line at all cannot be told apart from a
+    /// pass that never ran, which is the gap the journal passes' completion lines close. The skip
+    /// is its own line, not a completion with a zero tally, because no member was counted.
+    /// </summary>
+    [Fact]
+    public async Task Mid_month_the_pass_says_it_skipped_and_writes_no_tally()
+    {
+        var midMonth = new DateTime(2026, 8, 15, 9, 30, 0, DateTimeKind.Utc);
+        var logger = new ListLogger();
+
+        await CreateSut(logger).GenerateDueMonthbooksAsync(midMonth);
+
+        var skip = Assert.Single(logger.Entries, e => e.Message.StartsWith("Monthbook generation skipped", StringComparison.Ordinal));
+        Assert.Equal(LogLevel.Information, skip.Level);
+        Assert.Contains("no timezone is on the first of a month", skip.Message, StringComparison.Ordinal);
+        Assert.Contains("2026-08-15 09:30:00Z", skip.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(logger.Entries, e => e.Message.StartsWith("Monthbook generation complete", StringComparison.Ordinal));
+    }
+
+    /// <summary>The other side of the same contract: a pass that does run reports its tally and no skip.</summary>
+    [Fact]
+    public async Task On_the_first_the_pass_writes_its_tally_and_no_skip()
+    {
+        var logger = new ListLogger();
+
+        await CreateSut(logger).GenerateDueMonthbooksAsync(UtcNow);
+
+        Assert.Single(logger.Entries, e => e.Message.StartsWith("Monthbook generation complete", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Entries, e => e.Message.StartsWith("Monthbook generation skipped", StringComparison.Ordinal));
+    }
+
+    /// <summary>Hand-rolled recording logger, matching the suite's no-mocking-library style.</summary>
+    private sealed class ListLogger : ILogger<DigestGenerationService>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            lock (Entries) Entries.Add((logLevel, formatter(state, exception)));
+        }
     }
 
     /// <summary>
