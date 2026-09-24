@@ -71,8 +71,8 @@ public static class MobileApm
     /// DatadogSite enum or in the native SDKs it bundles, and a site the SDK cannot name is
     /// routed to a fallback region — a different org. With an IntakeHost every feature is
     /// pointed at that host through the SDK's per-feature custom endpoint, which the native
-    /// wrappers apply; the URLs are composed by <see cref="DatadogIntake"/>, whose remarks
-    /// explain why they must be full per-feature URLs and never the bare host.
+    /// wrappers apply; the URLs are composed by <see cref="DatadogIntake"/>, which explains
+    /// why they must be full per-feature URLs and never the bare host.
     /// </remarks>
     private static void ConfigureDatadog(MauiAppBuilder builder, JObject data)
     {
