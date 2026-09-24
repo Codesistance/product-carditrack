@@ -92,7 +92,9 @@ public class MedicalPromptBlockCompositionTests
                 + " for he or she, CardiTrackCardiMemberThem for him or her, and"
                 + " CardiTrackCardiMemberTheir for his or her."
                 + " They stand in for words you are not given, exactly as the name does, and no"
-                + " other pronoun for the person is right."));
+                + " other pronoun for the person is right."
+                + " CardiTrackCardiMemberThey is one person: give its verb the form he or she takes"
+                + " (CardiTrackCardiMemberThey walks, does, has, is, was)."));
     }
 
     [Fact]

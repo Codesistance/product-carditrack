@@ -164,4 +164,31 @@ public class PronounPlaceholderTests
         Assert.True(MemberVoice.IsUnresolvedIn(
             new MemberVoice(Gender.PreferNotToSay, null).Resolve(generated)));
     }
+
+    /// <summary>
+    /// Every word the subject token resolves to is singular, but the token is spelled "They" and
+    /// the model conjugates for it: "than CardiTrackCardiMemberThey typically do" reached a
+    /// caregiver as "than he typically do" (2026-09-24). The auxiliaries are made singular, through
+    /// one adverb, whether the token resolves to a pronoun or to the name.
+    /// </summary>
+    [Theory]
+    [InlineData("than CardiTrackCardiMemberThey typically do.", Gender.Male, "than he typically does.")]
+    [InlineData("CardiTrackCardiMemberThey have walked less.", Gender.Female, "She has walked less.")]
+    [InlineData("CardiTrackCardiMemberThey are resting more.", Gender.PreferNotToSay, "Dad is resting more.")]
+    [InlineData("CardiTrackCardiMemberThey were up early.", Gender.Male, "He was up early.")]
+    [InlineData("CardiTrackCardiMemberThey don't seem tired.", Gender.Male, "He doesn't seem tired.")]
+    [InlineData("CardiTrackCardiMemberThey still haven’t synced.", Gender.Female, "She still hasn’t synced.")]
+    public void ThePluralAuxiliaryAfterTheSubjectToken_IsMadeSingular(
+        string generated, Gender gender, string expected) =>
+        Assert.Equal(expected, PronounPlaceholder.Resolve(generated, gender, "Dad"));
+
+    /// <summary>Only verbs that belong to the member move: a plural auxiliary elsewhere in the
+    /// sentence, or after the object and possessive tokens, is left as written.</summary>
+    [Fact]
+    public void AnAuxiliaryNotOwnedByTheSubjectToken_IsLeftAlone() =>
+        Assert.Equal(
+            "Doctors say walks like his do help, and they have for him.",
+            PronounPlaceholder.Resolve(
+                "Doctors say walks like CardiTrackCardiMemberTheir do help, and they have for CardiTrackCardiMemberThem.",
+                Gender.Male, "Dad"));
 }

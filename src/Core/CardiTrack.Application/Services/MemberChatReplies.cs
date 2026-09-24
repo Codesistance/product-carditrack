@@ -101,12 +101,21 @@ public static partial class MemberChatReplies
     public static string StatusLineReply(
         string? firstName, MemberStatusLine line, IReadOnlyList<ActivityLog> recent, DateOnly today)
     {
-        return $"{CaptionLead(line)} {LatestReadingsReply(firstName, recent, today)}";
+        return $"{CaptionSentence(line)} {LatestReadingsReply(firstName, recent, today)}";
     }
 
-    /// <summary>The caption as the dashboard shows it: headline, then sentence — closed with a
-    /// full stop, since a sentence follows it here where on the dashboard nothing does.</summary>
-    private static string CaptionLead(MemberStatusLine line)
+    /// <summary>
+    /// The caption's sentence, closed with a full stop, since a sentence follows it here where on
+    /// the dashboard nothing does.
+    /// </summary>
+    /// <remarks>
+    /// The sentence only, not the headline. On the dashboard the headline is a title over the
+    /// sentence; glued in front of it in a chat bubble it read "Elevated heart rate and poor
+    /// sleep — His heart rate remains elevated today…" — a title, a dash and a capital
+    /// mid-sentence, stating the same thing twice (observed 2026-09-24). The sentence says it
+    /// once, in the register the rest of the reply is written in.
+    /// </remarks>
+    private static string CaptionSentence(MemberStatusLine line)
     {
         // The stored line is generated copy; the generator strips nothing from the end of the
         // message, so a caption may arrive without terminal punctuation and the dashboard never
@@ -116,11 +125,7 @@ public static partial class MemberChatReplies
         if (!message.EndsWith('.') && !message.EndsWith('!') && !message.EndsWith('?') && !message.EndsWith('…'))
             message += ".";
 
-        var headline = line.Headline?.Trim();
-
-        // The headline is documented as droppable — the dashboard keeps per-tier copy to fall
-        // back on — so the reply must read whole without it.
-        return string.IsNullOrWhiteSpace(headline) ? message : $"{headline} — {message}";
+        return message;
     }
 
     /// <summary>
@@ -149,20 +154,29 @@ public static partial class MemberChatReplies
         bool allReadings,
         MemberStatusLine? line,
         IReadOnlyList<ActivityLog> recent,
-        DateOnly today)
+        DateOnly today,
+        bool captionAlreadySaid = false)
     {
+        // A caption this conversation has already shown is not the rest of the picture a second
+        // time: asked about sleep and then about activity, the same sentence closed both answers
+        // word for word (observed 2026-09-24).
+        var caption = captionAlreadySaid ? null : line;
+
         if (namedMetric is { } metric)
         {
             var reply = MetricReadingReply(firstName, metric, recent, today);
-            return line is not null && ChatDataRegistry.PrimaryMetricNamed(line.Message) != metric
-                ? $"{reply} On the whole: {CaptionLead(line)}"
+
+            // Any mention, not just the caption's first metric: a caption led by heart rate that
+            // goes on to say "he slept very little" restates the sleep figure the reply just gave.
+            return caption is not null && !ChatDataRegistry.Mentions(metric, caption.Message)
+                ? $"{reply} {CaptionSentence(caption)}"
                 : reply;
         }
 
-        if (allReadings || line is null)
+        if (allReadings || caption is null)
             return LatestReadingsReply(firstName, recent, today);
 
-        return StatusLineReply(firstName, line, recent, today);
+        return StatusLineReply(firstName, caption, recent, today);
     }
 
     /// <summary>

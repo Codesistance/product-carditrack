@@ -1089,7 +1089,7 @@ public class MemberChatService : IMemberChatService
             MemberChatWorkflow.Status when aboutThisMoment =>
                 await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow, ct),
             MemberChatWorkflow.Status =>
-                await AnswerStatusLineAsync(route, triageUsage, cardiMemberId, member, utcNow, ct),
+                await AnswerStatusLineAsync(route, triageUsage, cardiMemberId, member, history, utcNow, ct),
             // The row already read above when advise was a clarify candidate; a direct route to
             // advise reads it here instead — once, either way.
             MemberChatWorkflow.Advise =>
@@ -1423,6 +1423,7 @@ public class MemberChatService : IMemberChatService
         AiUsage triageUsage,
         Guid cardiMemberId,
         CardiMember? member,
+        ChatHistory history,
         DateTime utcNow,
         CancellationToken ct)
     {
@@ -1431,8 +1432,15 @@ public class MemberChatService : IMemberChatService
         var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
         var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
 
+        // The recalled turns are name-redacted, so the caption is redacted the same way before
+        // looking for it; its closing stop is left off because the reply that carried it may have
+        // been capped or have run on.
+        var captionAlreadySaid = line is not null && history.Full is { } earlier
+            && NamePlaceholder.Redact(line.Message.Trim().TrimEnd('.', '!', '…'), member?.Name) is { Length: > 0 } said
+            && earlier.Contains(said, StringComparison.OrdinalIgnoreCase);
+
         var reply = MemberChatReplies.StatusReply(
-            name, route.NamedMetric, route.AllReadings, line, recent, today);
+            name, route.NamedMetric, route.AllReadings, line, recent, today, captionAlreadySaid);
 
         return new MemberChatWorkflowResult
         {
