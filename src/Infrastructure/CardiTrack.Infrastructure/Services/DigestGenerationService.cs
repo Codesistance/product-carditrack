@@ -804,7 +804,14 @@ public partial class DigestGenerationService : IDigestGenerationService
         // reads the candidate list and then a member row and a timezone per candidate, only to
         // decline all of them on a date comparison.
         if (!JournalDueCheck.AnyTimeZoneCouldBeOnDayOfMonth(utcNow, 1))
+        {
+            // Said, not implied: a pass with no line at all is the one that cannot be told
+            // apart from a pass that never ran, which is the gap the tally below closes.
+            _logger.LogInformation(
+                "Monthbook generation skipped: no timezone is on the first of a month at {UtcNow:u}.",
+                utcNow);
             return 0;
+        }
 
         // Wide enough to catch a member whose readings stopped partway through the month just
         // gone: 35 days covers any prior month plus the day it becomes due on, in any timezone.
