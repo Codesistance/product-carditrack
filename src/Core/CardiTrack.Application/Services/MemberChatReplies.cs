@@ -78,8 +78,8 @@ public static partial class MemberChatReplies
     }
 
     /// <summary>
-    /// The stored status line as a chat answer: the dashboard's headline and sentence, then the
-    /// latest figures they rest on.
+    /// The stored status line as a chat answer: the caption's sentence, then the latest figures it
+    /// rests on. The dashboard's headline is not part of it — see <see cref="CaptionSentence"/>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -91,8 +91,8 @@ public static partial class MemberChatReplies
     /// higher gets a paragraph with figures in it (observed 2026-09-07).
     /// </para>
     /// <para>
-    /// So the line keeps its place at the front, where the dashboard puts it, and the figures
-    /// follow — the same dated figure list the other two status replies speak, through
+    /// So the caption's sentence keeps its place at the front, where the dashboard puts the line,
+    /// and the figures follow — the same dated figure list the other two status replies speak, through
     /// <see cref="LatestReadingsReply"/>, so the three cannot state a reading differently or date
     /// it differently. Still assembled in code: this rung makes no model call, and a caption
     /// plus figures is a sentence code can write.

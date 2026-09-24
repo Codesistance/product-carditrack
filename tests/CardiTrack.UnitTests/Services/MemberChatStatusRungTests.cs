@@ -187,6 +187,41 @@ public class MemberChatStatusRungTests
     }
 
     /// <summary>
+    /// Only the app's own replies count as having said the caption: a caregiver who quotes it has
+    /// not been shown it, so the answer still carries it.
+    /// </summary>
+    [Fact]
+    public async Task ACaptionTheCaregiverQuoted_IsStillAppended()
+    {
+        RouteStatus(StatusMetric.Steps);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        StatusLineIs("Moses's heart rate is up today.", TimeSpan.FromHours(1));
+        ReadingsAre(new ActivityLog { Date = today, Steps = 3000 });
+
+        var session = new MemberChatSession
+        {
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddMinutes(-3),
+            LastTurnAtUtc = DateTime.UtcNow.AddMinutes(-2),
+        };
+        session.Turns.Add(new MemberChatTurn
+        {
+            SessionId = session.Id,
+            Role = ChatTurnRole.User,
+            Content = PromptContextFactory.Encryption.Encrypt("My sister said Moses's heart rate is up today?"),
+            CreatedAtUtc = DateTime.UtcNow.AddMinutes(-2),
+        });
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(session);
+        _sessions.GetByIdWithTurnsAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "has he moved much?");
+
+        Assert.EndsWith("today so far. Moses's heart rate is up today.", reply.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// "His specific measurements" is a request for the figures, not for the sentence that
     /// summarises them — every reading the day carries, and no caption.
     /// </summary>

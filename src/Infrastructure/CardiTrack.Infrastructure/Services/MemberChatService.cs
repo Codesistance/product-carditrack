@@ -1432,10 +1432,10 @@ public class MemberChatService : IMemberChatService
         var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
         var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
 
-        // The recalled turns are name-redacted, so the caption is redacted the same way before
+        // The earlier replies are name-redacted, so the caption is redacted the same way before
         // looking for it; its closing stop is left off because the reply that carried it may have
         // been capped or have run on.
-        var captionAlreadySaid = line is not null && history.Full is { } earlier
+        var captionAlreadySaid = line is not null && history.EarlierReplies is { } earlier
             && NamePlaceholder.Redact(line.Message.Trim().TrimEnd('.', '!', '…'), member?.Name) is { Length: > 0 } said
             && earlier.Contains(said, StringComparison.OrdinalIgnoreCase);
 
@@ -1940,6 +1940,13 @@ public class MemberChatService : IMemberChatService
         if (turns is not { Count: > 0 })
             return new ChatHistory(null, null);
 
+        // Every reply this conversation has shown, not just the recalled window and never the
+        // caregiver's own words: what the app has already said is a fact about its replies, and
+        // a caregiver quoting a caption has not been shown it. Code reads this; no prompt does.
+        var earlierReplies = string.Join("\n", withTurns!.Turns
+            .Where(t => t.Role == ChatTurnRole.Assistant)
+            .Select(t => NamePlaceholder.Redact(Reveal(t.Content), memberName)));
+
         var lastAssistant = turns.LastOrDefault(t => t.Role == ChatTurnRole.Assistant);
         var lastAssistantWasClarify = lastAssistant?.Workflow == MemberChatWorkflow.Clarify;
 
@@ -1966,7 +1973,7 @@ public class MemberChatService : IMemberChatService
 
         return new ChatHistory(
             Block(questionsOnly: false), Block(questionsOnly: true), lastAssistantWasClarify,
-            pendingChange, pendingTurnId);
+            pendingChange, pendingTurnId, earlierReplies);
     }
 
     /// <summary>
@@ -2009,7 +2016,8 @@ public class MemberChatService : IMemberChatService
         string? QuestionsOnly,
         bool LastAssistantWasClarify = false,
         PendingAlertChange? PendingChange = null,
-        Guid? PendingTurnId = null);
+        Guid? PendingTurnId = null,
+        string? EarlierReplies = null);
 
     private static string BuildMaliciousCheckPrompt(string question, string? historyBlock) =>
         historyBlock is null
