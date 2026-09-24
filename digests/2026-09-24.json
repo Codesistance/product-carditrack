@@ -1,0 +1,16 @@
+{
+  "date": "2026-09-24",
+  "summary": "*CardiTrack digest — 2026-09-24* · 1 item · 1 FYI · NIA 2027 closes in 3 days (Sun 2026-09-27 23:59) — application status still unconfirmed anywhere in the repo or issues, see 2026-09-21; two other flagged deadlines this fortnight with no decision on record: NHS Productivity Challenge round 1 closes 2026-10-01, EIC Accelerator next cutoff 2026-10-06 as recorded on 2026-09-04 · still held for want of a primary source (third day): Samsung's 2026-09-09 Seoul briefing on Galaxy Watch heart health — Korean press (etoday, newspim, EBN) describe Samsung Health family profiles letting a child see a parent's shared BP, HR and overnight vitals; this is the Connected Care sharing Samsung's own newsroom previewed at CES and VivaTech 2026, so not a new feature, and no news.samsung.com post for the briefing surfaced · checked, nothing new: Ollama 0.34.4 (no security fixes; SSRF GHSA-57p7-34ff-7w3w still unpatched), .NET MAUI 10.0.110 (quality only), SSH.NET CVE-2026-85756 (fixed in the 2026.0.0 we pin, tests only), Gemini 2.5 retirement 2026-10-16/20 (config already on 3.5), public supported-devices page matches devices.md · note: developers.google.com, blog.google, docs.cloud.google.com, auth0.com, gov.uk, apple.com, news.samsung.com and firebase.google.com are denied by the sandbox's network policy — the brief says what was read directly",
+  "empty_reason": null,
+  "items": [
+    {
+      "slug": "firebaseadmin-3-6-0-deprecates-token-for-fid",
+      "title": "FirebaseAdmin 3.6.0 deprecates Message.Token in favour of Fid — the version CardiTrack pins; no decommission date yet",
+      "url": "https://github.com/firebase/firebase-admin-dotnet/releases/tag/v3.6.0",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-24-firebaseadmin-3-6-0-deprecates-token-for-fid.md",
+      "text": "*FYI* — FirebaseAdmin 3.6.0 deprecates `Message.Token` in favour of `Fid` — the version CardiTrack pins; no decommission date yet\nThe Firebase Admin .NET SDK v3.6.0 (2026-07-08) has one feature line: \"Enable `fid` and deprecate `token` for Send API\". `Message.Token`/`MulticastMessage.Tokens` are now obsolete (CS0618) and `Fid`/`Fids` target a Firebase Installation ID instead. Node, Java and Python Admin SDKs shipped the same change within ten days; Google says token targets stay \"fully supported until the decommission date\" with at least a year's window — and no date is published yet.\nWhere we stand: `CardiTrack.Infrastructure.csproj` pins exactly 3.6.0, and `FcmNotificationChannel.cs` sends on `Token` under a deliberate CS0618 suppression — correctly, because what `PushDeviceToken` stores is a registration token from Plugin.Firebase's `GetTokenAsync()`, not an Installation ID. Nothing breaks today. Migrating is a paired change (app registers an Installation ID, API stores and sends it) and Plugin.Firebase 4.0.1 exposes no Installations module. Smallest next action: check whether a Plugin.Firebase Installations binding exists for MAUI, and if so start carrying the FID alongside the token in `RegisterPushDeviceRequest` so the server holds both before Google names a date.\nhttps://github.com/firebase/firebase-admin-dotnet/releases/tag/v3.6.0\n\nclaude \"work through @research/queue/2026-09-24-firebaseadmin-3-6-0-deprecates-token-for-fid.md\""
+    }
+  ]
+}
