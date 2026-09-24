@@ -66,5 +66,12 @@ public class MemberChatTurn : BaseEntity
     /// </remarks>
     public string? PendingChange { get; set; }
 
+    /// <summary>
+    /// The answer check's reading of this reply — whether it answered the question, and why not
+    /// when it did not — as encrypted JSON. Null on caregiver turns and on replies the check does
+    /// not read. Internal: never returned to the app.
+    /// </summary>
+    public string? Assessment { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 }

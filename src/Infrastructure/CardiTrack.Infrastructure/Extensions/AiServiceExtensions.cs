@@ -133,6 +133,7 @@ public static class AiServiceExtensions
         services.AddScoped<IChatTranscriptSource, ChatTranscriptSource>();
         services.AddScoped<IDataQueryPlanner, DataQueryPlannerService>();
         services.AddScoped<IChatRouter, ChatRouterService>();
+        services.AddScoped<IChatAnswerChecker, ChatAnswerCheckerService>();
         services.AddScoped<IAlertChangePlanner, AlertChangePlannerService>();
         services.AddScoped<IMemberChatService, MemberChatService>();
 

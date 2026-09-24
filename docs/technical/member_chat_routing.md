@@ -515,6 +515,26 @@ Two consequences worth stating:
 
 Every workflow now receives a **resolver** rather than pre-fetched datasets, because routing no longer names any. `status` calls it with a selection it derived in code; `advise` and the steers never call it; `analysis` and `inference` call it once, after their own planning call; `investigation` calls it twice, the second time conditioned on the first result. The resolver is where clamping and the whitelist live, so no workflow can widen its own fetch.
 
+### The answer check (added 2026-09-24, recording only)
+
+Nothing above asks whether a reply answered the question. The copy guards say what a reply may not contain; none says it must contain what was asked. One dev conversation showed both ways that fails: "what might be the cause" of a short night got an account of heart rate, and "when was he active" got step counts where the app only holds daily totals.
+
+After the reply is written, one structured Rewrite-slot call (`IChatAnswerChecker`, `ChatAnswerCheckerService`) reads the name-redacted question, conversation and reply, and returns:
+
+- **answered**: `full`, `partial` or `no`
+- **cause**, when not full: `notAddressed` (the data could have answered it) or `notInData` (member chat cannot read what was asked — scoped to chat's sources, not the whole product: the digests read hourly steps, chat does not)
+- **intent**, **missing** and a line of **reasoning**: internal only
+
+It runs on the replies that claim to answer: `status`, `analysis`, `inference`, `investigation` and `advise`. The steers redirect, `clarify` asks, and `journal` and `settings` act on a request whose outcome is its own answer. "Not in data" is judged against a fixed statement of what the product records (`ChatAnswerCheckerService.WhatTheAppRecords`), not against what one member happens to have.
+
+**What crosses to Vertex.** The same as the malicious check already sends (the redacted message and conversation), plus the reply, redacted the same way. The reply is written from de-identified findings, and earlier replies already reach this slot in the history, so the A20 boundary is unchanged.
+
+**What is kept.** The assessment is stored encrypted on the assistant turn (`MemberChatTurn.Assessment`), with the same retention and erasure as the turn, and is never returned to the app. Only the verdict and cause leave the row, as span tags (`chat.answer_check`, `chat.answer_gap`). The call is billed as `AiCallStep.AnswerCheck`.
+
+**Failure.** A check that throws is logged, tagged `failed`, and the reply goes out unassessed. It never costs the caregiver their answer, the same posture as the routing call.
+
+**Recording only, for now.** Nothing acts on the verdict yet, and the reply is the same either way. The miss rate by workflow and by cause (`@chat.answer_check:(partial OR no)` grouped by `@chat.answer_gap`) decides whether a retry is worth what it costs. The planned next step retries `notAddressed` once with the gap named, and answers `notInData` with a plain statement of what is not on file.
+
 ## 8. Failure posture
 
 **Uncertainty asks; failure descends.**
