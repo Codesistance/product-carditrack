@@ -435,8 +435,13 @@ from `ApplicationDisplayVersion`, which the signed CI builds set from the releas
   `OtlpExportResilience` (wired from `AddApmTracing`) retires pooled connections after 20s
   and turns on the SDK's in-memory retry, so losing that race is survivable. If these
   warnings return, check them against the intake's idle timeout before suspecting the
-  network — and note that while they fire, logs still ship (Serilog's sink is a separate
-  transport), so the visible symptom is log records arriving with no trace ID on them.
+  network. Serilog's OTLP log sink is a separate transport but takes the same handler
+  (`OtlpExportResilience.CreateTransportHandler`, handed over in `DatadogApmProvider`), so
+  logs and spans now run the same connection hygiene; before that, a job could ship its root
+  span and lose every log line of the pass. A log batch the sink gives up on is reported
+  through Serilog's `SelfLog`, which `SerilogBootstrap` points at stderr — so a dropped
+  batch shows in Cloud Logging as an error line beginning with the sink's type name, even
+  though it never reaches Datadog.
 - One-shot job hosts must also *start* telemetry, not just flush it. `AddOpenTelemetry` builds
   its providers from an `IHostedService`, so a host that never calls `Run()` never builds one —
   and with no `TracerProvider` there is no `ActivityListener` in the process, which makes every

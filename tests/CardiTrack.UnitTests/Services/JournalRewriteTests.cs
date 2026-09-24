@@ -1,9 +1,10 @@
-using CardiTrack.Application.DTOs.Common;
+﻿using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.UnitTests.Observability;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -15,6 +16,7 @@ namespace CardiTrack.UnitTests.Services;
 /// is composed and guarded but never stored here, and every refusal the scheduled pass makes is
 /// made here too.
 /// </summary>
+[Collection(JournalTelemetryCollection.Name)]
 public class JournalRewriteTests
 {
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
@@ -351,6 +353,8 @@ public class JournalRewriteTests
         _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([_memberId]);
         _digests.GetLatestByDateAsync(_memberId, Arg.Any<DateOnly>(), DigestAudience.Weekbook, Arg.Any<CancellationToken>())
             .Returns((DigestEntry?)null);
+        // The pass counts a book as written only when the insert says it stored a row.
+        _digests.AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns(true);
         var monday = new DateTime(2026, 8, 10, 9, 30, 0, DateTimeKind.Utc);
 
         var generated = await CreateSut().GenerateDueWeekbooksAsync(monday);

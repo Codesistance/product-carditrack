@@ -1,10 +1,11 @@
-using CardiTrack.Application.DTOs.Common;
+﻿using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.UnitTests.Observability;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -15,6 +16,7 @@ namespace CardiTrack.UnitTests.Services;
 /// member's own hour, once per month, never from a month too thin to account for, and never from
 /// the month's Weekbooks.
 /// </summary>
+[Collection(JournalTelemetryCollection.Name)]
 public class MonthbookGenerationTests
 {
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
@@ -66,6 +68,7 @@ public class MonthbookGenerationTests
 
         SetupMonth(daysWithData: 31);
 
+        _digests.AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns(true);
         _digests.GetLatestByDateAsync(
                 _memberId, Arg.Any<DateOnly>(), DigestAudience.Monthbook, Arg.Any<CancellationToken>())
             .Returns((DigestEntry?)null);

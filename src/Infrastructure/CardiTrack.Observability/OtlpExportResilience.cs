@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CardiTrack.Observability;
@@ -30,7 +30,8 @@ internal static class OtlpExportResilience
     /// registering <em>any</em> named client is also what guarantees an
     /// <see cref="IHttpClientFactory"/> is resolvable at all — without one the SDK silently
     /// falls back to instantiating a bare <see cref="HttpClient"/> whose handler nothing here
-    /// can reach. Logs ship through Serilog's own OTLP sink, not this transport.
+    /// can reach. Logs ship through Serilog's own OTLP sink, which takes the same handler by
+    /// hand — see <see cref="CreateTransportHandler"/>.
     /// </summary>
     internal const string TraceExporterHttpClientName = "OtlpTraceExporter";
 
@@ -84,16 +85,26 @@ internal static class OtlpExportResilience
         {
             services
                 .AddHttpClient(name, client => client.Timeout = ExportTimeout)
-                .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-                {
-                    PooledConnectionIdleTimeout = PooledConnectionIdleTimeout,
-                    PooledConnectionLifetime = PooledConnectionLifetime,
-                    ConnectTimeout = ConnectTimeout,
-                });
+                .ConfigurePrimaryHttpMessageHandler(CreateTransportHandler);
         }
 
         return services;
     }
+
+    /// <summary>
+    /// The transport every OTLP export here goes over: the SDK's trace and metric exporters
+    /// through the named clients above, and Serilog's log sink directly, which builds its own
+    /// <see cref="HttpClient"/> and so never sees the factory. One handler shape for all three
+    /// signals, because the race in the class remarks does not care which signal it drops —
+    /// and it was dropping logs: a Cloud Run job ships one batch every couple of seconds for
+    /// under a minute and exits, and a batch lost on a stale connection is a whole pass gone.
+    /// </summary>
+    internal static SocketsHttpHandler CreateTransportHandler() => new()
+    {
+        PooledConnectionIdleTimeout = PooledConnectionIdleTimeout,
+        PooledConnectionLifetime = PooledConnectionLifetime,
+        ConnectTimeout = ConnectTimeout,
+    };
 
     /// <summary>
     /// Turns on in-memory export retry unless the deployment has already said something about it

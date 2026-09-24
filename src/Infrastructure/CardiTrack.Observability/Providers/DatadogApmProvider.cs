@@ -1,4 +1,5 @@
-using OpenTelemetry.Exporter;
+﻿using OpenTelemetry.Exporter;
+using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
@@ -75,6 +76,20 @@ public sealed class DatadogApmProvider : IApmProvider
         otlp.Protocol = OtlpProtocol.HttpProtobuf;
         otlp.Headers = new Dictionary<string, string> { ["dd-api-key"] = options.Data.IngestToken! };
         otlp.ResourceAttributes = resourceAttributes;
+
+        // The same pooled-connection hygiene the trace and metric exporters get from
+        // OtlpExportResilience. The sink builds its own HttpClient, so without this it ran on
+        // default handler settings — the one export path in the process still exposed to the
+        // stale-keep-alive race that class exists to prevent, and the one whose loss is total
+        // for a job: a pass that lost its batches shipped nothing, and the root span it did ship
+        // then pointed at logs that were never there.
+        otlp.HttpMessageHandler = OtlpExportResilience.CreateTransportHandler();
+
+        // The sink's own POSTs to the intake are HTTP requests like any other, and the HttpClient
+        // instrumentation was recording each one as a client span under whatever activity was
+        // current — an export of the pass's logs showing up inside the pass's trace as work the
+        // pass did. The sink offers this hook for exactly that.
+        otlp.OnBeginSuppressInstrumentation = SuppressInstrumentationScope.Begin;
     }
 
     private static Dictionary<string, object> ResourceAttributes(

@@ -1313,9 +1313,13 @@ jobs:
     # Waits on run-db-migrations like every service that opens the database (Web wires the
     # DbContext too): schema-dependent code must never boot ahead of its schema. The #209
     # deploy proved the race is real — the Worker's startup pass hit a table 18 seconds
-    # before the migrator created it. Migrations may legitimately be SKIPPED here (a change
+    # before the migrator created it. Migrations may legitimately not run here (a change
     # that touches no src/Infrastructure path cannot contain a migration, but flips e.g.
-    # web without api) — hence success-or-skipped rather than plain job ordering.
+    # web without api) — but "skipped" is not the test for that. GitHub also skips the
+    # migration job when a job upstream of it in the api lane fails, and on 2026-09-21 that
+    # deployed a pipeline image whose EF model selected a column the migrator had not yet
+    # created, for 24 minutes across three failed executions. So the gate asks the change
+    # filter directly: either the api lane was never wanted, or the migrations succeeded.
     # !cancelled() is what makes GitHub evaluate this condition at all when a needed job
     # was skipped; it also removes the implicit success() on the other needs, so the image
     # push is re-checked explicitly.
@@ -1325,7 +1329,7 @@ jobs:
       && github.ref == 'refs/heads/main'
       && needs.changes.outputs.web == 'true'
       && needs.push-web-image.result == 'success'
-      && (needs.run-db-migrations.result == 'success' || needs.run-db-migrations.result == 'skipped')
+      && (needs.changes.outputs.api != 'true' || needs.run-db-migrations.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -1401,7 +1405,7 @@ jobs:
       && github.ref == 'refs/heads/main'
       && needs.changes.outputs.worker == 'true'
       && needs.push-worker-image.result == 'success'
-      && (needs.run-db-migrations.result == 'success' || needs.run-db-migrations.result == 'skipped')
+      && (needs.changes.outputs.api != 'true' || needs.run-db-migrations.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -1467,7 +1471,7 @@ jobs:
       && github.ref == 'refs/heads/main'
       && needs.changes.outputs.pipeline == 'true'
       && needs.push-pipeline-image.result == 'success'
-      && (needs.run-db-migrations.result == 'success' || needs.run-db-migrations.result == 'skipped')
+      && (needs.changes.outputs.api != 'true' || needs.run-db-migrations.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
