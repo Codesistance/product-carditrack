@@ -178,6 +178,8 @@ public class PronounPlaceholderTests
     [InlineData("CardiTrackCardiMemberThey were up early.", Gender.Male, "He was up early.")]
     [InlineData("CardiTrackCardiMemberThey don't seem tired.", Gender.Male, "He doesn't seem tired.")]
     [InlineData("CardiTrackCardiMemberThey still haven’t synced.", Gender.Female, "She still hasn’t synced.")]
+    [InlineData("CardiTrackCardiMemberThey do not seem tired.", Gender.Male, "He does not seem tired.")]
+    [InlineData("CardiTrackCardiMemberThey have not synced.", Gender.Female, "She has not synced.")]
     public void ThePluralAuxiliaryAfterTheSubjectToken_IsMadeSingular(
         string generated, Gender gender, string expected) =>
         Assert.Equal(expected, PronounPlaceholder.Resolve(generated, gender, "Dad"));

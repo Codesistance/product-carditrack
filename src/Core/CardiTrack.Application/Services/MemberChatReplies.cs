@@ -105,6 +105,30 @@ public static partial class MemberChatReplies
     }
 
     /// <summary>
+    /// Whether <paramref name="text"/> contains <paramref name="sentence"/> as a sentence of its
+    /// own — at the start or after a sentence ends, and ending where it ends — rather than as a
+    /// phrase inside another sentence. Case and the closing stop are ignored: the reply that
+    /// carried it may have been capped, or have joined it to what followed.
+    /// </summary>
+    /// <remarks>
+    /// "I can't tell whether his heart rate is up today" has not said "His heart rate is up
+    /// today." — a substring match would have counted it as the caption, and suppressed the
+    /// caption the next time it was the rest of the picture.
+    /// </remarks>
+    public static bool ContainsSentence(string text, string sentence)
+    {
+        var core = sentence.Trim().TrimEnd('.', '!', '?', '…').Trim();
+        if (core.Length == 0 || string.IsNullOrEmpty(text))
+            return false;
+
+        return Regex.IsMatch(
+            text,
+            @"(?:^|[.!?…]\s+|\n\s*)" + Regex.Escape(core) + @"(?:[.!?…]|\s*$)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100));
+    }
+
+    /// <summary>
     /// The caption's sentence, closed with a full stop, since a sentence follows it here where on
     /// the dashboard nothing does.
     /// </summary>

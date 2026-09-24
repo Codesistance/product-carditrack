@@ -222,6 +222,20 @@ public class MemberChatStatusRungTests
     }
 
     /// <summary>
+    /// "Said" means said as a sentence of its own. A reply that mentions the same words inside
+    /// another sentence has not shown the caption, so it is not treated as a repeat.
+    /// </summary>
+    [Theory]
+    [InlineData("The most recent sleep I have is 5h. His heart rate is up today.", true)]
+    [InlineData("His heart rate is up today and he slept 5h.", false)]
+    [InlineData("his heart rate is up today", true)]
+    [InlineData("Steps first.\nHis heart rate is up today…", true)]
+    [InlineData("I can't tell whether his heart rate is up today.", false)]
+    [InlineData("I can't tell whether his heart rate is up today or not.", false)]
+    public void ACaptionCountsAsSaid_OnlyAsASentenceOfItsOwn(string earlierReply, bool expected) =>
+        Assert.Equal(expected, MemberChatReplies.ContainsSentence(earlierReply, "His heart rate is up today."));
+
+    /// <summary>
     /// "His specific measurements" is a request for the figures, not for the sentence that
     /// summarises them — every reading the day carries, and no caption.
     /// </summary>

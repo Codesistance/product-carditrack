@@ -1433,11 +1433,10 @@ public class MemberChatService : IMemberChatService
         var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
 
         // The earlier replies are name-redacted, so the caption is redacted the same way before
-        // looking for it; its closing stop is left off because the reply that carried it may have
-        // been capped or have run on.
+        // looking for it — as a sentence of its own, not a phrase inside another one.
         var captionAlreadySaid = line is not null && history.EarlierReplies is { } earlier
-            && NamePlaceholder.Redact(line.Message.Trim().TrimEnd('.', '!', '…'), member?.Name) is { Length: > 0 } said
-            && earlier.Contains(said, StringComparison.OrdinalIgnoreCase);
+            && NamePlaceholder.Redact(line.Message, member?.Name) is { } redacted
+            && earlier.Value.Any(reply => MemberChatReplies.ContainsSentence(reply, redacted));
 
         var reply = MemberChatReplies.StatusReply(
             name, route.NamedMetric, route.AllReadings, line, recent, today, captionAlreadySaid);
@@ -1943,9 +1942,12 @@ public class MemberChatService : IMemberChatService
         // Every reply this conversation has shown, not just the recalled window and never the
         // caregiver's own words: what the app has already said is a fact about its replies, and
         // a caregiver quoting a caption has not been shown it. Code reads this; no prompt does.
-        var earlierReplies = string.Join("\n", withTurns!.Turns
-            .Where(t => t.Role == ChatTurnRole.Assistant)
-            .Select(t => NamePlaceholder.Redact(Reveal(t.Content), memberName)));
+        // Lazy, because only the status rung reads it and a long conversation is a lot to decrypt
+        // for every other message.
+        var assistantTurns = withTurns!.Turns.Where(t => t.Role == ChatTurnRole.Assistant).ToList();
+        var earlierReplies = new Lazy<IReadOnlyList<string>>(() => assistantTurns
+            .Select(t => NamePlaceholder.Redact(Reveal(t.Content), memberName) ?? string.Empty)
+            .ToList());
 
         var lastAssistant = turns.LastOrDefault(t => t.Role == ChatTurnRole.Assistant);
         var lastAssistantWasClarify = lastAssistant?.Workflow == MemberChatWorkflow.Clarify;
@@ -2017,7 +2019,7 @@ public class MemberChatService : IMemberChatService
         bool LastAssistantWasClarify = false,
         PendingAlertChange? PendingChange = null,
         Guid? PendingTurnId = null,
-        string? EarlierReplies = null);
+        Lazy<IReadOnlyList<string>>? EarlierReplies = null);
 
     private static string BuildMaliciousCheckPrompt(string question, string? historyBlock) =>
         historyBlock is null
