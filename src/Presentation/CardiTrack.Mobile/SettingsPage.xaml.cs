@@ -606,6 +606,11 @@ public partial class SettingsPage : ContentPage
             // Before the session goes: the call is authenticated, and after SignOutAsync there is
             // no token left to make it with.
             await ReleasePushRegistrationAsync();
+            // Before the session goes, not after it: a sign-out that throws part-way must still
+            // have stopped telemetry. The choice is the person's, not the phone's, so it is
+            // forgotten too — the next caregiver who signs in here gets the documented default
+            // and their own switch, not this one's "off".
+            DiagnosticsConsent.Clear();
             await _authService.SignOutAsync();
             Preferences.Default.Remove("PrimaryCardiMemberId");
             Preferences.Default.Remove("VerifyEmailNudgeDismissed");
@@ -614,9 +619,6 @@ public partial class SettingsPage : ContentPage
             Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey);
             Preferences.Default.Remove(DashboardPage.TelemetryNoticeSeenKey);
             Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
-            // The choice is the person's, not the phone's: the next caregiver who signs in here
-            // gets the documented default and their own switch, not this one's "off".
-            DiagnosticsConsent.Clear();
             // Holds a name, DOB and medical notes — must not survive into the next session.
             await _drafts.ClearAsync();
             // Nor may an unsent note about somebody's alert: the next caregiver on this phone
