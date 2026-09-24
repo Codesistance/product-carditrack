@@ -379,6 +379,13 @@ public class RetentionPolicyTests : IAsyncLifetime
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
 
+        // Only one session per caregiver and member may be open (#1119), so an earlier one seeded
+        // for the same pair is closed at its last turn first — what opening a new conversation
+        // does in production. Retention reads turns, not EndedAtUtc, so no test here depends on it.
+        await db.MemberChatSessions
+            .Where(s => s.UserId == userId && s.CardiMemberId == memberId && s.EndedAtUtc == null)
+            .ExecuteUpdateAsync(u => u.SetProperty(s => s.EndedAtUtc, s => (DateTime?)s.LastTurnAtUtc));
+
         var startedAt = DateTime.UtcNow.AddDays(-startedDaysAgo);
         var session = new MemberChatSession
         {

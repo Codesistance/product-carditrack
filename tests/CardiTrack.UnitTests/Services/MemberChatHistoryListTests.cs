@@ -209,7 +209,10 @@ public class MemberChatHistoryListTests
 
         Assert.Null(completed.EndedAtUtc);
         Assert.True(completed.LastTurnAtUtc >= before, "continuing must bring the session back inside the active window");
-        Assert.NotNull(active.EndedAtUtc);
+        // The active one steps aside through the repository's own statement, ahead of the save —
+        // only one session may be open, and the index is checked row by row.
+        await _sessions.Received(1).EndOtherOpenSessionsAsync(
+            _userId, _memberId, sessionId, Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
         Assert.Equal(sessionId, result.SessionId);
         var turn = Assert.Single(result.Turns);
         Assert.Equal("How did he sleep?", turn.Content);

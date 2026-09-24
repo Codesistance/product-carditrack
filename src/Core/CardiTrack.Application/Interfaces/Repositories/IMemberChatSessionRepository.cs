@@ -14,6 +14,33 @@ public interface IMemberChatSessionRepository : IRepository<MemberChatSession>
     Task<MemberChatSession?> GetActiveAsync(
         Guid userId, Guid cardiMemberId, DateTime activeSinceUtc, CancellationToken ct = default);
 
+    /// <summary>
+    /// Saves a session the caller has already added, as the caregiver's one open session for the
+    /// member — or reports that another request opened one first.
+    /// </summary>
+    /// <remarks>
+    /// At most one session per caregiver and member is open (<c>EndedAtUtc</c> null), enforced by
+    /// a unique index. A conversation that went quiet past <paramref name="activeSinceUtc"/> is
+    /// still marked open until something closes it, so this closes those first — ended at their
+    /// last turn, which is when they actually stopped — and then saves. Only quiet ones: a session
+    /// another request opened a moment ago is inside the window and must win, not be closed.
+    /// On <see cref="MemberChatSessionOpenOutcome.AlreadyOpen"/> the added session is detached and
+    /// nothing of it is saved; the caller re-reads the active session and continues on that.
+    /// </remarks>
+    Task<MemberChatSessionOpenOutcome> TryOpenAsync(
+        MemberChatSession added, DateTime activeSinceUtc, CancellationToken ct = default);
+
+    /// <summary>
+    /// Closes every open session this caregiver has for the member except
+    /// <paramref name="keepSessionId"/> — quiet ones at their last turn, one still inside the
+    /// active window at <paramref name="endedAtUtc"/> — so that session can be reopened. Runs
+    /// immediately, not on the next save: the one-open-session index is checked row by row, so the
+    /// others must be closed before the reopening is written.
+    /// </summary>
+    Task EndOtherOpenSessionsAsync(
+        Guid userId, Guid cardiMemberId, Guid keepSessionId, DateTime activeSinceUtc, DateTime endedAtUtc,
+        CancellationToken ct = default);
+
     /// <summary>The session and its turns, oldest first — what the history endpoint and each new
     /// turn's prompt-history both read.</summary>
     Task<MemberChatSession?> GetByIdWithTurnsAsync(Guid sessionId, CancellationToken ct = default);
@@ -86,4 +113,14 @@ public sealed record MemberChatSessionListing
     /// <summary>Caregiver turns only — "3 questions" is what the list says, and counting the
     /// replies would double it.</summary>
     public required int QuestionCount { get; init; }
+}
+
+/// <summary>What <see cref="IMemberChatSessionRepository.TryOpenAsync"/> did with the session it was given.</summary>
+public enum MemberChatSessionOpenOutcome
+{
+    /// <summary>Saved: it is now the caregiver's open session for the member.</summary>
+    Opened = 0,
+
+    /// <summary>Another request opened one first; this one was not saved.</summary>
+    AlreadyOpen = 1,
 }

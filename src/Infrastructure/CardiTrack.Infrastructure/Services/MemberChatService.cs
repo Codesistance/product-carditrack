@@ -1837,11 +1837,12 @@ public class MemberChatService : IMemberChatService
         // One live conversation per member: continuing an old one is choosing it, so whatever
         // was active steps aside into the history list rather than lingering invisibly —
         // neither current (this one now out-recents it) nor completed (still inside the window).
+        // Every other open session is closed first, in its own statement, because only one may be
+        // open (#1119) and the index is checked row by row — a quiet one at its last turn, the one
+        // still inside the window now.
         var utcNow = DateTime.UtcNow;
-        var active = await _unitOfWork.MemberChatSessions.GetActiveAsync(
-            userId, cardiMemberId, utcNow - ActiveSessionWindow, ct);
-        if (active is not null && active.Id != session.Id)
-            active.EndedAtUtc = utcNow;
+        await _unitOfWork.MemberChatSessions.EndOtherOpenSessionsAsync(
+            userId, cardiMemberId, session.Id, utcNow - ActiveSessionWindow, utcNow, ct);
 
         session.EndedAtUtc = null;
         session.LastTurnAtUtc = utcNow;
@@ -1884,40 +1885,51 @@ public class MemberChatService : IMemberChatService
     private async Task<MemberChatSession> GetOrCreateSessionAsync(
         Guid userId, Guid cardiMemberId, DateTime utcNow, CancellationToken ct)
     {
-        var existing = await _unitOfWork.MemberChatSessions.GetActiveAsync(
-            userId, cardiMemberId, utcNow - ActiveSessionWindow, ct);
-        if (existing is not null)
-            return existing;
+        var activeSinceUtc = utcNow - ActiveSessionWindow;
 
-        var session = new MemberChatSession
+        // Opened and saved here, ahead of the models, rather than with the turns: a unique index
+        // allows one open session per caregiver and member (#1119), and losing that race is only
+        // cheap to recover from before anything else hangs off the new session — at the end of the
+        // pipeline the turns, the usage rows and a journal offer would all have to move. The loser
+        // re-reads and continues on the winner's session. A send that fails after this leaves an
+        // empty session behind, which the history list already skips and the next send reuses.
+        for (var attempt = 1; ; attempt++)
         {
-            UserId = userId,
-            CardiMemberId = cardiMemberId,
-            StartedAtUtc = utcNow,
-            LastTurnAtUtc = utcNow,
-        };
-        await _unitOfWork.MemberChatSessions.AddAsync(session);
-        return session;
+            var existing = await _unitOfWork.MemberChatSessions.GetActiveAsync(
+                userId, cardiMemberId, activeSinceUtc, ct);
+            if (existing is not null)
+                return existing;
+
+            var session = new MemberChatSession
+            {
+                UserId = userId,
+                CardiMemberId = cardiMemberId,
+                StartedAtUtc = utcNow,
+                LastTurnAtUtc = utcNow,
+            };
+            await _unitOfWork.MemberChatSessions.AddAsync(session);
+
+            var outcome = MemberChatSessionOpenOutcome.Opened;
+            if (!await _guard.WriteIfMemberLivesAsync(
+                    cardiMemberId,
+                    async token => outcome = await _unitOfWork.MemberChatSessions.TryOpenAsync(
+                        session, activeSinceUtc, token),
+                    ct))
+            {
+                throw new KeyNotFoundException("We couldn't find what you were looking for.");
+            }
+
+            if (outcome == MemberChatSessionOpenOutcome.Opened)
+                return session;
+
+            // Two losses in a row would mean the winner's session vanished between its insert and
+            // our re-read — ended or erased by another request. Worth one more look; not a loop.
+            if (attempt == 2)
+                throw new InvalidOperationException(
+                    "Could not open or find this caregiver's chat session after a concurrent open.");
+        }
     }
 
-    /// <summary>
-    /// The session's own prior turns, decrypted and framed under
-    /// <see cref="MedicalPromptBlocks.ChatHistoryLabel"/> — the security review's "framing must
-    /// travel with the data" finding: a stored assistant reply re-entering a later prompt is exactly
-    /// as untrusted as a fresh caregiver note, and gets the same guardrail.
-    /// </summary>
-    /// <param name="memberName">
-    /// The member's stored name, swapped for <see cref="NamePlaceholder.Token"/> everywhere it
-    /// appears in the recalled turns. Stored replies are persisted <em>after</em> resolution, so
-    /// without this the name these prompts are so careful never to send arrives anyway one turn
-    /// later — and since the Rewrite slot is an external provider, it arrives there too. Nothing
-    /// the caregiver reads passes through this: the stored text and the app's own display keep
-    /// the real name, and only the copy handed to a model is rewritten.
-    /// </param>
-    /// <returns>
-    /// Both cuts of the conversation — see <see cref="ChatHistory"/> for which step gets which,
-    /// and why the one that states figures is not given the turns that contain them.
-    /// </returns>
     private async Task<ChatHistory> BuildHistoryBlockAsync(Guid sessionId, string? memberName, CancellationToken ct)
     {
         var withTurns = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(sessionId, ct);

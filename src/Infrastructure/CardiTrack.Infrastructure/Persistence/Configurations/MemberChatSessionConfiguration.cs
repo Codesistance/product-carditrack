@@ -38,6 +38,17 @@ public class MemberChatSessionConfiguration : IEntityTypeConfiguration<MemberCha
         // message send, before a new session is created.
         builder.HasIndex(s => new { s.CardiMemberId, s.UserId, s.LastTurnAtUtc });
 
+        // One open conversation per caregiver and member (#1119). Lookup-then-insert let two
+        // concurrent first messages open two, and with the journal rung's pending offers on the
+        // session a "yes" could then resolve against the other one. Partial, because ended sessions
+        // are history and there are many; the active window (LastTurnAtUtc) cannot be part of an
+        // index predicate, so quiet sessions are closed explicitly before a new one opens — see
+        // IMemberChatSessionRepository.TryOpenAsync.
+        builder.HasIndex(s => new { s.UserId, s.CardiMemberId })
+            .IsUnique()
+            .HasFilter("\"EndedAtUtc\" IS NULL")
+            .HasDatabaseName("IX_MemberChatSessions_OneOpenPerCaregiverAndMember");
+
         builder.HasMany(s => s.Turns)
             .WithOne()
             .HasForeignKey(t => t.SessionId)
