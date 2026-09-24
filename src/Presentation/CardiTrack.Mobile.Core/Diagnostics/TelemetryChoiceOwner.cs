@@ -21,6 +21,16 @@ public enum TelemetryChoiceAction
 /// </summary>
 public static class TelemetryChoiceOwner
 {
+    /// <summary>
+    /// The owner recorded for a choice made while no caregiver identity was known. Never equal to
+    /// a real owner token (those are hex hashes), so it is forgotten rather than adopted by the
+    /// next caregiver — an empty owner is reserved for choices saved before owners existed.
+    /// </summary>
+    public const string Unidentified = "unidentified";
+
+    /// <summary>The owner to record with a choice made by <paramref name="email"/>.</summary>
+    public static string OwnerFor(string? email) => TelemetryNotice.SeenValueFor(email) ?? Unidentified;
+
     /// <param name="hasChoice">Whether a choice is stored at all.</param>
     /// <param name="storedOwner">The owner recorded with it, or null for one saved before owners were.</param>
     /// <param name="email">The caregiver now signing in.</param>

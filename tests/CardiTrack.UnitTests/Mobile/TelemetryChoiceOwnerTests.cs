@@ -36,6 +36,21 @@ public class TelemetryChoiceOwnerTests
     }
 
     [Fact]
+    public void ChoiceMadeWithoutAnIdentity_IsForgottenNotAdopted_ByTheNextCaregiver()
+    {
+        var owner = TelemetryChoiceOwner.OwnerFor(null);
+
+        Assert.Equal(TelemetryChoiceOwner.Unidentified, owner);
+        Assert.Equal(TelemetryChoiceAction.Forget, TelemetryChoiceOwner.OnSignIn(true, owner, "grace@example.com"));
+    }
+
+    [Fact]
+    public void OwnerFor_IsTheCaregiversToken()
+    {
+        Assert.Equal(AdaOwner, TelemetryChoiceOwner.OwnerFor("ada@example.com"));
+    }
+
+    [Fact]
     public void NoIdentity_KeepsRatherThanDropAnObjection()
     {
         Assert.Equal(TelemetryChoiceAction.Keep, TelemetryChoiceOwner.OnSignIn(true, AdaOwner, null));

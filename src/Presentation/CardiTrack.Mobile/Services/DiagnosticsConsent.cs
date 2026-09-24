@@ -82,8 +82,9 @@ public static class DiagnosticsConsent
     public static void Set(bool granted)
     {
         Preferences.Default.Set(GrantedKey, granted);
-        if (CurrentOwner is { } owner)
-            Preferences.Default.Set(OwnerKey, owner);
+        // Always written, even with no identity (as TelemetryChoiceOwner.Unidentified): an empty
+        // owner means "saved before owners existed", which the next caregiver would adopt.
+        Preferences.Default.Set(OwnerKey, CurrentOwner);
         Apply();
     }
 
@@ -94,7 +95,7 @@ public static class DiagnosticsConsent
     private static bool IsSignedIn { get; set; }
 
     /// <summary>The signed-in caregiver's owner token, recorded with any choice they make.</summary>
-    private static string? CurrentOwner { get; set; }
+    private static string CurrentOwner { get; set; } = TelemetryChoiceOwner.Unidentified;
 
     /// <summary>
     /// A caregiver is signed in: from here their stored choice (on unless they turned it off)
@@ -102,14 +103,14 @@ public static class DiagnosticsConsent
     /// </summary>
     public static void SignedIn(string? email)
     {
-        CurrentOwner = TelemetryNotice.SeenValueFor(email);
+        CurrentOwner = TelemetryChoiceOwner.OwnerFor(email);
         try
         {
             var prefs = Preferences.Default;
             switch (TelemetryChoiceOwner.OnSignIn(prefs.ContainsKey(GrantedKey), prefs.Get(OwnerKey, string.Empty), email))
             {
-                case TelemetryChoiceAction.Adopt when CurrentOwner is { } owner:
-                    prefs.Set(OwnerKey, owner);
+                case TelemetryChoiceAction.Adopt:
+                    prefs.Set(OwnerKey, CurrentOwner);
                     break;
                 case TelemetryChoiceAction.Forget:
                     prefs.Remove(GrantedKey);
@@ -135,7 +136,7 @@ public static class DiagnosticsConsent
     public static void SignedOut()
     {
         IsSignedIn = false;
-        CurrentOwner = null;
+        CurrentOwner = TelemetryChoiceOwner.Unidentified;
         Apply();
     }
 
@@ -146,9 +147,17 @@ public static class DiagnosticsConsent
     /// </summary>
     public static void Clear()
     {
-        Preferences.Default.Remove(GrantedKey);
-        Preferences.Default.Remove(OwnerKey);
-        SignedOut();
+        try
+        {
+            Preferences.Default.Remove(GrantedKey);
+            Preferences.Default.Remove(OwnerKey);
+        }
+        finally
+        {
+            // Whatever happened to the stored choice, collection stops now: a failed preference
+            // write must not leave the SDK sending after sign-out.
+            SignedOut();
+        }
     }
 
     private static void Apply()
