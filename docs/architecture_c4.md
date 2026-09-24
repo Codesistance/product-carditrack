@@ -27,7 +27,7 @@ C4Context
   System_Ext(auth0, "Auth0", "Caregiver identity: email + social login")
   System_Ext(gemini, "Gemini 2.0 Flash", "General AI for chat + reports: de-identified daily readings only (no name/id). Insights/digest/assess stay on in-project MedGemma")
   System_Ext(push, "FCM / APNs", "Push delivery - FCM HTTP v1 with APNs passthrough, escalation ladder, quiet hours")
-  System_Ext(dd, "Datadog", "APM traces + logs over OTLP, deployed (mobile excluded - UK1 unsupported by the MAUI SDK)")
+  System_Ext(dd, "Datadog", "APM traces + logs over OTLP, deployed; mobile logs, traces and RUM via the MAUI SDK (opt-in)")
 
   Rel(wearer, health, "Device syncs to")
   Rel(caregiver, carditrack, "Uses", "mobile + web")

@@ -310,7 +310,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **As an** app user
 - **I want to** control whether crash reports and usage telemetry are collected from my device
 - **So that** monitoring my family doesn't mean being monitored myself without consent
-- **Current state (shipped):** Datadog telemetry is **logs + traces only** — RUM was removed in PR #185, and with it Datadog crash reporting (`NativeCrashReportEnabled=false`); crashes/ANRs come from Play Console vitals. Consent is **opt-in and off by default**: the SDK initialises at `TrackingConsent.NotGranted` and is raised to `Granted` only by Settings → Privacy → **Send diagnostics**.
+- **Current state (shipped):** Datadog telemetry is **logs, traces and RUM** (views, errors, crash reports — no action or resource tracking); crashes/ANRs also come from Play Console vitals. Consent is **opt-in and off by default**: the SDK initialises at `TrackingConsent.NotGranted` and is raised to `Granted` only by Settings → Privacy → **Send diagnostics**.
 - **Why it matters:** honours the "consent-first" design principle (Principle 4) and the transparency framing of Story 7.1; opt-in analytics consent is also what a store review asks for.
 - **Acceptance Criteria:**
   - ✅ Settings toggle to opt in to diagnostics, defaulting off, saying in one line what is sent and that health data is not
