@@ -26,6 +26,10 @@ public class MemberChatTurnConfiguration : IEntityTypeConfiguration<MemberChatTu
         // encrypted JSON, null on every turn that proposed nothing.
         builder.Property(t => t.PendingChange);
 
+        // And the answer check's reading of the reply: encrypted JSON, null wherever the check did
+        // not run. Model output about a question concerning a named person — same class as Content.
+        builder.Property(t => t.Assessment);
+
         // A name survives an incident and an enum renumbering — same reasoning as
         // MemberQuestionnaireConfiguration.Status.
         builder.Property(t => t.Role)

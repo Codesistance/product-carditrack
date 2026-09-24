@@ -68,4 +68,10 @@ public sealed record MemberChatWorkflowResult
     /// an offer, a read-back or a refused rewrite.
     /// </summary>
     public bool ChangedJournal { get; init; }
+
+    /// <summary>
+    /// The answer check's reading of this reply, or null when the workflow is not one the check
+    /// reads or the check did not return. Internal — persisted encrypted on the assistant turn.
+    /// </summary>
+    public ChatAnswerAssessment? Assessment { get; init; }
 }

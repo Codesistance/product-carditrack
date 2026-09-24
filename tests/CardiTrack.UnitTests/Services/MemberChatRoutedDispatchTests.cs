@@ -25,6 +25,7 @@ public class MemberChatRoutedDispatchTests
     private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly IDataQueryPlanner _planner = Substitute.For<IDataQueryPlanner>();
     private readonly IChatRouter _router = Substitute.For<IChatRouter>();
+    private readonly IChatAnswerChecker _checker = Substitute.For<IChatAnswerChecker>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
 
@@ -66,7 +67,13 @@ public class MemberChatRoutedDispatchTests
                     IsAskingForAdvice = false,
                 },
                 new AiUsage { ModelName = "test-rewrite" }));
+
+        CheckerAnswers(new ChatAnswerAssessment { Completeness = AnswerCompleteness.Full });
     }
+
+    private void CheckerAnswers(ChatAnswerAssessment assessment) =>
+        _checker.CheckAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<ChatAnswerAssessment>(assessment, new AiUsage { ModelName = "test-check" }));
 
     private void RouterAnswers(MemberChatWorkflow? primary, MemberChatWorkflow? runnerUp = null) =>
         _router.RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
@@ -103,7 +110,8 @@ public class MemberChatRoutedDispatchTests
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
             PromptContextFactory.JournalActions(_rewriteAi, _unitOfWork, _access),
             new PassThroughWriteGuard(),
-            NullLogger<MemberChatService>.Instance);
+            NullLogger<MemberChatService>.Instance,
+            _checker);
 
     [Fact]
     public async Task TheRouterSelectsTheWorkflow_AndTheRouteIsBilled()
@@ -865,6 +873,86 @@ public class MemberChatRoutedDispatchTests
         Assert.NotEmpty(sentences);
         await _rewriteAi.DidNotReceiveWithAnyArgs()
             .GenerateStructuredAsync<MemberChatService.WaitingSentencesAiResponse>(default!, default);
+    }
+
+    // ---- The answer check (recording only) ---------------------------------------------
+
+    /// <summary>
+    /// An answer-giving reply is read against the question after it is written: the check gets
+    /// the reply with the name swapped out, its verdict is stored encrypted on the assistant turn
+    /// and tagged on the span, and the call is billed — while the reply itself is unchanged.
+    /// </summary>
+    [Fact]
+    public async Task AnAnalysisReply_IsChecked_StoredEncrypted_AndBilled_ButNotChanged()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>("Moses walked more than usual this week.", new AiUsage()));
+        CheckerAnswers(new ChatAnswerAssessment
+        {
+            Completeness = AnswerCompleteness.Partial,
+            Cause = AnswerGapCause.NotInData,
+            Intent = "when he was active",
+            Missing = "times of day",
+            Reasoning = "Weekly comparison, no times.",
+        });
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+
+        using var span = StartRequestSpan();
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "when was Moses active?");
+
+        Assert.StartsWith("Moses walked more than usual this week.", reply.Reply, StringComparison.Ordinal);
+        await _checker.Received(1).CheckAsync(
+            Arg.Is<string>(q => !q.Contains("Moses")),
+            Arg.Any<string?>(),
+            Arg.Is<string>(r => !r.Contains("Moses") && r.Contains(NamePlaceholder.Token)),
+            Arg.Any<CancellationToken>());
+        Assert.NotNull(assistant?.Assessment);
+        Assert.DoesNotContain("times of day", assistant!.Assessment, StringComparison.Ordinal);
+        var stored = ChatAnswerAssessment.FromJson(PromptContextFactory.Encryption.Decrypt(assistant.Assessment!));
+        Assert.Equal(AnswerCompleteness.Partial, stored!.Completeness);
+        Assert.Equal(AnswerGapCause.NotInData, stored.Cause);
+        await _usages.Received().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.AnswerCheck));
+        Assert.Equal("partial", span.GetTagItem(MemberChatTelemetry.AnswerCheckTag));
+        Assert.Equal("not_in_data", span.GetTagItem(MemberChatTelemetry.AnswerGapTag));
+    }
+
+    /// <summary>A steer redirects rather than answers, so there is nothing to check.</summary>
+    [Fact]
+    public async Task ASteer_IsNotChecked()
+    {
+        RouterAnswers(MemberChatWorkflow.SteerCasual);
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "Hello! Ask me about CardiTrackCardiMember." },
+                new AiUsage()));
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "hello!");
+
+        await _checker.DidNotReceiveWithAnyArgs().CheckAsync(default!, default, default!, default);
+        await _usages.DidNotReceive().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.AnswerCheck));
+    }
+
+    /// <summary>A check that fails never costs the caregiver their answer: the reply goes out
+    /// unassessed and unbilled for the check, and the span says the check failed.</summary>
+    [Fact]
+    public async Task ACheckThatFails_LeavesTheReplyStanding()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        _checker.CheckAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task<AiGenerationResult<ChatAnswerAssessment>>>(_ => throw new HttpRequestException("slot down"));
+
+        using var span = StartRequestSpan();
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how did he sleep this week?");
+
+        Assert.StartsWith("The week looks steady.", reply.Reply, StringComparison.Ordinal);
+        await _usages.DidNotReceive().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.AnswerCheck));
+        Assert.Equal("failed", span.GetTagItem(MemberChatTelemetry.AnswerCheckTag));
     }
 
     // ---- Request-span tags (MemberChatTelemetry) -------------------------------------------

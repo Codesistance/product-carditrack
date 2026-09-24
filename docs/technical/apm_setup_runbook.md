@@ -88,7 +88,10 @@ the shared string in `TelemetryNames` (CardiTrack.Shared).
   all catalogue labels or fixed constants (`MemberChatTelemetry`). Together with the
   per-call `carditrack.ai.reply_schema` a trace reads end to end: which calls ran and what
   they decided. `@chat.workflow:clarify` over all sends is the clarify rate the routing design
-  turns on ([member_chat_routing.md](./member_chat_routing.md) §8).
+  turns on ([member_chat_routing.md](./member_chat_routing.md) §8). Replies the answer check reads also carry
+  `chat.answer_check` (`full`, `partial`, `no`, or `failed` when the check did not return) and,
+  for a miss, `chat.answer_gap` (`not_addressed`, `not_in_data`). Both are fixed labels; the
+  check's own reasoning is stored encrypted on the turn and never tagged or logged.
 - **Log line** — one Information completion log per call (model, elapsed ms, token
   counts, done_reason, Ollama server-side timings, trace id), enabled by the Serilog
   override `CardiTrack.Infrastructure.ExternalClients.Medical → Information` in the API

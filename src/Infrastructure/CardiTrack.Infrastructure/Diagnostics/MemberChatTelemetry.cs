@@ -54,6 +54,37 @@ public static class MemberChatTelemetry
     /// <summary>The routing call failed and the pre-check's flags chose the handler.</summary>
     public const string SourceTriageFallback = "triage_fallback";
 
+    /// <summary>
+    /// The answer check's verdict on the reply: <c>full</c>, <c>partial</c>, <c>no</c>, or
+    /// <c>failed</c> when the check itself did not return. Absent where the check does not run.
+    /// </summary>
+    public const string AnswerCheckTag = "chat.answer_check";
+
+    /// <summary>Why a reply fell short: <c>not_addressed</c> or <c>not_in_data</c>.</summary>
+    public const string AnswerGapTag = "chat.answer_gap";
+
+    public static void TagAnswerCheck(ChatAnswerAssessment assessment)
+    {
+        var activity = Activity.Current;
+        if (activity is null)
+            return;
+
+        activity.SetTag(AnswerCheckTag, assessment.Completeness switch
+        {
+            AnswerCompleteness.Partial => "partial",
+            AnswerCompleteness.None => "no",
+            _ => "full",
+        });
+
+        if (assessment.Cause is { } cause)
+        {
+            activity.SetTag(AnswerGapTag, cause == AnswerGapCause.NotInData ? "not_in_data" : "not_addressed");
+        }
+    }
+
+    public static void TagAnswerCheckFailed() =>
+        Activity.Current?.SetTag(AnswerCheckTag, "failed");
+
     public static void TagSource(string source) =>
         Activity.Current?.SetTag(SourceTag, source);
 

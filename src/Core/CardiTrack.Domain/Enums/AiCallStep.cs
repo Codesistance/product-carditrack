@@ -44,4 +44,10 @@ public enum AiCallStep
     /// the reply and the change itself are assembled and applied in code. Numbered clear of the
     /// journal steps (7 and 8) in flight on another branch when this shipped.</summary>
     SettingsPlan = 9,
+
+    /// <summary>
+    /// The answer check: whether the reply answered the question it was given, read against the
+    /// conversation. Runs after the reply is written, on the Rewrite slot.
+    /// </summary>
+    AnswerCheck = 10,
 }

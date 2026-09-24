@@ -465,6 +465,10 @@ public class MemberChatService : IMemberChatService
     private readonly IMemberWriteGuard _guard;
     private readonly ILogger<MemberChatService> _logger;
 
+    // Optional so a caller that composes this service by hand — the test suites — is not made to
+    // supply a collaborator it does not exercise; the host's container always registers one.
+    private readonly IChatAnswerChecker? _answerChecker;
+
     public MemberChatService(
         IMedicalAiService medicalAi,
         IRewriteAiService rewriteAi,
@@ -479,7 +483,8 @@ public class MemberChatService : IMemberChatService
         IEncryptionService encryption,
         JournalChatActions journal,
         IMemberWriteGuard guard,
-        ILogger<MemberChatService> logger)
+        ILogger<MemberChatService> logger,
+        IChatAnswerChecker? answerChecker = null)
     {
         _journal = journal;
         _alerts = new AlertSettingsChatActions(
@@ -494,6 +499,7 @@ public class MemberChatService : IMemberChatService
         _encryption = encryption;
         _guard = guard;
         _logger = logger;
+        _answerChecker = answerChecker;
     }
 
     public async Task<MemberChatMessageResponse> SendMessageAsync(
@@ -719,7 +725,58 @@ public class MemberChatService : IMemberChatService
             result = result with { Calls = InsertAfterTriage(result.Calls, billedRoute) };
         }
 
-        return result;
+        return await CheckAnswerAsync(result, forModel, history, member?.Name, ct);
+    }
+
+    /// <summary>
+    /// The workflows whose replies claim to answer the question — the ones the answer check reads.
+    /// The steers redirect, clarify asks, and journal and settings act on a request whose outcome
+    /// is its own answer.
+    /// </summary>
+    private static bool AnswersTheQuestion(MemberChatWorkflow workflow) => workflow is
+        MemberChatWorkflow.Status or MemberChatWorkflow.Analysis or MemberChatWorkflow.Inference
+        or MemberChatWorkflow.Investigation or MemberChatWorkflow.Advise;
+
+    /// <summary>
+    /// Asks whether the reply answered what was asked, and records the verdict on the result —
+    /// recording only: the reply the caregiver gets is the same either way.
+    /// </summary>
+    /// <remarks>
+    /// The check costs one Rewrite-slot call on the replies it reads and is billed like any other.
+    /// It never costs the caregiver their answer: a check that fails is logged and the reply goes
+    /// out unassessed, the same posture as the routing call.
+    /// </remarks>
+    private async Task<MemberChatWorkflowResult> CheckAnswerAsync(
+        MemberChatWorkflowResult result, string forModel, ChatHistory history, string? memberName,
+        CancellationToken ct)
+    {
+        if (_answerChecker is null || !AnswersTheQuestion(result.Workflow))
+            return result;
+
+        try
+        {
+            // The reply has the name resolved back in for the caregiver; it goes out the way
+            // every other Rewrite-slot input does, with the name swapped for the placeholder.
+            var reply = NamePlaceholder.Redact(result.Reply, memberName) ?? result.Reply;
+            var checkedAnswer = await _answerChecker.CheckAsync(forModel, history.Full, reply, ct);
+
+            MemberChatTelemetry.TagAnswerCheck(checkedAnswer.Result);
+            return result with
+            {
+                Assessment = checkedAnswer.Result,
+                Calls = [.. result.Calls, new AiCallRecord(AiCallStep.AnswerCheck, AiProviderSlot.Rewrite, checkedAnswer.Usage)],
+            };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            MemberChatTelemetry.TagAnswerCheckFailed();
+            _logger.LogWarning(ex, "Answer check failed; the reply goes out unassessed.");
+            return result;
+        }
     }
 
     /// <summary>
@@ -2288,6 +2345,9 @@ public class MemberChatService : IMemberChatService
             // level, which is health data wherever it is written.
             PendingChange = result.PendingChange is { } proposal
                 ? _encryption.Encrypt(proposal.ToJson())
+                : null,
+            Assessment = result.Assessment is { } assessment
+                ? _encryption.Encrypt(assessment.ToJson())
                 : null,
             CreatedAtUtc = DateTime.UtcNow,
         };
