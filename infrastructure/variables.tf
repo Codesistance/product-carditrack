@@ -554,6 +554,22 @@ variable "medgemma_timeout_seconds" {
   default     = 900
 }
 
+# One budget for a member-chat send end to end (MemberChatOptions.SendBudgetSeconds), enforced in
+# the API. A send chains Vertex calls around one or two MedGemma reads, each with its own timeout
+# and retries, so no sum of per-call ceilings is a real worst case; the send is capped as a whole
+# instead. The API's Cloud Run request timeout is derived a minute past this, and the app's send
+# timeout (CardiTrackApiClient.MemberChatSendTimeout) a minute past that — raise all three together.
+variable "member_chat_send_budget_seconds" {
+  description = "End-to-end server budget for one member-chat send; the API's Cloud Run request timeout is derived from it"
+  type        = number
+  default     = 1020
+
+  validation {
+    condition     = var.member_chat_send_budget_seconds >= var.medgemma_timeout_seconds + 60 && var.member_chat_send_budget_seconds + 60 <= 3600
+    error_message = "member_chat_send_budget_seconds must leave at least 60s past medgemma_timeout_seconds for the Vertex calls around it, and stay 60s under Cloud Run's 3600s ceiling."
+  }
+}
+
 # The window a MedGemma call has to work in — prompt and completion are spent out of the same one.
 # Sized here rather than left to Ollama's own default (4096), which is a chat-turn window: the
 # clinical prompts carry a day of readings, the family's questionnaire answers and the reply schema,

@@ -3,9 +3,11 @@ using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Infrastructure.Settings;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace CardiTrack.API.Controllers;
 
@@ -21,16 +23,19 @@ public class MemberChatController : BaseApiController
 {
     private readonly IMemberChatService _chat;
     private readonly IValidator<MemberChatMessageRequest> _messageValidator;
+    private readonly TimeSpan _sendBudget;
 
     public MemberChatController(
         IUserContext userContext,
         ILogger<MemberChatController> logger,
         IMemberChatService chat,
-        IValidator<MemberChatMessageRequest> messageValidator)
+        IValidator<MemberChatMessageRequest> messageValidator,
+        IOptions<MemberChatOptions> options)
         : base(userContext, logger)
     {
         _chat = chat;
         _messageValidator = messageValidator;
+        _sendBudget = TimeSpan.FromSeconds(options.Value.SendBudgetSeconds);
     }
 
     /// <summary>
@@ -55,9 +60,16 @@ public class MemberChatController : BaseApiController
         if (!validation.IsValid)
             return ValidationFailed(validation);
 
+        // One budget for the whole send (MemberChatOptions.SendBudgetSeconds). Every call inside
+        // it has its own ceiling, but a chain of them can still outlast Cloud Run's request timeout
+        // and end as a bare 504 with the work abandoned mid-write; this ends it here first, where
+        // it rolls back cleanly and answers the same 503 a saturated model host does.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(_sendBudget);
+
         try
         {
-            var result = await _chat.SendMessageAsync(UserContext.UserId, cardiMemberId, request.Message, ct);
+            var result = await _chat.SendMessageAsync(UserContext.UserId, cardiMemberId, request.Message, budget.Token);
 
             // A send that applied an alert-settings change is a write to what is watching the
             // member, and the audit trail files it as that rather than as one more chat read.
@@ -102,6 +114,15 @@ public class MemberChatController : BaseApiController
             Logger.LogWarning(ex,
                 "Member chat send timed out against the AI host for CardiMember {CardiMemberId}",
                 cardiMemberId);
+            return Error(
+                "The assistant is busy catching up right now — give it a minute and ask again.",
+                StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (OperationCanceledException ex) when (budget.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            Logger.LogWarning(ex,
+                "Member chat send for CardiMember {CardiMemberId} ran past its {BudgetSeconds}s budget",
+                cardiMemberId, _sendBudget.TotalSeconds);
             return Error(
                 "The assistant is busy catching up right now — give it a minute and ask again.",
                 StatusCodes.Status503ServiceUnavailable);

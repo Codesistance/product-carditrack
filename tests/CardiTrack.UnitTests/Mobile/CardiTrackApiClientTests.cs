@@ -1855,10 +1855,11 @@ public class CardiTrackApiClientTests
     [Fact]
     public void MemberChatSendTimeout_OutlastsTheServer_AndFitsUnderTheClientCeiling()
     {
-        // The API's Cloud Run request timeout is medgemma_timeout_seconds (900) + 60. The app must
-        // be the last layer to give up, and HttpClient.Timeout — which no per-request budget can
-        // extend — must leave room for it. A 190s ceiling once capped this send silently.
-        var serverCeiling = TimeSpan.FromSeconds(900 + 60);
+        // The API caps a send at MemberChat:SendBudgetSeconds (1020) and its Cloud Run request
+        // timeout is that + 60. The app must be the last layer to give up, and HttpClient.Timeout —
+        // which no per-request budget can extend — must leave room for it. A 190s ceiling once
+        // capped this send silently.
+        var serverCeiling = TimeSpan.FromSeconds(1020 + 60);
 
         Assert.True(CardiTrackApiClient.MemberChatSendTimeout > serverCeiling);
         Assert.True(CardiTrackApiClient.HttpClientCeiling > CardiTrackApiClient.MemberChatSendTimeout);

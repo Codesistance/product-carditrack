@@ -109,10 +109,10 @@ module "deployments" {
   # Cloud Run - API
   api_service_name    = local.api_service_name
   api_container_image = var.api_container_image
-  # Derived from the MedGemma budget so the two cannot drift: one minute past the slowest call a
-  # member-chat send waits on. The mobile send timeout (CardiTrackApiClient.MemberChatSendTimeout)
-  # sits a further minute out.
-  api_request_timeout_seconds = var.medgemma_timeout_seconds + 60
+  # Derived from the member-chat send budget the API enforces, so the two cannot drift: Cloud Run
+  # outlasts it by a minute and the send ends as the API's own 503, never Cloud Run's bare 504.
+  # The mobile send timeout (CardiTrackApiClient.MemberChatSendTimeout) sits a further minute out.
+  api_request_timeout_seconds = var.member_chat_send_budget_seconds + 60
   api_env_vars = merge(
     {
       "ASPNETCORE_ENVIRONMENT"              = title(var.environment)
@@ -124,6 +124,7 @@ module "deployments" {
       "AI__Public__MaxOutputTokens"         = tostring(var.public_ai_max_output_tokens)
       "AI__Private__Model"                  = local.medgemma_model
       "AI__Private__TimeoutSeconds"         = tostring(var.medgemma_timeout_seconds)
+      "MemberChat__SendBudgetSeconds"       = tostring(var.member_chat_send_budget_seconds)
       "AI__Private__ContextTokens"          = tostring(var.medgemma_context_tokens)
       "AI__Private__MaxOutputTokens"        = tostring(var.medgemma_max_output_tokens)
       "AI__Private__RepeatPenalty"          = tostring(var.medgemma_repeat_penalty)

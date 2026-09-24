@@ -355,17 +355,16 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         SendNoDataAsync(HttpMethod.Post, "api/v1/assistant/prepare", ct);
 
     /// <summary>
-    /// How long a member-chat send may run before the app hangs up. The clinical read is the one
-    /// call in this chain that can't move off the self-hosted MedGemma instance, so this has to
-    /// outlast the server's own ceiling for the whole request. That ceiling is the API's Cloud Run
-    /// request timeout, which Terraform derives as AI:Private:TimeoutSeconds + 60 (900 + 60 = 960s)
-    /// so that a queued-behind-another-caller generation — a single-instance Ollama admits one
-    /// request at a time — can legitimately take close to its full 900s and still be answered.
-    /// This sits one more minute out, the same "the outer layer must outlast the inner one by a
-    /// margin" rule applied at every layer: giving up first here doesn't stop the generation, it
-    /// just means nobody is listening for the answer it produces.
+    /// How long a member-chat send may run before the app hangs up. It has to outlast the server's
+    /// own ceiling for the whole request, so that the server — not the app — is the one to give
+    /// up, and says so. The API caps a send end to end at MemberChat:SendBudgetSeconds (1020s:
+    /// room for a clinical read queued behind another caller on the single-request MedGemma
+    /// service, plus the Vertex calls around it), Terraform sets its Cloud Run request timeout a
+    /// minute past that (1080s), and this sits a further minute out — the same "the outer layer
+    /// must outlast the inner one by a margin" rule at every layer. Giving up first here doesn't
+    /// stop the work; it just means nobody is listening for the answer it produces.
     /// </summary>
-    public static readonly TimeSpan MemberChatSendTimeout = TimeSpan.FromSeconds(1020);
+    public static readonly TimeSpan MemberChatSendTimeout = TimeSpan.FromSeconds(1140);
 
     /// <summary>
     /// The value for <see cref="HttpClient.Timeout"/>. That timeout is a hard, client-wide ceiling

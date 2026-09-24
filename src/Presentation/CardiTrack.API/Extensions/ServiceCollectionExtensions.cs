@@ -158,6 +158,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceConnectionInviteService,
             CardiTrack.Infrastructure.Services.DeviceConnectionInviteService>();
 
+        // The member-chat send's end-to-end budget, which the controller enforces and every outer
+        // timeout (Cloud Run's, the app's) is derived from.
+        services.Configure<CardiTrack.Infrastructure.Settings.MemberChatOptions>(
+            configuration.GetSection(CardiTrack.Infrastructure.Settings.MemberChatOptions.SectionName));
+
         // Caregiver invitations: an admin offers somebody a share of the watching. Same shape as
         // the wearer invitation above, and request-scoped for the same reason.
         services.Configure<CardiTrack.Infrastructure.Settings.CaregiverInviteOptions>(
