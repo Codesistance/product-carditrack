@@ -105,7 +105,7 @@
 		     canvas, the same proportion. One value covers both platforms: MauiIcon
 		     generates the Android adaptive icon and the iOS AppIcon set from this
 		     single declaration. -->
-		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.png" Color="#F5F6F8" ForegroundScale="0.42" />
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.png" Color="#F5F6F8" ForegroundScale="0.50" />
 
 		<!-- Splash Screen. The asset is deliberately the same white rounded tile SplashPage
 		     draws (88dp tile, 17dp radius, 79x68 logo AspectFit inside — see SplashPage.xaml)
