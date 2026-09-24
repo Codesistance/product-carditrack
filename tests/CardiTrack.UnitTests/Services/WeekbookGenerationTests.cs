@@ -1,10 +1,12 @@
-using CardiTrack.Application.DTOs.Common;
+﻿using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.Diagnostics;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.UnitTests.Observability;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -13,8 +15,10 @@ namespace CardiTrack.UnitTests.Services;
 /// <summary>
 /// Pins when a Weekbook is written and when it is refused: on the member's own week-start day,
 /// after their own chosen hour, once per week, never from a week too thin to account for, and
-/// never from the week's Daybooks.
+/// never from the week's Daybooks. Also pins what the pass says about each of those
+/// decisions, on the outcome counter every journal pass records to.
 /// </summary>
+[Collection(JournalTelemetryCollection.Name)]
 public class WeekbookGenerationTests
 {
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
@@ -69,6 +73,9 @@ public class WeekbookGenerationTests
         _digests.GetLatestByDateAsync(
                 _memberId, Arg.Any<DateOnly>(), DigestAudience.Weekbook, Arg.Any<CancellationToken>())
             .Returns((DigestEntry?)null);
+        // The insert says whether it stored a row, and the pass counts on the answer: an
+        // unstubbed false would read as "another execution won the index" on every test.
+        _digests.AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns(true);
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
         _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns([]);
         _realtimeAssessments.GetBetweenAsync(
@@ -381,6 +388,125 @@ public class WeekbookGenerationTests
 
         Assert.DoesNotContain("(truncated)", prompt, StringComparison.Ordinal);
         Assert.Contains(new string('x', 2_500), prompt, StringComparison.Ordinal);
+    }
+
+    // ── What the pass says about each decision ───────────────────────────────
+
+    /// <summary>
+    /// Every exit from the per-member path lands on the outcome counter, tagged with the book
+    /// and the reason. These were all bare <c>return false</c>s once, and a pass that declined
+    /// every member left nothing behind to say why — or that it had run at all.
+    /// </summary>
+    [Fact]
+    public async Task A_written_weekbook_counts_as_written()
+    {
+        using var capture = new JournalMetricCapture();
+
+        await CreateSut().GenerateDueWeekbooksAsync(UtcNow);
+
+        Assert.Contains(("weekbook", "written"), capture.Outcomes);
+    }
+
+    [Fact]
+    public async Task A_member_declined_on_the_weekday_counts_as_not_due()
+    {
+        using var capture = new JournalMetricCapture();
+
+        // Tuesday 11 August, same hour: not the member's week start.
+        await CreateSut().GenerateDueWeekbooksAsync(UtcNow.AddDays(1));
+
+        Assert.Contains(("weekbook", "not_due"), capture.Outcomes);
+        Assert.DoesNotContain(("weekbook", "written"), capture.Outcomes);
+    }
+
+    [Fact]
+    public async Task A_week_already_written_counts_as_already_written()
+    {
+        _digests.GetLatestByDateAsync(
+                _memberId, WeekEnd, DigestAudience.Weekbook, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry { CardiMemberId = _memberId, LocalDate = WeekEnd, Audience = DigestAudience.Weekbook });
+        using var capture = new JournalMetricCapture();
+
+        await CreateSut().GenerateDueWeekbooksAsync(UtcNow);
+
+        Assert.Contains(("weekbook", "already_written"), capture.Outcomes);
+    }
+
+    [Fact]
+    public async Task A_week_too_thin_to_account_for_counts_as_no_readings()
+    {
+        SetupWeek(daysWithData: 3);
+        using var capture = new JournalMetricCapture();
+
+        await CreateSut().GenerateDueWeekbooksAsync(UtcNow);
+
+        Assert.Contains(("weekbook", "no_readings"), capture.Outcomes);
+    }
+
+    [Fact]
+    public async Task A_period_another_execution_holds_counts_as_claimed_elsewhere()
+    {
+        _unitOfWork.GenerationLeases
+            .TryClaimAsync(
+                Arg.Any<Guid>(), Arg.Any<GenerationWork>(), Arg.Any<DateOnly>(),
+                Arg.Any<DateTime>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns((Guid?)null);
+        using var capture = new JournalMetricCapture();
+
+        Assert.Equal(0, await CreateSut().GenerateDueWeekbooksAsync(UtcNow));
+
+        Assert.Contains(("weekbook", "claimed_elsewhere"), capture.Outcomes);
+        await _medicalAi.DidNotReceive().GenerateStructuredWithUsageAsync<DigestGenerationService.WeekbookAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The insert answering false — the partial unique index already held another execution's
+    /// row, or the member is under an erasure hold — is not a book written. It used to be
+    /// counted as one, which is the one figure on the run-finished line that could then not be
+    /// trusted.
+    /// </summary>
+    [Fact]
+    public async Task An_insert_that_stored_nothing_counts_as_write_refused_not_written()
+    {
+        _digests.AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns(false);
+        using var capture = new JournalMetricCapture();
+
+        Assert.Equal(0, await CreateSut().GenerateDueWeekbooksAsync(UtcNow));
+
+        Assert.Contains(("weekbook", "write_refused"), capture.Outcomes);
+        Assert.DoesNotContain(("weekbook", "written"), capture.Outcomes);
+    }
+
+    [Fact]
+    public async Task A_generation_that_throws_counts_as_failed_and_spares_the_pass()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns<IEnumerable<ActivityLog>>(_ => throw new InvalidOperationException("boom"));
+        using var capture = new JournalMetricCapture();
+
+        Assert.Equal(0, await CreateSut().GenerateDueWeekbooksAsync(UtcNow));
+
+        Assert.Contains(("weekbook", "failed"), capture.Outcomes);
+    }
+
+    // ── The clock is resolved once per member per scope ──────────────────────
+
+    /// <summary>
+    /// Resolving the anchor timezone costs two reads, and the digest pass asks the same question
+    /// of the same member once per book. The answer is memoised for the life of the service, which
+    /// is one pass — so a second book's pass on the same instance reads no caregiver link again.
+    /// </summary>
+    [Fact]
+    public async Task The_anchor_timezone_is_read_once_per_member_across_a_pass()
+    {
+        var sut = CreateSut();
+
+        await sut.GenerateDueWeekbooksAsync(UtcNow);
+        await sut.GenerateDueMonthbooksAsync(UtcNow);
+        await sut.GenerateDueDaybooksAsync(UtcNow);
+
+        await _links.Received(1).GetByCardiMemberIdAsync(_memberId);
     }
 }
 

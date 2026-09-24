@@ -639,35 +639,141 @@ public partial class DigestGenerationService : IDigestGenerationService
         // The same candidate filter as the family summary. A member with nothing in two days has
         // no yesterday worth reviewing, and the per-member check below declines them again on the
         // stronger ground that the day itself holds no readings.
-        var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-2);
+        var (candidates, tally) = await RunJournalPassAsync(
+            JournalSurface(DigestAudience.Daybook),
+            DateOnly.FromDateTime(utcNow).AddDays(-2),
+            memberId => GenerateDaybookForMemberAsync(memberId, utcNow, ct),
+            (ex, memberId) => _logger.LogError(ex, "Day review generation failed for CardiMember {CardiMemberId}.", memberId),
+            ct);
+
+        _logger.LogInformation(
+            "Day review generation complete. Candidates: {Candidates}, reviews written: {Generated}" + PassTallySuffix,
+            PassTallyArgs(candidates, tally));
+
+        return tally[JournalPassOutcome.Written];
+    }
+
+    /// <summary>
+    /// The tail every book's completion line carries: the declines, by reason, in the order the
+    /// pass applies them. A constant so each book keeps its own opening words — the ones saved
+    /// searches already match on — and the analyser still sees a constant template.
+    /// </summary>
+    private const string PassTallySuffix =
+        ", not due: {NotDue}, already written: {AlreadyWritten}, unavailable: {Unavailable}, "
+        + "no readings: {NoReadings}, claimed elsewhere: {ClaimedElsewhere}, discarded: {Discarded}, "
+        + "write refused: {WriteRefused}, failed: {Failed}.";
+
+    private static object[] PassTallyArgs(int candidates, JournalPassTally tally) =>
+    [
+        candidates,
+        tally[JournalPassOutcome.Written],
+        tally[JournalPassOutcome.NotDue],
+        tally[JournalPassOutcome.AlreadyWritten],
+        tally[JournalPassOutcome.MemberUnavailable],
+        tally[JournalPassOutcome.NoReadings],
+        tally[JournalPassOutcome.ClaimedElsewhere],
+        tally[JournalPassOutcome.Discarded],
+        tally[JournalPassOutcome.WriteRefused],
+        tally[JournalPassOutcome.Failed],
+    ];
+
+    /// <summary>
+    /// One book's pass over its candidates: every active member with a reading since
+    /// <paramref name="windowStart"/>, each decided by <paramref name="generate"/>, each outcome
+    /// tallied for the completion line and counted on <see cref="JournalPassTelemetry"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The completion line is written whatever the tally says. It used to be written only when a
+    /// book had been written, which made a pass that declined everyone indistinguishable from
+    /// one that never ran — and on this pass declining everyone is the common case by a wide
+    /// margin.
+    /// </para>
+    /// <para>
+    /// Per member, one failure is one member's: a bad timezone id or a model hiccup must not
+    /// cost every other family their book. Cancellation is the exception — a cancelled pass is
+    /// not a member's failure, and logging it as one per member would be noise on the way out;
+    /// the check at the top of the loop is what ends the pass.
+    /// </para>
+    /// </remarks>
+    private async Task<(int Candidates, JournalPassTally Tally)> RunJournalPassAsync(
+        string book,
+        DateOnly windowStart,
+        Func<Guid, Task<JournalPassOutcome>> generate,
+        Action<Exception, Guid> logFailure,
+        CancellationToken ct)
+    {
         var memberIds = (await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart)).ToList();
 
-        var generated = 0;
+        var tally = new JournalPassTally();
         foreach (var memberId in memberIds)
         {
             ct.ThrowIfCancellationRequested();
+
+            JournalPassOutcome outcome;
             try
             {
-                if (await GenerateDaybookForMemberAsync(memberId, utcNow, ct))
-                    generated++;
+                outcome = await generate(memberId);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Per member, like the summary pass: one bad timezone id or one model hiccup must
-                // not cost every other family their review of the day.
-                _logger.LogError(ex, "Day review generation failed for CardiMember {CardiMemberId}.", memberId);
+                logFailure(ex, memberId);
+                outcome = JournalPassOutcome.Failed;
             }
+
+            tally.Add(outcome);
+            JournalPassTelemetry.Count(book, outcome);
         }
 
-        if (generated > 0)
-        {
-            _logger.LogInformation(
-                "Day review generation complete. Candidates: {Candidates}, reviews written: {Generated}.",
-                memberIds.Count, generated);
-        }
-
-        return generated;
+        return (memberIds.Count, tally);
     }
+
+    /// <summary>
+    /// What a composed book became once stored, or the reason it was not, carried through from
+    /// the composition. Shared by the three books so the tally means the same thing on each.
+    /// </summary>
+    /// <remarks>
+    /// The insert's own <see langword="false"/> is an outcome of its own rather than a quiet
+    /// success: it means the row landed on a partial unique index another execution had already
+    /// filled, or the member is under an erasure hold. Either way this execution paid for two
+    /// model calls and stored nothing, and a count that called that "written" would be the one
+    /// figure on the line that could not be trusted.
+    /// </remarks>
+    private async Task<JournalPassOutcome> StoreBookAsync(JournalComposition composed, CancellationToken ct)
+    {
+        if (composed.Entry is null)
+        {
+            return composed.Outcome == JournalRewriteOutcome.NoReadings
+                ? JournalPassOutcome.NoReadings
+                : JournalPassOutcome.Discarded;
+        }
+
+        return await _unitOfWork.Digests.AddAsync(composed.Entry, ct)
+            ? JournalPassOutcome.Written
+            : JournalPassOutcome.WriteRefused;
+    }
+
+    /// <summary>
+    /// The member's anchor timezone, resolved once per member for the life of this scope.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="MemberAnchorTimeZone.ResolveAsync"/> costs two reads (the caregiver links, then
+    /// the users), and the digest pass asks the same question of the same member up to four
+    /// times an execution — once for the family summary and once per book — on a pass that runs
+    /// every half hour and declines nearly everyone. A scope is one pass or one request, so
+    /// nothing a caregiver changes can go stale inside it.
+    /// </remarks>
+    private async Task<TimeZoneInfo> AnchorTimeZoneAsync(Guid memberId)
+    {
+        if (_anchorTimeZones.TryGetValue(memberId, out var cached))
+            return cached;
+
+        var resolved = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
+        _anchorTimeZones[memberId] = resolved;
+        return resolved;
+    }
+
+    private readonly Dictionary<Guid, TimeZoneInfo> _anchorTimeZones = [];
 
     /// <summary>
     /// The minimum days of the week that must carry readings before a Weekbook is written.
@@ -702,32 +808,18 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         // Wide enough to catch a member whose readings stopped partway through the month just
         // gone: 35 days covers any prior month plus the day it becomes due on, in any timezone.
-        var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-35);
-        var memberIds = (await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart)).ToList();
+        var (candidates, tally) = await RunJournalPassAsync(
+            JournalSurface(DigestAudience.Monthbook),
+            DateOnly.FromDateTime(utcNow).AddDays(-35),
+            memberId => GenerateMonthbookForMemberAsync(memberId, utcNow, ct),
+            (ex, memberId) => _logger.LogError(ex, "Monthbook generation failed for CardiMember {CardiMemberId}.", memberId),
+            ct);
 
-        var generated = 0;
-        foreach (var memberId in memberIds)
-        {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                if (await GenerateMonthbookForMemberAsync(memberId, utcNow, ct))
-                    generated++;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Monthbook generation failed for CardiMember {CardiMemberId}.", memberId);
-            }
-        }
+        _logger.LogInformation(
+            "Monthbook generation complete. Candidates: {Candidates}, monthbooks written: {Generated}" + PassTallySuffix,
+            PassTallyArgs(candidates, tally));
 
-        if (generated > 0)
-        {
-            _logger.LogInformation(
-                "Monthbook generation complete. Candidates: {Candidates}, monthbooks written: {Generated}.",
-                memberIds.Count, generated);
-        }
-
-        return generated;
+        return tally[JournalPassOutcome.Written];
     }
 
     /// <summary>
@@ -750,14 +842,14 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// the Weekbook has from the Daybooks.
     /// </para>
     /// </remarks>
-    private async Task<bool> GenerateMonthbookForMemberAsync(
+    private async Task<JournalPassOutcome> GenerateMonthbookForMemberAsync(
         Guid memberId, DateTime utcNow, CancellationToken ct)
     {
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
-            return false;
+            return JournalPassOutcome.MemberUnavailable;
 
-        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
+        var timeZone = await AnchorTimeZoneAsync(memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
 
         // Due on the first, and only once their chosen hour has passed. A member whose own local
@@ -768,7 +860,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // Shared with the trend-interpretation pass through JournalDueCheck, so a month's note
         // and that month's Monthbook can never disagree about which month just ended.
         if (JournalDueCheck.Monthly(member, localNow) is not { } month)
-            return false;
+            return JournalPassOutcome.NotDue;
 
         var monthEnd = month.End;
         var monthStart = month.Start;
@@ -776,17 +868,11 @@ public partial class DigestGenerationService : IDigestGenerationService
         var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
             memberId, monthEnd, DigestAudience.Monthbook, ct);
         if (existing is not null)
-            return false;
+            return JournalPassOutcome.AlreadyWritten;
 
         return await UnderClaimAsync(memberId, GenerationWork.Monthbook, monthEnd, utcNow, ct, async () =>
-        {
-            var composed = await ComposeMonthbookAsync(member, timeZone, monthStart, monthEnd, utcNow, ct);
-            if (composed.Entry is null)
-                return false;
-
-            await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
-            return true;
-        });
+            await StoreBookAsync(
+                await ComposeMonthbookAsync(member, timeZone, monthStart, monthEnd, utcNow, ct), ct));
     }
 
     public async Task<int> GenerateDueWeekbooksAsync(DateTime utcNow, CancellationToken ct = default)
@@ -794,32 +880,18 @@ public partial class DigestGenerationService : IDigestGenerationService
         // Wider than the Daybook's two-day window: a week is due on one local weekday, and a
         // member whose watch went quiet mid-week still has a week worth accounting for. Nine days
         // covers the whole week just gone plus the day it becomes due on, in any timezone.
-        var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-9);
-        var memberIds = (await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart)).ToList();
+        var (candidates, tally) = await RunJournalPassAsync(
+            JournalSurface(DigestAudience.Weekbook),
+            DateOnly.FromDateTime(utcNow).AddDays(-9),
+            memberId => GenerateWeekbookForMemberAsync(memberId, utcNow, ct),
+            (ex, memberId) => _logger.LogError(ex, "Weekbook generation failed for CardiMember {CardiMemberId}.", memberId),
+            ct);
 
-        var generated = 0;
-        foreach (var memberId in memberIds)
-        {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                if (await GenerateWeekbookForMemberAsync(memberId, utcNow, ct))
-                    generated++;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Weekbook generation failed for CardiMember {CardiMemberId}.", memberId);
-            }
-        }
+        _logger.LogInformation(
+            "Weekbook generation complete. Candidates: {Candidates}, weekbooks written: {Generated}" + PassTallySuffix,
+            PassTallyArgs(candidates, tally));
 
-        if (generated > 0)
-        {
-            _logger.LogInformation(
-                "Weekbook generation complete. Candidates: {Candidates}, weekbooks written: {Generated}.",
-                memberIds.Count, generated);
-        }
-
-        return generated;
+        return tally[JournalPassOutcome.Written];
     }
 
     /// <summary>
@@ -840,14 +912,14 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// than the books below it.
     /// </para>
     /// </remarks>
-    private async Task<bool> GenerateWeekbookForMemberAsync(
+    private async Task<JournalPassOutcome> GenerateWeekbookForMemberAsync(
         Guid memberId, DateTime utcNow, CancellationToken ct)
     {
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
-            return false;
+            return JournalPassOutcome.MemberUnavailable;
 
-        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
+        var timeZone = await AnchorTimeZoneAsync(memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
 
         // Due on the day the member's week starts, and only once their chosen hour has passed.
@@ -858,7 +930,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // Shared with the trend-interpretation pass through JournalDueCheck, so a week's note and
         // that week's Weekbook can never disagree about which seven days they describe.
         if (JournalDueCheck.Weekly(member, localNow) is not { } week)
-            return false;
+            return JournalPassOutcome.NotDue;
 
         var weekEnd = week.End;
         var weekStart = week.Start;
@@ -869,17 +941,11 @@ public partial class DigestGenerationService : IDigestGenerationService
         var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
             memberId, weekEnd, DigestAudience.Weekbook, ct);
         if (existing is not null)
-            return false;
+            return JournalPassOutcome.AlreadyWritten;
 
         return await UnderClaimAsync(memberId, GenerationWork.Weekbook, weekEnd, utcNow, ct, async () =>
-        {
-            var composed = await ComposeWeekbookAsync(member, timeZone, weekStart, weekEnd, utcNow, ct);
-            if (composed.Entry is null)
-                return false;
-
-            await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
-            return true;
-        });
+            await StoreBookAsync(
+                await ComposeWeekbookAsync(member, timeZone, weekStart, weekEnd, utcNow, ct), ct));
     }
 
 
@@ -911,7 +977,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return new JournalRewriteResult(JournalRewriteOutcome.MemberUnavailable, null, null, false);
 
-        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var timeZone = await AnchorTimeZoneAsync(cardiMemberId);
         var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone));
         if (periodEnd >= localToday)
             return new JournalRewriteResult(JournalRewriteOutcome.PeriodNotFinished, null, null, false);
@@ -1574,14 +1640,14 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// them anyway is the reading of that they would least expect.
     /// </para>
     /// </remarks>
-    private async Task<bool> GenerateDaybookForMemberAsync(
+    private async Task<JournalPassOutcome> GenerateDaybookForMemberAsync(
         Guid memberId, DateTime utcNow, CancellationToken ct)
     {
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
-            return false;
+            return JournalPassOutcome.MemberUnavailable;
 
-        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
+        var timeZone = await AnchorTimeZoneAsync(memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
 
         // The caregiver's chosen hour for this member, or 02:00. Read off the member already
@@ -1589,7 +1655,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // half hour. A time chosen after this pass has already written today's entry does not
         // rewrite it — the existence check below is still the whole due-contract.
         if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.DaybookLocalTime))
-            return false;
+            return JournalPassOutcome.NotDue;
 
         var reviewedDate = DateOnly.FromDateTime(localNow).AddDays(-1);
 
@@ -1603,26 +1669,20 @@ public partial class DigestGenerationService : IDigestGenerationService
         var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
             memberId, reviewedDate, DigestAudience.Daybook, ct);
         if (existing is not null)
-            return false;
+            return JournalPassOutcome.AlreadyWritten;
 
+        // No question is asked off a daybook entry. Questions exist to explain readings while
+        // they still matter, and the answer would arrive a day after the day it was about — the
+        // same reasoning that stops a time-scoped answer being carried forward.
         return await UnderClaimAsync(memberId, GenerationWork.Daybook, reviewedDate, utcNow, ct, async () =>
-        {
-            var composed = await ComposeDaybookAsync(member, timeZone, reviewedDate, utcNow, ct);
-            if (composed.Entry is null)
-                return false;
-
-            await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
-
-            // No question is asked off a daybook entry. Questions exist to explain readings while
-            // they still matter, and the answer would arrive a day after the day it was about —
-            // the same reasoning that stops a time-scoped answer being carried forward.
-            return true;
-        });
+            await StoreBookAsync(
+                await ComposeDaybookAsync(member, timeZone, reviewedDate, utcNow, ct), ct));
     }
 
     /// <summary>
     /// Runs <paramref name="write"/> holding this member's claim on one period's generation, or
-    /// returns false without running it when another execution already holds a live one.
+    /// answers <see cref="JournalPassOutcome.ClaimedElsewhere"/> without running it when another
+    /// execution already holds a live one.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -1640,13 +1700,13 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// the expiry instead, which is the reason this is a lease and not a lock.
     /// </para>
     /// </remarks>
-    private async Task<bool> UnderClaimAsync(
+    private async Task<JournalPassOutcome> UnderClaimAsync(
         Guid memberId,
         GenerationWork work,
         DateOnly periodEnd,
         DateTime utcNow,
         CancellationToken ct,
-        Func<Task<bool>> write)
+        Func<Task<JournalPassOutcome>> write)
     {
         var claim = await _unitOfWork.GenerationLeases.TryClaimAsync(
             memberId, work, periodEnd, utcNow, GenerationLeaseTerm.Default, ct);
@@ -1656,7 +1716,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Another execution is already generating the {Work} for CardiMember {CardiMemberId} "
                 + "for the period ending {PeriodEnd}; leaving it to them.",
                 work, memberId, periodEnd);
-            return false;
+            return JournalPassOutcome.ClaimedElsewhere;
         }
 
         try
@@ -1745,7 +1805,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // progress rather than yesterday: recomputing on every data update is only worth doing if
         // what comes back is current. The API contract's `localDate` still means the day the text
         // is about, so `?date=` reads stay aligned.
-        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
+        var timeZone = await AnchorTimeZoneAsync(memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
         var describedDate = DateOnly.FromDateTime(localNow);
 

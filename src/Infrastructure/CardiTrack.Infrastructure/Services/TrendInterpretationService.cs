@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Common;
+﻿using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -224,6 +224,13 @@ public class TrendInterpretationService
     private readonly IMemberWriteGuard _guard;
     private readonly TimeProvider _timeProvider;
 
+    /// <summary>
+    /// Each member's anchor timezone, resolved once for the life of this scope. The journal
+    /// horizons ask twice per member per pass (weekly, then monthly) and each answer costs two
+    /// reads; the digest generator memoises for the same reason, see its AnchorTimeZoneAsync.
+    /// </summary>
+    private readonly Dictionary<Guid, TimeZoneInfo> _anchorTimeZones = [];
+
     public TrendInterpretationService(
         IUnitOfWork unitOfWork,
         IMedicalAiService medicalAi,
@@ -307,7 +314,7 @@ public class TrendInterpretationService
         // anchoring to UTC shifts the whole 90-day window for anyone east or west of Greenwich —
         // around local midnight it would drop the day they are currently living and pull in one
         // they are not. The alert and digest passes resolve the same way.
-        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var timeZone = await AnchorTimeZoneAsync(cardiMemberId);
         var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone));
 
         // Ending on the last completed local day, not today. Today's row holds however far
@@ -319,6 +326,16 @@ public class TrendInterpretationService
         var through = localToday.AddDays(-1);
 
         return await WriteAsync(member, timeZone, TrendHorizon.Rolling, TrendWindow.Rolling, through, utcNow, ct);
+    }
+
+    private async Task<TimeZoneInfo> AnchorTimeZoneAsync(Guid cardiMemberId)
+    {
+        if (_anchorTimeZones.TryGetValue(cardiMemberId, out var cached))
+            return cached;
+
+        var resolved = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        _anchorTimeZones[cardiMemberId] = resolved;
+        return resolved;
     }
 
     /// <summary>
@@ -459,7 +476,7 @@ public class TrendInterpretationService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return false;
 
-        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var timeZone = await AnchorTimeZoneAsync(cardiMemberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
 
         var period = horizon == TrendHorizon.Monthly

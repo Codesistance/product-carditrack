@@ -1,4 +1,4 @@
-using CardiTrack.Observability;
+﻿using CardiTrack.Observability;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,6 +28,21 @@ public class OtlpExportResilienceTests
         using var provider = services.BuildServiceProvider();
         var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(name);
         Assert.Equal(TimeSpan.FromSeconds(30), client.Timeout);
+    }
+
+    /// <summary>
+    /// The log sink builds its own client and takes this handler by hand, so it is the handler's
+    /// settings — not the named client's — that decide whether a log batch runs the stale
+    /// connection race. Pinned separately from the client test above for that reason.
+    /// </summary>
+    [Fact]
+    public void CreateTransportHandler_RetiresConnectionsBeforeTheIntakeDoes()
+    {
+        using var handler = OtlpExportResilience.CreateTransportHandler();
+
+        Assert.Equal(TimeSpan.FromSeconds(20), handler.PooledConnectionIdleTimeout);
+        Assert.Equal(TimeSpan.FromMinutes(5), handler.PooledConnectionLifetime);
+        Assert.Equal(TimeSpan.FromSeconds(10), handler.ConnectTimeout);
     }
 
     [Fact]
