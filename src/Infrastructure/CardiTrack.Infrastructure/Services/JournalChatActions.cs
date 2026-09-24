@@ -149,7 +149,7 @@ public sealed class JournalChatActions
         // the service; the token, should the model echo it, has no use here and is never shown.
         var resolved = await _rewriteAi.GenerateStructuredWithUsageAsync<JournalResolveAiResponse>(
             BuildResolvePrompt(
-                NamePlaceholder.Redact(flattened, member?.Name) ?? flattened,
+                NamePlaceholder.RedactMessageOrRefuse(flattened, member?.Name),
                 questionsOnlyHistory, localToday, weekStartsOn),
             ct);
 

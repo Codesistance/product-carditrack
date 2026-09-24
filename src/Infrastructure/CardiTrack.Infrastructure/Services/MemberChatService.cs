@@ -10,6 +10,7 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
+using CardiTrack.Infrastructure.Diagnostics;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.Extensions.Logging;
 
@@ -527,10 +528,23 @@ public class MemberChatService : IMemberChatService
         MemberChatWorkflowResult result;
         try
         {
-            result = await _journal.TryResumeAsync(flattened, userId, cardiMemberId, member, session, utcNow, ct)
-                ?? (MemberChatReplies.CarriesNoQuestion(flattened)
-                    ? NotAQuestionResult(member?.Name)
-                    : await RouteAndAnswerAsync(flattened, session, userId, cardiMemberId, member, utcNow, ct));
+            var resumed = await _journal.TryResumeAsync(flattened, userId, cardiMemberId, member, session, utcNow, ct);
+            if (resumed is not null)
+            {
+                MemberChatTelemetry.TagSource(MemberChatTelemetry.SourceJournalResume);
+                result = resumed;
+            }
+            else if (MemberChatReplies.CarriesNoQuestion(flattened))
+            {
+                MemberChatTelemetry.TagSource(MemberChatTelemetry.SourceNoQuestion);
+                result = NotAQuestionResult(member?.Name);
+            }
+            else
+            {
+                result = await RouteAndAnswerAsync(flattened, session, userId, cardiMemberId, member, utcNow, ct);
+            }
+
+            MemberChatTelemetry.TagWorkflow(result.Workflow);
 
             // The turn cap, applied once where every rung's result passes rather than inside each
             // handler: a journal reply reads a whole stored book back, and a book plus its label
@@ -617,6 +631,7 @@ public class MemberChatService : IMemberChatService
                     session, confirming: false, ct);
             }
 
+            MemberChatTelemetry.TagSource(MemberChatTelemetry.SourcePendingConfirmation);
             return await _alerts.ResolvePendingChangeAsync(
                 pending, pendingTurnId, answer, userId, cardiMemberId, member, utcNow, ct);
         }
@@ -626,7 +641,9 @@ public class MemberChatService : IMemberChatService
         // was not, so a caregiver who writes "how is Moses" leaked the identifier on every
         // Rewrite-slot call except the journal resolver. Clinical (in-estate) uses the same
         // copy so the two prompts cannot disagree about who was named.
-        var forModel = NamePlaceholder.Redact(flattened, member?.Name) ?? flattened;
+        // A member row that is gone (or nameless) has no name to redact against, so the message
+        // would cross unredacted — refused here, before the first Rewrite-slot call (#1246).
+        var forModel = NamePlaceholder.RedactMessageOrRefuse(flattened, member?.Name);
 
         // History travels with every step that reads the caregiver's message, not just the
         // clinical one — a follow-up like "why?" is only judgeable, and only plannable, in the
@@ -637,7 +654,13 @@ public class MemberChatService : IMemberChatService
         if (triage.Result.IsMalicious)
         {
             // The one outcome that stays a hard stop: manipulation attempts get no reply, no
-            // persistence, and no engagement to iterate against.
+            // persistence, and no engagement to iterate against. Logged without the message —
+            // it is the caregiver's own text about a named person — so a run of refusals reads
+            // as that on a dashboard rather than as validation 400s.
+            MemberChatTelemetry.TagSource(MemberChatTelemetry.SourceRefused);
+            _logger.LogWarning(
+                "Member chat message for CardiMember {CardiMemberId} refused by the malicious pre-check",
+                cardiMemberId);
             throw new ArgumentException(
                 "That question can't be answered here — try asking about the member's readings, "
                 + "alerts, or recent activity instead.");
@@ -652,6 +675,8 @@ public class MemberChatService : IMemberChatService
             var routed = await _router.RouteAsync(forModel, history.QuestionsOnly, ct);
             route = routed.Result;
             routeCall = new AiCallRecord(AiCallStep.Route, AiProviderSlot.Rewrite, routed.Usage);
+            MemberChatTelemetry.TagSource(MemberChatTelemetry.SourceRouter);
+            MemberChatTelemetry.TagRoute(route);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -664,6 +689,7 @@ public class MemberChatService : IMemberChatService
             // null the dispatch below falls through to the triage-decided path, which is the
             // ladder's failure direction expressed at the call level.
             _logger.LogWarning(ex, "Chat routing call failed; descending to the triage-decided path.");
+            MemberChatTelemetry.TagSource(MemberChatTelemetry.SourceTriageFallback);
         }
 
         // One workflow answers, then one path persists, bills and responds. The branch chain
@@ -1618,6 +1644,15 @@ public class MemberChatService : IMemberChatService
         if (string.IsNullOrWhiteSpace(flattened))
             return FallbackWaitingSentences;
 
+        // The same DPIA A20 boundary as the send: this prompt carries the caregiver's own words,
+        // and "how is Moses sleeping?" names the member. With no name on file to redact against
+        // the canned lines stand in — waiting copy never fails, and never crosses unredacted.
+        var memberName = (await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId))?.Name;
+        if (!NamePlaceholder.CanRedactAgainst(memberName))
+            return FallbackWaitingSentences;
+        var forModel = NamePlaceholder.Redact(flattened, memberName) ?? flattened;
+        var firstName = NamePlaceholder.FirstName(memberName);
+
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
         budget.CancelAfter(WaitingSentencesBudget);
 
@@ -1627,12 +1662,14 @@ public class MemberChatService : IMemberChatService
                 {WaitingSentencesInstructions}
 
                 --- {MedicalPromptBlocks.ChatQuestionLabel} ---
-                {flattened}
+                {forModel}
                 """, budget.Token);
 
+            // A line that echoes the placeholder gets the first name back; one that still carries
+            // a form of it Resolve could not place is dropped rather than shown.
             var sentences = generated.Sentences
-                .Select(s => s?.Trim().ReplaceLineEndings(" "))
-                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => NamePlaceholder.Resolve(s?.Trim().ReplaceLineEndings(" "), firstName))
+                .Where(s => !string.IsNullOrWhiteSpace(s) && !NamePlaceholder.IsPresentIn(s))
                 .Select(s => s!.Length > MaxWaitingSentenceLength ? $"{s[..MaxWaitingSentenceLength]}…" : s)
                 .Take(WaitingSentenceCount)
                 .ToList();

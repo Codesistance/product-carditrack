@@ -119,10 +119,10 @@ public static class MauiProgram
             client.DefaultRequestHeaders.Add("Accept", "application/json");
             ClientIdentity.Apply(client.DefaultRequestHeaders);
             // Ceiling only — TimeoutHandler holds every request to 30 s unless the request
-            // asked for more (the member-chat send does; its answer is a chain of CPU-served
-            // model calls). HttpClient.Timeout can never be extended per request, so it must
-            // sit above the slowest call and the handler enforces the real budgets.
-            client.Timeout = TimeSpan.FromSeconds(190);
+            // asked for more (the member-chat send does; its answer is a chain of model calls).
+            // HttpClient.Timeout can never be extended per request, so it must sit above the
+            // slowest call and the handler enforces the real budgets.
+            client.Timeout = CardiTrackApiClient.HttpClientCeiling;
         })
         // Registered before the auth handler so a 401 refresh+retry spends the same request's
         // budget rather than getting a fresh one.

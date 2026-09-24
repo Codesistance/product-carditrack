@@ -682,7 +682,7 @@ Still open, with an owner:
 - **Trial expiry, day 31** — product. R1 is trial-only and chat has no defined behaviour past it.
 - **Legal read on the escalation phrase** — legal. "Worth mentioning to their doctor" is new copy on the not-a-medical-device boundary; the read happens before it ships.
 - **Per-user rate limiting budgeted in model calls** — engineering. `app.UseIpRateLimiting()` is IP-scoped and unaware that a request now costs between two and seven model calls; one account across several IPs is effectively unthrottled. Cloud Armor rate-based rules are the eventual control, but prod has no load balancer (deferred 2026-08-06), so this is in-app for now.
-- **Where the new telemetry lands** — engineering. Workflow, routing source and dataset ids are persisted, but nothing routes them to a dashboard ([apm_setup_runbook.md](./apm_setup_runbook.md)).
+- **Where the new telemetry lands** — engineering. Workflow, routing source and dataset ids are persisted; since 2026-09-24 the workflow, the router's answer and the routing source are also tags on the send's request span (`chat.*`, [apm_setup_runbook.md](./apm_setup_runbook.md)). No dashboard reads them yet.
 - **The advise topic taxonomy** — which topics exist, and what the generation pass does when the readings support none.
 - **What counts as "close" alternatives** — settable only against shadow-phase traffic.
 - **The on-demand findings budget** — how much 30-day aggregation `analysis` can absorb, and whether a per-turn memo is enough. Cloud SQL read amplification becomes a read-replica conversation at roughly ten times current scale, not now.
