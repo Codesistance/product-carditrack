@@ -1837,16 +1837,11 @@ public class MemberChatService : IMemberChatService
         // One live conversation per member: continuing an old one is choosing it, so whatever
         // was active steps aside into the history list rather than lingering invisibly —
         // neither current (this one now out-recents it) nor completed (still inside the window).
-        // Every other open session is closed first, in its own statement, because only one may be
-        // open (#1119) and the index is checked row by row — a quiet one at its last turn, the one
-        // still inside the window now.
+        // Only one session may be open (#1119): the repository closes every other one — a quiet one
+        // at its last turn, the one still inside the window now — and reopens this one, retrying
+        // when a first message opens a session in between.
         var utcNow = DateTime.UtcNow;
-        await _unitOfWork.MemberChatSessions.EndOtherOpenSessionsAsync(
-            userId, cardiMemberId, session.Id, utcNow - ActiveSessionWindow, utcNow, ct);
-
-        session.EndedAtUtc = null;
-        session.LastTurnAtUtc = utcNow;
-        await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.MemberChatSessions.ReopenAsync(session, utcNow - ActiveSessionWindow, utcNow, ct);
 
         var withTurns = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(session.Id, ct);
         return ToHistoryResponse(withTurns ?? session);

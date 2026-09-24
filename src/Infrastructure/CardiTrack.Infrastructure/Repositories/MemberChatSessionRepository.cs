@@ -56,17 +56,39 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
         }
     }
 
-    public Task EndOtherOpenSessionsAsync(
-        Guid userId, Guid cardiMemberId, Guid keepSessionId, DateTime activeSinceUtc, DateTime endedAtUtc,
-        CancellationToken ct = default) =>
-        _dbSet
-            .Where(s => s.UserId == userId
-                        && s.CardiMemberId == cardiMemberId
-                        && s.Id != keepSessionId
-                        && s.EndedAtUtc == null)
-            .ExecuteUpdateAsync(u => u.SetProperty(
-                s => s.EndedAtUtc,
-                s => s.LastTurnAtUtc < activeSinceUtc ? (DateTime?)s.LastTurnAtUtc : endedAtUtc), ct);
+    public async Task ReopenAsync(
+        MemberChatSession session, DateTime activeSinceUtc, DateTime utcNow, CancellationToken ct = default)
+    {
+        session.EndedAtUtc = null;
+        session.LastTurnAtUtc = utcNow;
+
+        // Three tries: each lost race means a first message opened a session between the close
+        // and the save, and one losing three in a row is not a race this can win by retrying.
+        for (var attempt = 1; ; attempt++)
+        {
+            await _dbSet
+                .Where(s => s.UserId == session.UserId
+                            && s.CardiMemberId == session.CardiMemberId
+                            && s.Id != session.Id
+                            && s.EndedAtUtc == null)
+                .ExecuteUpdateAsync(u => u.SetProperty(
+                    s => s.EndedAtUtc,
+                    s => s.LastTurnAtUtc < activeSinceUtc ? (DateTime?)s.LastTurnAtUtc : utcNow), ct);
+
+            try
+            {
+                await _context.SaveChangesAsync(ct);
+                return;
+            }
+            catch (DbUpdateException ex) when (attempt < 3 && ex.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation
+            })
+            {
+                // The reopened row is still modified in the change tracker; the next save retries it.
+            }
+        }
+    }
 
     public async Task<MemberChatSession?> GetByIdWithTurnsAsync(Guid sessionId, CancellationToken ct = default)
     {

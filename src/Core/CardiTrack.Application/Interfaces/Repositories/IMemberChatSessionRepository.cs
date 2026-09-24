@@ -31,15 +31,18 @@ public interface IMemberChatSessionRepository : IRepository<MemberChatSession>
         MemberChatSession added, DateTime activeSinceUtc, CancellationToken ct = default);
 
     /// <summary>
-    /// Closes every open session this caregiver has for the member except
-    /// <paramref name="keepSessionId"/> — quiet ones at their last turn, one still inside the
-    /// active window at <paramref name="endedAtUtc"/> — so that session can be reopened. Runs
-    /// immediately, not on the next save: the one-open-session index is checked row by row, so the
-    /// others must be closed before the reopening is written.
+    /// Reopens a tracked past session as the caregiver's one open session for its member, closing
+    /// every other open one first — quiet ones at their last turn, one still inside the active
+    /// window at <paramref name="utcNow"/> — and saves.
     /// </summary>
-    Task EndOtherOpenSessionsAsync(
-        Guid userId, Guid cardiMemberId, Guid keepSessionId, DateTime activeSinceUtc, DateTime endedAtUtc,
-        CancellationToken ct = default);
+    /// <remarks>
+    /// The others are closed in their own statement, ahead of the save, because the one-open-
+    /// session index is checked row by row. A first message can still open a session in the gap
+    /// between the two; the save then hits the index, and the close-and-save is repeated so the
+    /// newcomer steps aside too — continuing a past conversation is choosing it.
+    /// </remarks>
+    Task ReopenAsync(
+        MemberChatSession session, DateTime activeSinceUtc, DateTime utcNow, CancellationToken ct = default);
 
     /// <summary>The session and its turns, oldest first — what the history endpoint and each new
     /// turn's prompt-history both read.</summary>
