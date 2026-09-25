@@ -3,7 +3,8 @@
 > **Status: DRAFT — pending review by a qualified privacy professional.** Prepared 2026-08-10
 > against the code as merged that day (the original baseline: §1–§6 as first written);
 > **revised 2026-09-23** against `main` as merged that day — §1 producer table, the §2.1 re-run,
-> V2b in §5 and the §6 verdict table are the as-built analysis. This document discharges the *drafting* half of DPIA
+> V2b in §5 and the §6 verdict table are the as-built analysis; **revised again 2026-09-25** for the
+> published-range decision — the §1 statistical-engine row, §2.1 items 2 and 5, and V2b's protocol. This document discharges the *drafting* half of DPIA
 > risk **R-B1** ("Art. 22 analysis; human-review pathway; documented model validation") for the
 > alerting that now exists; the *execution* half — running the validation protocol in §5 and
 > recording results — remains outstanding and **gates prod alerting** (production setup

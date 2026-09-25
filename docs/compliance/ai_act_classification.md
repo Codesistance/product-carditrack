@@ -1,7 +1,9 @@
 # EU AI Act — Risk Classification of CardiTrack's AI Surfaces
 
 > **Status: DRAFT — pending review by regulatory counsel.** Prepared 2026-09-23 against `main`
-> as merged that day, in answer to [issue #473](https://github.com/Codesistance/product-carditrack/issues/473).
+> as merged that day, in answer to [issue #473](https://github.com/Codesistance/product-carditrack/issues/473);
+> the §3 A15 row **revised 2026-09-25** against `main` as merged that day (the three published-range
+> alert rules, DPIA change entry of that date). Nothing else re-read against the later code.
 > Like the [DPIA](dpia.md) and the [Art. 22 analysis](art22_alerting_analysis.md), every
 > factual claim about the system cites the repository; every legal reading is a position for
 > counsel to confirm or reject, marked `[DECISION REQUIRED]` where the DPIA's open-items table
