@@ -45,6 +45,8 @@ public class CardiMemberServiceTests
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.RealtimeAssessments.Returns(_realtimeAssessments);
         _unitOfWork.MedicalEntries.Returns(_medicalEntries);
+        // The member's row lock the notes paths take first; a live member is always there to lock.
+        _members.LockForUpdateAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(true);
         _medicalEntries.GetByCardiMemberAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(_ => _ledger.ToList());
         _medicalEntries.When(r => r.AddAsync(Arg.Any<MedicalEntry>()))
@@ -1099,6 +1101,77 @@ public class CardiMemberServiceTests
         Assert.Null(allergy.ReplacedByEntryId);
         Assert.Null(member.MedicalNotes);
         Assert.Null(member.MedicalNotesReviewedAtUtc);
+    }
+
+    /// <summary>
+    /// A client that keeps the notes through the ledger says so, and whatever it sends as
+    /// MedicalNotes is not read — an echo of a summary somebody has changed since the form loaded
+    /// would otherwise replace every line with the stale text.
+    /// </summary>
+    [Fact]
+    public async Task Update_LeavingTheNotes_IgnoresAStaleEcho()
+    {
+        var member = SeedMember(encryptedNotes: "enc(Allergy: Penicillin\nMedication: Aspirin)");
+        var allergy = Line(member.Id, MedicalEntryKind.Allergy, "Penicillin");
+        var aspirin = Line(member.Id, MedicalEntryKind.Medication, "Aspirin");
+        _ledger.AddRange([allergy, aspirin]);
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "Allergy: Penicillin",
+            LeaveMedicalNotes = true,
+        });
+
+        Assert.True(allergy.IsCurrent);
+        Assert.True(aspirin.IsCurrent);
+        Assert.Equal("enc(Allergy: Penicillin\nMedication: Aspirin)", member.MedicalNotes);
+        await _medicalEntries.DidNotReceive().AddAsync(Arg.Any<MedicalEntry>());
+    }
+
+    /// <summary>
+    /// The notes are read and written under the member's row lock, taken before the member is
+    /// loaded, so a concurrent ledger write is waited for rather than overwritten.
+    /// </summary>
+    [Fact]
+    public async Task Update_TakesTheMembersLock_InsideATransaction_BeforeLoadingThem()
+    {
+        var member = SeedMember();
+        var order = new List<string>();
+        _unitOfWork.When(u => u.BeginTransactionAsync()).Do(_ => order.Add("begin"));
+        _members.When(r => r.LockForUpdateAsync(member.Id, Arg.Any<CancellationToken>())).Do(_ => order.Add("lock"));
+        _members.When(r => r.GetByIdAsync(member.Id)).Do(_ => order.Add("load"));
+        _unitOfWork.When(u => u.CommitTransactionAsync()).Do(_ => order.Add("commit"));
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "Pacemaker fitted 2019",
+        });
+
+        Assert.Equal(["begin", "lock", "load", "commit"], order.Take(4));
+    }
+
+    [Fact]
+    public async Task Update_OfAMemberErasedMeanwhile_WritesNothing()
+    {
+        var member = SeedMember();
+        _members.LockForUpdateAsync(member.Id, Arg.Any<CancellationToken>()).Returns(false);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => CreateSut().UpdateAsync(
+            _userId, member.Id, new UpdateCardiMemberRequest
+            {
+                Name = "Someone Else",
+                DateOfBirth = member.DateOfBirth,
+                RelationshipType = RelationshipType.Parent,
+            }));
+
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
     }
 
     [Fact]

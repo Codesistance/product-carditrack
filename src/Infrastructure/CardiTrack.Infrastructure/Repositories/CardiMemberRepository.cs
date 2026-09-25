@@ -11,6 +11,19 @@ public class CardiMemberRepository : Repository<CardiMember>, ICardiMemberReposi
     {
     }
 
+    public async Task<bool> LockForUpdateAsync(Guid cardiMemberId, CancellationToken ct = default)
+    {
+        // Taken and released by an implicit transaction of its own, the lock would protect
+        // nothing — and would read as protection.
+        if (_context.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("LockForUpdateAsync needs a transaction already open.");
+
+        var live = await _context.Database.SqlQuery<int>($"""
+            SELECT 1 AS "Value" FROM "CardiMembers" WHERE "Id" = {cardiMemberId} FOR NO KEY UPDATE
+            """).ToListAsync(ct);
+        return live.Count > 0;
+    }
+
     public async Task<IEnumerable<CardiMember>> GetByOrganizationIdAsync(Guid organizationId)
     {
         return await _dbSet

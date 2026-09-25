@@ -3,6 +3,7 @@ using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.API.Validators;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
@@ -90,11 +91,26 @@ public class MedicalEntriesEndpointTests
     public async Task Add_WhenTheListIsFull_Is400()
     {
         _entries.AddAsync(_userId, _memberId, Arg.Any<MedicalEntryKind>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new InvalidOperationException("That's more than the medical information can hold."));
+            .ThrowsAsync(new MedicalLedgerFullException("That's more than the medical information can hold."));
 
         var result = await CreateSut().Add(_memberId, Request("Penicillin"), CancellationToken.None);
 
         Assert.Equal(StatusCodes.Status400BadRequest, StatusOf(result));
+    }
+
+    /// <summary>
+    /// Only the full-list refusal is the caregiver's to see. Anything else of the same framework
+    /// type — an encryption key mismatch, a persistence fault — carries internals in its message
+    /// and must reach the masked 500 instead of being echoed as a 400.
+    /// </summary>
+    [Fact]
+    public async Task Add_WhenSomethingElseFails_IsNotDressedAsA400()
+    {
+        _entries.AddAsync(_userId, _memberId, Arg.Any<MedicalEntryKind>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("key id 1234 does not match"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().Add(_memberId, Request("Penicillin"), CancellationToken.None));
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
@@ -24,6 +25,7 @@ public class MedicalEntryServiceTests
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly List<MedicalEntry> _ledger = [];
+    private readonly List<MedicalEntry> _staged = [];
     private readonly CardiMember _member;
 
     private DateTime Now => _clock.GetUtcNow().UtcDateTime;
@@ -33,10 +35,20 @@ public class MedicalEntryServiceTests
         _unitOfWork.CardiMembers.Returns(_members);
         _unitOfWork.MedicalEntries.Returns(_entries);
         _unitOfWork.Users.Returns(_users);
+        _members.LockForUpdateAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(true);
         _entries.GetByCardiMemberAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(_ => _ledger.ToList());
+        // Added lines are staged until a save, and a cleared tracker drops them, the way EF does:
+        // the carry-over depends on a discarded first attempt not being seen by the second.
         _entries.When(r => r.AddAsync(Arg.Any<MedicalEntry>()))
-            .Do(c => _ledger.Add(c.Arg<MedicalEntry>()));
+            .Do(c => _staged.Add(c.Arg<MedicalEntry>()));
+        _unitOfWork.SaveChangesAsync().Returns(_ =>
+        {
+            _ledger.AddRange(_staged);
+            _staged.Clear();
+            return 1;
+        });
+        _unitOfWork.When(u => u.ClearTracking()).Do(_ => _staged.Clear());
         _entries.When(r => r.Remove(Arg.Any<MedicalEntry>()))
             .Do(c => _ledger.Remove(c.Arg<MedicalEntry>()));
         _users.GetByIdAsync(_userId).Returns(new User { Id = _userId, Name = "Jane" });
@@ -102,6 +114,35 @@ public class MedicalEntryServiceTests
         await CreateSut().GetAsync(_userId, _member.Id);
 
         Assert.Equal("enc(Written before encryption)", Assert.Single(_ledger).Text);
+        // The note itself too: the carry-over is a write, and it must not leave the older
+        // readers' copy of the same words in the clear.
+        Assert.Equal("enc(Written before encryption)", _member.MedicalNotes);
+    }
+
+    /// <summary>
+    /// The carry-over happens under the member's lock, so two first reads at once cannot each
+    /// add a line: the second waits, and finds the first one's.
+    /// </summary>
+    [Fact]
+    public async Task Get_CarriesOverUnderTheMembersLock()
+    {
+        _member.MedicalNotes = "enc(Pacemaker fitted 2019)";
+
+        await CreateSut().GetAsync(_userId, _member.Id);
+
+        await _unitOfWork.Received(1).BeginTransactionAsync();
+        await _members.Received(1).LockForUpdateAsync(_member.Id, Arg.Any<CancellationToken>());
+        await _unitOfWork.Received(1).CommitTransactionAsync();
+    }
+
+    [Fact]
+    public async Task Get_WithNothingToCarryOver_TakesNoLock()
+    {
+        Line(MedicalEntryKind.Allergy, "Penicillin");
+
+        await CreateSut().GetAsync(_userId, _member.Id);
+
+        await _unitOfWork.DidNotReceive().BeginTransactionAsync();
     }
 
     [Fact]
@@ -199,10 +240,11 @@ public class MedicalEntryServiceTests
         for (var i = 0; i < 4; i++)
             Line(MedicalEntryKind.Condition, new string('x', MedicalLedger.MaxEntryLength - 20));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<MedicalLedgerFullException>(
             () => CreateSut().AddAsync(_userId, _member.Id, MedicalEntryKind.Allergy, new string('y', 200)));
 
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
     }
 
     [Fact]
@@ -338,6 +380,23 @@ public class MedicalEntryServiceTests
             () => CreateSut().EraseAsync(_userId, _member.Id, Guid.NewGuid()));
 
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Erasure takes the same member row first; a write that finds it gone writes nothing,
+    /// rather than leaving lines behind for a member who no longer exists.
+    /// </summary>
+    [Fact]
+    public async Task AnyChange_ToAMemberErasedMeanwhile_WritesNothing()
+    {
+        _members.LockForUpdateAsync(_member.Id, Arg.Any<CancellationToken>()).Returns(false);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().AddAsync(_userId, _member.Id, MedicalEntryKind.Allergy, "Penicillin"));
+
+        Assert.Empty(_ledger);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
     }
 
     [Fact]

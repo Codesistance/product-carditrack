@@ -14,6 +14,6 @@ public class MedicalEntryValidator : AbstractValidator<MedicalEntryRequest>
         RuleFor(x => x.Text)
             .NotEmpty().WithMessage("Write what should be on file")
             .MaximumLength(MedicalLedger.MaxEntryLength)
-            .WithMessage($"Keep each line under {MedicalLedger.MaxEntryLength} characters — add another for the rest");
+            .WithMessage($"Keep each line to {MedicalLedger.MaxEntryLength} characters or fewer — add another for the rest");
     }
 }

@@ -448,18 +448,54 @@ public class CardiMemberService : ICardiMemberService
         Guid requestingUserId, Guid cardiMemberId, UpdateCardiMemberRequest request, CancellationToken ct = default)
     {
         await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
-        var member = await RequireActiveMemberAsync(cardiMemberId);
 
         // Photo first, before any field is touched: a refused photo fails the whole edit with
         // nothing half-applied. The new object is uploaded under a fresh name and the old one is
         // deleted only AFTER the save succeeds — a failed save must not orphan the member's
-        // stored name against a blob that no longer exists. When both PhotoBase64 and RemovePhoto
-        // arrive (a client bug the validator rejects), the supplied photo wins.
-        string? replacedPhotoObjectName = null;
+        // stored name against a blob that no longer exists. Uploaded before the member's lock is
+        // taken, so the lock is never held across a network call; an upload whose save then fails
+        // is left to OrphanedPhotoCleanupWorker, as it always was.
+        string? uploaded = null;
         if (!string.IsNullOrWhiteSpace(request.PhotoBase64))
         {
             var jpeg = ProcessPhotoOrThrow(request.PhotoBase64);
-            var uploaded = await _photoStorage.UploadAsync(member.Id, jpeg, ct);
+            uploaded = await _photoStorage.UploadAsync(cardiMemberId, jpeg, ct);
+        }
+
+        // Under the member's lock, loaded after it: this save writes the medical-notes summary the
+        // ledger keeps, and must neither read a stale one nor land between a ledger write's read
+        // and its save — see MedicalLedger.SerializedAsync.
+        string? replacedPhotoObjectName = null;
+        var member = await _ledger.SerializedAsync(cardiMemberId, async () =>
+        {
+            var member = await RequireActiveMemberAsync(cardiMemberId);
+            replacedPhotoObjectName = await ApplyUpdateAsync(requestingUserId, member, request, uploaded, ct);
+            return member;
+        }, ct);
+
+        // Only now, with the new state durable, is the superseded blob deleted.
+        if (replacedPhotoObjectName is not null)
+            await TryDeletePhotoAsync(replacedPhotoObjectName, ct);
+
+        // Saving may have closed a gap we are currently nagging about. Resolving here rather than
+        // waiting for the nightly run is what stops a caregiver seeing the card they just actioned
+        // still sitting there when the screen pops.
+        await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
+
+        return await BuildDetailAsync(requestingUserId, member, seriesEndsOn: null, ct);
+    }
+
+    /// <summary>The edit itself, applied and saved inside <see cref="UpdateAsync"/>'s lock.</summary>
+    /// <returns>The photo object this edit replaced, for deleting once the save has committed.</returns>
+    private async Task<string?> ApplyUpdateAsync(
+        Guid requestingUserId, CardiMember member, UpdateCardiMemberRequest request, string? uploaded,
+        CancellationToken ct)
+    {
+        // When both PhotoBase64 and RemovePhoto arrive (a client bug the validator rejects), the
+        // supplied photo wins.
+        string? replacedPhotoObjectName = null;
+        if (uploaded is not null)
+        {
             replacedPhotoObjectName = member.PhotoObjectName;
             member.PhotoObjectName = uploaded;
         }
@@ -482,12 +518,14 @@ public class CardiMemberService : ICardiMemberService
         // differs on every save whether or not a word changed; and a legacy plaintext row would
         // compare unequal to its own re-encrypted self.
         var notesBefore = NotesOrNull(Reveal(member.MedicalNotes));
-        var notesAfter = NotesOrNull(request.MedicalNotes);
+        var notesAfter = request.LeaveMedicalNotes ? notesBefore : NotesOrNull(request.MedicalNotes);
 
         // Only a real change touches the notes. This form is a full replacement, so a client
         // editing anything else — an emergency contact, a photo — echoes the notes back untouched
         // on every save; treating that echo as a review would have the date certify notes nobody
-        // has read for a year, and treating it as an edit would churn the ledger's history.
+        // has read for a year, and treating it as an edit would churn the ledger's history. A
+        // client that keeps the notes through the ledger says so (LeaveMedicalNotes) and is never
+        // read as an edit at all.
         if (!string.Equals(notesBefore, notesAfter, StringComparison.Ordinal))
         {
             // A whole-note edit, from a build that knows the notes only as one block of text: what
@@ -511,11 +549,12 @@ public class CardiMemberService : ICardiMemberService
 
             _ledger.Summarise(member, entries, now);
         }
-        else
+        else if (_ledger.IsLegacyPlaintext(member.MedicalNotes))
         {
-            // Unchanged, but re-stored all the same: a note still sitting in the database as legacy
-            // plain text is encrypted by the next save of the form, whatever else it changed.
-            member.MedicalNotes = Protect(request.MedicalNotes);
+            // Unchanged, and otherwise left exactly as stored. The one exception is a note still
+            // sitting in the database as legacy plain text, which the next save of the form
+            // encrypts, whatever else it changed.
+            member.MedicalNotes = Protect(notesBefore);
         }
 
         member.AlertSensitivity = request.AlertSensitivity;
@@ -530,7 +569,7 @@ public class CardiMemberService : ICardiMemberService
 
         // Relationship lives on the caregiver's own link, not the member — editing it here
         // must not rewrite what other caregivers call this person.
-        var link = await FindLinkAsync(requestingUserId, cardiMemberId);
+        var link = await FindLinkAsync(requestingUserId, member.Id);
         var relationship = Stated(request.RelationshipType);
         if (link is not null && link.RelationshipType != relationship)
         {
@@ -540,17 +579,7 @@ public class CardiMemberService : ICardiMemberService
         }
 
         await _unitOfWork.SaveChangesAsync();
-
-        // Only now, with the new state durable, is the superseded blob deleted.
-        if (replacedPhotoObjectName is not null)
-            await TryDeletePhotoAsync(replacedPhotoObjectName, ct);
-
-        // Saving may have closed a gap we are currently nagging about. Resolving here rather than
-        // waiting for the nightly run is what stops a caregiver seeing the card they just actioned
-        // still sitting there when the screen pops.
-        await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
-
-        return await BuildDetailAsync(requestingUserId, member, seriesEndsOn: null, ct);
+        return replacedPhotoObjectName;
     }
 
     public async Task RemoveAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
@@ -621,28 +650,34 @@ public class CardiMemberService : ICardiMemberService
         Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
     {
         await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
-        var member = await RequireActiveMemberAsync(cardiMemberId);
 
-        // Nothing on file to confirm. Dating an empty background would be a date attached to no
-        // information, and would silence the rule that exists to ask for some.
-        if (string.IsNullOrWhiteSpace(member.MedicalNotes))
-            throw new InvalidOperationException("There are no medical notes to confirm yet.");
-
-        // "The notes still stand" is every current line still standing, so each is confirmed, and
-        // the ledger rewrites the note's date from them — now, since every line was just
-        // confirmed. The rewrite also re-stores the note encrypted, so a note still sitting in the
-        // database as legacy plain text does not survive the one write that changes no words.
-        var now = DateTime.UtcNow;
-        var (entries, _) = await _ledger.LoadAsync(member, ct);
-        foreach (var line in entries.Where(e => e.IsCurrent))
+        // Under the member's lock, loaded after it — see MedicalLedger.SerializedAsync.
+        var member = await _ledger.SerializedAsync(cardiMemberId, async () =>
         {
-            line.ConfirmedAtUtc = now;
-            line.UpdatedDate = now;
-            _unitOfWork.MedicalEntries.Update(line);
-        }
+            var member = await RequireActiveMemberAsync(cardiMemberId);
 
-        _ledger.Summarise(member, entries, now);
-        await _unitOfWork.SaveChangesAsync();
+            // Nothing on file to confirm. Dating an empty background would be a date attached to
+            // no information, and would silence the rule that exists to ask for some.
+            if (string.IsNullOrWhiteSpace(member.MedicalNotes))
+                throw new InvalidOperationException("There are no medical notes to confirm yet.");
+
+            // "The notes still stand" is every current line still standing, so each is confirmed,
+            // and the ledger rewrites the note's date from them — now, since every line was just
+            // confirmed. The rewrite also re-stores the note encrypted, so a note still sitting in
+            // the database as legacy plain text does not survive the one write that changes no words.
+            var now = DateTime.UtcNow;
+            var (entries, _) = await _ledger.LoadAsync(member, ct);
+            foreach (var line in entries.Where(e => e.IsCurrent))
+            {
+                line.ConfirmedAtUtc = now;
+                line.UpdatedDate = now;
+                _unitOfWork.MedicalEntries.Update(line);
+            }
+
+            _ledger.Summarise(member, entries, now);
+            await _unitOfWork.SaveChangesAsync();
+            return member;
+        }, ct);
 
         // Confirming closes the staleness gap the same way editing does, so the card the
         // caregiver just actioned is gone by the time the screen behind it repaints.

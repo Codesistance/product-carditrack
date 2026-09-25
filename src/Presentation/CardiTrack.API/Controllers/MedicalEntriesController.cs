@@ -2,6 +2,7 @@ using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Services;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
@@ -141,7 +142,7 @@ public class MedicalEntriesController : BaseApiController
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
         }
-        catch (InvalidOperationException ex)
+        catch (MedicalLedgerFullException ex)
         {
             return Error(ex.Message, StatusCodes.Status400BadRequest);
         }

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Domain.Entities;
@@ -47,6 +48,45 @@ public sealed class MedicalLedger
     }
 
     /// <summary>
+    /// Runs <paramref name="work"/> in a transaction that holds the member's row lock
+    /// (<see cref="ICardiMemberRepository.LockForUpdateAsync"/>), taken before anything is read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every write here reads the member and the ledger and then writes back a summary derived from
+    /// both, so two at once would each save a summary missing the other's line, and two first reads
+    /// would each carry the single note over. With the lock the second waits, then reads what the
+    /// first committed. <paramref name="work"/> must load the member itself, after the lock — a copy
+    /// loaded before it is the stale one EF keeps.
+    /// </para>
+    /// <para>
+    /// The same lock stands between these writes and member erasure, which takes <c>FOR UPDATE</c>
+    /// on the row first: a write either finds the member already gone (<see cref="KeyNotFoundException"/>,
+    /// nothing written) or finishes before erasure sweeps the rows it wrote.
+    /// </para>
+    /// </remarks>
+    public async Task<T> SerializedAsync<T>(Guid cardiMemberId, Func<Task<T>> work, CancellationToken ct = default)
+    {
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            if (!await _unitOfWork.CardiMembers.LockForUpdateAsync(cardiMemberId, ct))
+                throw new KeyNotFoundException("CardiMember not found");
+
+            var result = await work();
+            await _unitOfWork.CommitTransactionAsync();
+            return result;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            // The refused change must not ride along on this unit of work's next save.
+            _unitOfWork.ClearTracking();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Every line on file for the member, current and past — carrying the single note over as the
     /// first line if it has not been yet.
     /// </summary>
@@ -84,6 +124,14 @@ public sealed class MedicalLedger
     }
 
     /// <summary>A new current line, encrypted for storage.</summary>
+    /// <remarks>
+    /// The <see cref="MaxEntryLength"/> cap is the ledger endpoints' rule, enforced by their
+    /// validator, and deliberately not here. The single-note paths an older build still calls
+    /// (create, and a whole-note edit) take up to <see cref="MaxSummaryLength"/> and store it as one
+    /// Other line: refusing those would break that build's form, and cutting them short would lose
+    /// what somebody wrote. Such a line reads and confirms like any other; changing it through the
+    /// ledger asks for it in lines of the ordinary length.
+    /// </remarks>
     public MedicalEntry NewEntry(Guid cardiMemberId, MedicalEntryKind kind, string text, Guid? byUserId, DateTime utcNow) =>
         new()
         {
@@ -156,7 +204,7 @@ public sealed class MedicalLedger
     /// Rewrites the member's single note and its review date from the current lines — the step
     /// every write ends with, so the summary never disagrees with the ledger.
     /// </summary>
-    /// <exception cref="InvalidOperationException">
+    /// <exception cref="MedicalLedgerFullException">
     /// The summary would outgrow <see cref="MaxSummaryLength"/>. Thrown before anything is saved.
     /// </exception>
     public void Summarise(CardiMember member, IEnumerable<MedicalEntry> entries, DateTime utcNow)
@@ -165,7 +213,7 @@ public sealed class MedicalLedger
         var summary = Compose(current.Select(e => (e.Kind, Reveal(e))));
 
         if (summary is { Length: > MaxSummaryLength })
-            throw new InvalidOperationException(
+            throw new MedicalLedgerFullException(
                 "That's more than the medical information can hold. Shorten or remove a line first.");
 
         // Rewritten only when the words changed or the row is still legacy plain text: encryption

@@ -37,12 +37,27 @@ public class MedicalEntryService : IMedicalEntryService
         var member = await RequireActiveMemberAsync(cardiMemberId);
 
         var (entries, carriedOver) = await _ledger.LoadAsync(member, ct);
+        if (!carriedOver)
+            return await ToResponseAsync(entries);
 
-        // A read that carried the single note over has written a line; keep it, so the id the
-        // screen is about to act on exists. The summary is already exactly that line, so it is
-        // left alone — rewriting it here would re-date nothing and churn a nonce for no reason.
-        if (carriedOver)
-            await _unitOfWork.SaveChangesAsync();
+        // The first read of a member whose note has not been carried over yet is a write — the
+        // line has to be kept, so the id the screen acts on next exists — and it happens once per
+        // member, ever. So it is done again properly, under the member's lock: two first reads at
+        // once must not each carry the note over, and a note still stored as legacy plain text is
+        // re-stored encrypted in the same save. Summarise leaves a sound summary alone, since it is
+        // already exactly the one line.
+        _unitOfWork.ClearTracking();
+        entries = await _ledger.SerializedAsync(cardiMemberId, async () =>
+        {
+            var fresh = await RequireActiveMemberAsync(cardiMemberId);
+            var (lines, carried) = await _ledger.LoadAsync(fresh, ct);
+            if (carried)
+            {
+                _ledger.Summarise(fresh, lines, _timeProvider.GetUtcNow().UtcDateTime);
+                await _unitOfWork.SaveChangesAsync();
+            }
+            return lines;
+        }, ct);
 
         return await ToResponseAsync(entries);
     }
@@ -116,8 +131,9 @@ public class MedicalEntryService : IMedicalEntryService
         });
 
     /// <summary>
-    /// The shape of every write: manage access, the member's whole ledger loaded (carrying the
-    /// single note over if need be), the change, the summary rewritten, one save — then the nudge
+    /// The shape of every write: manage access, then under the member's lock the whole ledger
+    /// loaded (carrying the single note over if need be), the change, the summary rewritten, one
+    /// save and commit — then the nudge
     /// gaps re-judged, so a card about missing or stale notes is gone by the time the screen repaints.
     /// </summary>
     private async Task<MedicalEntriesResponse> ChangeAsync(
@@ -125,16 +141,21 @@ public class MedicalEntryService : IMedicalEntryService
         Func<List<MedicalEntry>, DateTime, Task> change)
     {
         await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
-        var member = await RequireActiveMemberAsync(cardiMemberId);
 
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-        var (entries, _) = await _ledger.LoadAsync(member, ct);
-        await change(entries, now);
+        // Under the member's lock, loaded after it — see MedicalLedger.SerializedAsync.
+        var entries = await _ledger.SerializedAsync(cardiMemberId, async () =>
+        {
+            var member = await RequireActiveMemberAsync(cardiMemberId);
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var (lines, _) = await _ledger.LoadAsync(member, ct);
+            await change(lines, now);
 
-        // Throws before the save when the list has outgrown what the summary can hold, so a
-        // refused line leaves nothing half-written.
-        _ledger.Summarise(member, entries, now);
-        await _unitOfWork.SaveChangesAsync();
+            // Throws before the save when the list has outgrown what the summary can hold, so a
+            // refused line leaves nothing half-written.
+            _ledger.Summarise(member, lines, now);
+            await _unitOfWork.SaveChangesAsync();
+            return lines;
+        }, ct);
 
         await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
 
