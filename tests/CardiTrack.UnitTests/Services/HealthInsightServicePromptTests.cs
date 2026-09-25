@@ -125,7 +125,7 @@ public class HealthInsightServicePromptTests
     {
         // A stored row whose summary is a restatement must not outlive the brief that stopped
         // asking for one.
-        Assert.Equal(4, HealthInsightService.BaselinePromptVersion);
+        Assert.Equal(5, HealthInsightService.BaselinePromptVersion);
     }
 
     // ── The quiet member ────────────────────────────────────────────────────────
@@ -265,7 +265,7 @@ public class HealthInsightServicePromptTests
                     Date = today.AddDays(-offset),
                     Steps = 5_200,
                     RestingHeartRate = 68,
-                    SleepMinutes = 412,
+                    SleepMinutes = 440,
                 })
                 .Append(new ActivityLog
                 {
@@ -336,7 +336,7 @@ public class HealthInsightServicePromptTests
                     Date = today.AddDays(-offset),
                     Steps = 5_200,
                     RestingHeartRate = 68,
-                    SleepMinutes = 412,
+                    SleepMinutes = 440,
                 })
                 .ToList());
     }
@@ -377,7 +377,7 @@ public class HealthInsightServicePromptTests
                 StdDevSteps = 810.5m,
                 AvgRestingHeartRate = 68,
                 StdDevHeartRate = 3.2m,
-                AvgSleepMinutes = 412,
+                AvgSleepMinutes = 440,
             });
 
         // A week with something in it. The established path only builds a prompt when a metric
@@ -395,7 +395,7 @@ public class HealthInsightServicePromptTests
                     Steps = 3_000,
                     // Both sitting on their usual, so they come through as steady.
                     RestingHeartRate = 68,
-                    SleepMinutes = 412,
+                    SleepMinutes = 440,
                 })
                 .ToList());
     }

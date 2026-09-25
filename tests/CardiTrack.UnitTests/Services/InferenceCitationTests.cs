@@ -25,15 +25,14 @@ public class InferenceCitationTests
         // against — the same numbers the band line put in front of the model.
         Assert.Contains("60–100 bpm", ChatDataRegistry.CitationsFor(["American Heart Association"]).Single());
         Assert.Contains("7–9 hours", ChatDataRegistry.CitationsFor(["National Sleep Foundation"]).Single());
-        Assert.Contains("12–20 breaths", ChatDataRegistry.CitationsFor(["World Health Organization"]).Single());
     }
 
-    /// <summary>The band lines attribute "(WHO)" while the authority is spelled out, and the model
-    /// may echo either — both spellings reach the same citation.</summary>
+    /// <summary>The model may echo an authority by its initials or spelled out — both spellings
+    /// reach the same citation.</summary>
     [Theory]
-    [InlineData("WHO")]
-    [InlineData("World Health Organization")]
-    [InlineData("world health organization")]
+    [InlineData("NSF")]
+    [InlineData("National Sleep Foundation")]
+    [InlineData("national sleep foundation")]
     public void InitialsAndFullNames_BothMatch(string named) =>
         Assert.Single(ChatDataRegistry.CitationsFor([named]));
 
@@ -64,11 +63,11 @@ public class InferenceCitationTests
     public void CitationsComeBack_InRegistryOrder()
     {
         var citations = ChatDataRegistry.CitationsFor(
-            ["World Health Organization", "American Heart Association"]);
+            ["National Sleep Foundation", "American Heart Association"]);
 
         Assert.Equal(2, citations.Count);
         Assert.StartsWith("American Heart Association", citations[0], StringComparison.Ordinal);
-        Assert.StartsWith("World Health Organization", citations[1], StringComparison.Ordinal);
+        Assert.StartsWith("National Sleep Foundation", citations[1], StringComparison.Ordinal);
     }
 
     // ---- what the verdict actually used ---------------------------------------------------
@@ -119,8 +118,9 @@ public class InferenceCitationTests
         Assert.StartsWith("American Heart Association", citation, StringComparison.Ordinal);
     }
 
-    /// <summary>Named, fetched and mentioned, each in its own spelling — all three survive, in
-    /// registry order.</summary>
+    /// <summary>Named, fetched and mentioned, each in its own spelling — both bands survive, in
+    /// registry order, and the breathing authority does not: there is no breathing band to cite,
+    /// because WHO's 12–20 is a waking rate and chat reads breathing asleep.</summary>
     [Fact]
     public void AuthoritiesTheVerdictUsed_AllSurvive()
     {
@@ -129,10 +129,9 @@ public class InferenceCitationTests
             "Resting HR 62 bpm at baseline; slept 7 h; breathing rate 14/min overnight — all inside range.",
             Fetched(hr: 62, sleep: 420, breathing: 14));
 
-        Assert.Equal(3, citations.Count);
+        Assert.Equal(2, citations.Count);
         Assert.StartsWith("American Heart Association", citations[0], StringComparison.Ordinal);
         Assert.StartsWith("National Sleep Foundation", citations[1], StringComparison.Ordinal);
-        Assert.StartsWith("World Health Organization", citations[2], StringComparison.Ordinal);
     }
 
     /// <summary>No readings fetched at all — a verdict from context and baseline alone — quotes

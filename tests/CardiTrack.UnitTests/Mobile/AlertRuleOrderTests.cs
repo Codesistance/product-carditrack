@@ -51,7 +51,8 @@ public class AlertRuleOrderTests
         var ordered = AlertRuleOrder.ForDisplay(sleep.Rules.Select(Rule));
 
         Assert.Equal(
-            ["Long daytime rest", "Unusual sleep length", "Late or missed bedtime", "Restless night"],
+            ["Long daytime rest", "Sleep outside the recommended hours", "Unusual sleep length",
+                "Late or missed bedtime", "Restless night"],
             ordered.Select(r => r.Title));
     }
 

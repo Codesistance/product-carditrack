@@ -1451,7 +1451,8 @@ public class DigestGenerationServiceTests
         // In the computed observations now, not the usual-pattern block — that is the section the
         // prompt tells the model to lead with, and a finding outside it loses to one inside it.
         Assert.Contains(
-            "- Last night: 3.6 hours of sleep (usual 7.0) — well short of their usual.",
+            "- Last night: 3.6 hours of sleep (usual 7.0) — below the 7-8 hours recommended at their age (NSF), "
+            + "and well short of their usual.",
             prompt);
     }
 
@@ -1503,7 +1504,9 @@ public class DigestGenerationServiceTests
                 new ActivityLog
                 {
                     CardiMemberId = _memberId, Date = Today, Steps = 900,
-                    SleepMinutes = 400, CreatedDate = DataLandedAt,
+                    // Inside the 7-8 hours recommended at 78 as well as near their usual: 6.7 hours,
+                    // which this used, is now named against the range (decision 2026-09-25).
+                    SleepMinutes = 450, CreatedDate = DataLandedAt,
                 },
             ]);
 

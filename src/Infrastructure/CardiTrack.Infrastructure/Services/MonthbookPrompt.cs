@@ -51,6 +51,7 @@ internal static class MonthbookPrompt
         Say what held across the whole month, and what changed within it — and where one week differed from the others, name that week and say how.
         vs_usual is already computed: say it as given and never work a comparison out yourself.
         Where a published band is given, say where the month sat against it, and name who publishes it.
+        For sleep, resting heart rate and blood oxygen the published band is what normal means: a reading outside it is worth attention even when it is their usual, and their usual is context, never a reason to call it fine.
         Where a reading was measured on only some days, say how many; never let days without a reading read as days that were fine.
         Read the month as a whole: sleep, heart, oxygen, breathing and movement in one person explain each other more often than one at a time.
         If "The month's monitoring" is present, account for what the monitoring made of the month in your own words; when it is absent, never mention monitoring, alerts or observations at all.
@@ -173,10 +174,12 @@ internal static class MonthbookPrompt
             baseline?.AvgHeartRateVariabilityMs,
             null);
 
+        // No band: WHO's 12–20 is the waking rate above, not a sleeping one
+        // (HealthReferenceRanges.NoOvernightBreathingBand).
         Add(metrics, days, "Breathing while asleep", l => l.OvernightBreathingRate,
             v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)} breaths a minute",
             baseline?.AvgOvernightBreathingRate,
-            JournalPeriodSections.Band(breathingBand.Low, breathingBand.High, "breaths a minute", breathingBand.Source));
+            null);
 
         Add(metrics, days, "Minutes with heart rate raised", l => BaselineCalculator.ElevatedZoneMinutes(l),
             v => $"{Math.Round(v)} minutes",

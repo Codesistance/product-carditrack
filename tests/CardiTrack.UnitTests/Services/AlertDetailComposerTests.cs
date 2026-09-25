@@ -300,6 +300,25 @@ public class AlertDetailComposerTests
         Assert.Equal(9m, detail.Chart!.Reference!.High);
     }
 
+    /// <summary>
+    /// The published-range sleep rule stores its band as <c>rangeLow</c>/<c>rangeHigh</c>, the shape
+    /// every range rule shares, and the chart reads it — not the member's age today.
+    /// </summary>
+    [Fact]
+    public void SleepOutsideRange_ShadesTheBandItWasJudgedAgainst_NotTodaysAge()
+    {
+        var alert = MakeAlert(
+            AlertType.Sleep,
+            """{"rule":"sleep_outside_range","day":"2026-09-25","rangeLow":7,"rangeHigh":9,"rangeSource":"NSF"}""");
+        var logs = new[] { Log(_today, sleepMinutes: 300) };
+
+        // The member reads as 76 today; the alert was judged against the under-65 band.
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
+
+        Assert.Equal("sleep", detail.Chart!.Metric);
+        Assert.Equal((7m, 9m), (detail.Chart.Reference!.Low, detail.Chart.Reference.High));
+    }
+
     /// <summary>No standards body publishes a daily step count, so that chart gets no band —
     /// the same refusal <see cref="HealthReferenceRanges"/> makes on the dashboard.</summary>
     [Fact]

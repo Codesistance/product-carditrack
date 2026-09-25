@@ -119,14 +119,14 @@ public class StatisticalAlertService : IStatisticalAlertService
         Judge these findings from this person's wearable readings. This is an internal clinical
         read: a separate step writes the family's alert from it, so write precisely and address
         no one. Nothing you write here reaches a family.
-        Each finding names what was measured, what is usual for this person, and the yardstick that made the reading worth judging. A yardstick is a threshold, not a verdict: a reading past one may still be ordinary for this person on this day, and a reading that clears it narrowly is not the same as one far beyond it. Judge each finding against the person's own usual first and the published range where one is given, read the findings together where they describe the same day, and weigh what is known about the person before calling anything unusual.
+        Each finding names what was measured, what is usual for this person, and the yardstick that made the reading worth judging. A yardstick is a threshold, not a verdict: a reading past one may still be ordinary for this person on this day, and a reading that clears it narrowly is not the same as one far beyond it. For sleep, resting heart rate and blood oxygen, the published range where one is given is what normal means and comes first; the person's own usual is context, and the only yardstick where no range applies. A reading that has stayed outside its published range is worth the family's attention even when it is this person's usual; one still moving further outside it week on week is more serious than a steady one, and blood oxygen held below its published floor is a significant finding. Read the findings together where they describe the same day, and weigh what is known about the person before calling anything unusual.
         Say what the readings show in clinical terms, and name the mechanism they are consistent with where there is one.
         Do not quote a figure that is not in the findings below.
 
         Respond with one verdict per finding, in the order given, each carrying the finding's rule exactly as written:
         - rule: the finding's rule, copied exactly.
         - severity: exactly one of critical, high, medium, or low, from most to least severe. Low means the finding is not worth the family's attention today and nothing is raised.
-        - finding: what this reading shows against what is usual for this person, at the severity you gave it — at most 80 words.
+        - finding: what this reading shows against its published range where one is given and against what is usual for this person, at the severity you gave it — at most 80 words.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
@@ -355,6 +355,13 @@ public class StatisticalAlertService : IStatisticalAlertService
         var rulePrefs = AlertRuleOverrides.FromJson(
             (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
 
+        // The PUBLISHED-RANGE rules are the third kind, and like the measured rules they are not
+        // gated on a baseline: they compare against a range someone else publishes, not against
+        // this member's usual (decision 2026-09-25, PublishedNormal). A member two weeks into
+        // wearing a watch who has slept four hours a night for a week is outside the range now, and
+        // waiting a month for a usual before saying so is the silence the decision exists to end.
+        var anyRangeRule = StatisticalAlertRules.PublishedRangeRules.Any(rulePrefs.IsEnabled);
+
         // Prefer skipping timezone + activity-log fetches when every statistical rule is off.
         if (!rulePrefs.IsEnabled(StatisticalAlertRules.ActivityDeclineRule)
             && !rulePrefs.IsEnabled(StatisticalAlertRules.IrregularSleepRule)
@@ -366,17 +373,19 @@ public class StatisticalAlertService : IStatisticalAlertService
             && !rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedZoneWithoutMovementRule)
             && !rulePrefs.IsEnabled(StatisticalAlertRules.DaytimeInactivityBlockRule)
             && !rulePrefs.IsEnabled(StatisticalAlertRules.IrregularRhythmRule)
-            && !rulePrefs.IsEnabled(StatisticalAlertRules.EcgAtrialFibrillationRule))
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.EcgAtrialFibrillationRule)
+            && !anyRangeRule)
         {
             return 0;
         }
 
         // Every comparative rule is off, or there is no baseline for them to compare against, and
-        // both measured rules are off too — nothing below can produce a finding, so skip the
-        // timezone and activity-log fetches.
+        // both measured rules and every published-range rule are off too — nothing below can
+        // produce a finding, so skip the timezone and activity-log fetches.
         if (baseline is null
             && !rulePrefs.IsEnabled(StatisticalAlertRules.IrregularRhythmRule)
-            && !rulePrefs.IsEnabled(StatisticalAlertRules.EcgAtrialFibrillationRule))
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.EcgAtrialFibrillationRule)
+            && !anyRangeRule)
         {
             return 0;
         }
@@ -394,9 +403,14 @@ public class StatisticalAlertService : IStatisticalAlertService
         // provisional-never-alerts gate used to give for free: a member in their first 30 days
         // costs one two-day indexed range read per pass rather than a 28-day one, and gets told
         // when their watch finds atrial fibrillation.
+        //
+        // Widened again for the published-range rules, which look back far enough to find where a
+        // stretch began, and read three weekly averages — with or without a baseline.
         var windowStart = baseline is null
-            ? yesterday
-            : localToday.AddDays(-7 * StatisticalAlertRules.TrendWeeks);
+            ? (anyRangeRule ? localToday.AddDays(-StatisticalAlertRules.RangeLookbackDays) : yesterday)
+            : localToday.AddDays(-(anyRangeRule
+                ? Math.Max(7 * StatisticalAlertRules.TrendWeeks, StatisticalAlertRules.RangeLookbackDays)
+                : 7 * StatisticalAlertRules.TrendWeeks));
 
         var logsByDate = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
                 memberId, windowStart, localToday))
@@ -439,6 +453,29 @@ public class StatisticalAlertService : IStatisticalAlertService
             AddIfPresent(findings, StatisticalAlertRules.IrregularRhythm(todayLog, yesterdayLog));
         if (rulePrefs.IsEnabled(StatisticalAlertRules.EcgAtrialFibrillationRule))
             AddIfPresent(findings, StatisticalAlertRules.EcgAtrialFibrillation(todayLog, yesterdayLog));
+
+        // Published-range rules, also outside the baseline guard — see anyRangeRule above. Each
+        // judges its own newest day: last night for sleep, the last complete day for the resting
+        // rate, and the newest night measured for oxygen.
+        if (anyRangeRule && logsByDate.Count > 0)
+        {
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.SleepOutsideRangeRule))
+            {
+                AddIfPresent(findings, StatisticalAlertRules.SleepOutsideRange(
+                    logsByDate, lastNightLog?.Date ?? localToday,
+                    member.DateOfBirth.ToAgeInYears(localToday), baseline));
+            }
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.RestingHeartRateOutsideRangeRule))
+            {
+                AddIfPresent(findings, StatisticalAlertRules.RestingHeartRateOutsideRange(
+                    logsByDate, yesterday, baseline));
+            }
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.OxygenBelowRangeRule))
+            {
+                AddIfPresent(findings, StatisticalAlertRules.OxygenBelowRange(
+                    logsByDate, todayLog?.SpO2Average is not null ? localToday : yesterday));
+            }
+        }
 
         if (baseline is not null)
         {
@@ -555,6 +592,20 @@ public class StatisticalAlertService : IStatisticalAlertService
                 : history.Any(a => AlertRuleMarkers.HasRule(a, finding.Rule) && FiredOnLocalToday(a));
             if (judgedAlready)
                 continue;
+
+            // Once per stretch, for the published-range rules: an alert of the same rule raised on
+            // or after the day the stretch began — standing, resolved or deleted — has already told
+            // the family about it. Without this a member who sits outside a range for a month is
+            // paged every day the caregiver clears the last one (decision 2026-09-25).
+            // A stretch whose start the readings do not reach is taken to include every earlier
+            // alert of the rule (StatisticalFinding.StretchOpenEnded).
+            if (finding.StretchStart is { } stretchStart
+                && history.Any(a => AlertRuleMarkers.HasRule(a, finding.Rule)
+                    && (finding.StretchOpenEnded
+                        || DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)) >= stretchStart)))
+            {
+                continue;
+            }
 
             toJudge.Add(finding);
         }
@@ -1150,7 +1201,10 @@ public class StatisticalAlertService : IStatisticalAlertService
             StatisticalAlertRules.EcgAtrialFibrillationRule,
             StatisticalAlertRules.OvernightBreathingUpRule,
             StatisticalAlertRules.ElevatedZoneWithoutMovementRule,
-            StatisticalAlertRules.DaytimeInactivityBlockRule)]
+            StatisticalAlertRules.DaytimeInactivityBlockRule,
+            StatisticalAlertRules.SleepOutsideRangeRule,
+            StatisticalAlertRules.RestingHeartRateOutsideRangeRule,
+            StatisticalAlertRules.OxygenBelowRangeRule)]
         public required string Rule { get; init; }
 
         public required string Headline { get; init; }
@@ -1200,7 +1254,10 @@ public class StatisticalAlertService : IStatisticalAlertService
             StatisticalAlertRules.EcgAtrialFibrillationRule,
             StatisticalAlertRules.OvernightBreathingUpRule,
             StatisticalAlertRules.ElevatedZoneWithoutMovementRule,
-            StatisticalAlertRules.DaytimeInactivityBlockRule)]
+            StatisticalAlertRules.DaytimeInactivityBlockRule,
+            StatisticalAlertRules.SleepOutsideRangeRule,
+            StatisticalAlertRules.RestingHeartRateOutsideRangeRule,
+            StatisticalAlertRules.OxygenBelowRangeRule)]
         public required string Rule { get; init; }
 
         [AllowedValues(

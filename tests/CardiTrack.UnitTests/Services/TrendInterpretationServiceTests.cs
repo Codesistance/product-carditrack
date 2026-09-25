@@ -266,7 +266,7 @@ public class TrendInterpretationServiceTests
         // outlive the brief that does. Brief 3's rolling wording is byte-for-byte brief 2's, so
         // this is the case the stamp exists for — nothing in the text would give the staleness
         // away, and only the number retires the row.
-        Assert.Equal(4, TrendInterpretationService.BriefVersion);
+        Assert.Equal(5, TrendInterpretationService.BriefVersion);
         Assert.True(
             TrendInterpretationService.CurrentPromptVersion > 200 + PinnedReferenceTable.Version,
             "the stamp must exceed everything written under brief 2, whatever the table version.");

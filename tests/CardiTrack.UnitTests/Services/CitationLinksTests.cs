@@ -24,16 +24,16 @@ public class CitationLinksTests
         }
     }
 
-    /// <summary>The inference bands with a canonical page resolve; the WHO breathing band —
-    /// textbook consensus with no single publication behind it — deliberately does not.</summary>
+    /// <summary>Every inference band resolves to its canonical page. The WHO breathing band, the
+    /// one that had no single publication behind it, is gone — breathing asleep has no published
+    /// range (decision 2026-09-25).</summary>
     [Fact]
     public void PublishedBands_ResolveOnlyWhereACanonicalPageExists()
     {
         foreach (var band in ChatDataRegistry.Bands)
             Assert.Equal(band.Url, CitationLinks.UrlFor(band.Citation));
 
-        Assert.Contains(ChatDataRegistry.Bands, b => b.Url is null);
-        Assert.Contains(ChatDataRegistry.Bands, b => b.Url is not null);
+        Assert.All(ChatDataRegistry.Bands, b => Assert.NotNull(b.Url));
     }
 
     /// <summary>Anything the closed sets did not write gets no link — never a guess. Exact text

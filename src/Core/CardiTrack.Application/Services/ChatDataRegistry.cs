@@ -121,12 +121,10 @@ public static partial class ChatDataRegistry
                 Citation: "National Sleep Foundation — recommended nightly sleep 7–9 hours for "
                 + "adults, 7–8 hours from 65",
                 Url: "https://doi.org/10.1016/j.sleh.2014.12.010"),
-            new(ChartMetricKind.OvernightBreathingRate,
-                "Breathing rate: 12–20 breaths per minute is the typical adult resting range "
-                + "(WHO); overnight averages sit toward its lower half",
-                Authority: "World Health Organization",
-                Citation: "World Health Organization — typical adult resting breathing rate "
-                + "12–20 breaths per minute"),
+            // No breathing band. WHO's 12–20 is a waking rate at rest, and the only breathing
+            // figure chat fetches is the overnight one — HealthReferenceRanges.
+            // NoOvernightBreathingBand, and the decision (2026-09-25) that breathing asleep is
+            // judged against the member's own usual alone.
         });
 
     /// <summary>
@@ -285,17 +283,28 @@ public static partial class ChatDataRegistry
     private static partial Regex NothingMatches();
 
     /// <summary>
-    /// The bands as one prompt block, with the two rules that keep a band from overreaching: a
-    /// figure outside a published range need not be abnormal for this person, and a metric with no
-    /// published range is compared against the member's own baseline only.
+    /// The bands as one prompt block, with what they are for: the published range is what normal
+    /// means for the readings that have one, and a metric with none is compared against the
+    /// member's own baseline only.
     /// </summary>
+    /// <remarks>
+    /// Until 2026-09-25 this said the opposite — "a reading outside a published range is not by
+    /// itself abnormal for this person; their own baseline says what is usual for them" — which
+    /// let a member whose usual was five hours' sleep be told a five-hour night was settled. See
+    /// <see cref="PublishedNormal"/> for the decision; the rule here is its own sentence rather than
+    /// <see cref="PublishedNormal.Rule"/> because chat is shown no blood-oxygen readings, and naming
+    /// a reading the prompt never carries invites the model to mention it.
+    /// </remarks>
     public static string BandsBlock { get; } =
         "--- Published typical ranges ---\n"
         + string.Join("\n", Bands.Select(b => $"  {b.Line}"))
-        + "\n  Steps and overnight heart rate variability have no published typical range — "
-        + "compare them against this member's own baseline only, and say so if asked whether "
-        + "such a figure is \"good\"; HRV in particular varies too much person to person for any "
-        + "general band to be honest."
-        + "\n  A reading outside a published range is not by itself abnormal for this person; "
-        + "their own baseline says what is usual for them. Attribute any published range you cite.";
+        + "\n  Steps, overnight heart rate variability and breathing while asleep have no published "
+        + "typical range — compare them against this member's own baseline only, and say so if asked "
+        + "whether such a figure is \"good\"; HRV in particular varies too much person to person for "
+        + "any general band to be honest."
+        + "\n  For sleep and resting heart rate, the published range is what normal means. A reading "
+        + "outside it is worth attention even when it is usual for this person: a usual that sits "
+        + "outside the range is outside it too. Their own baseline is context — it says whether a "
+        + "reading is new for them, never whether it is healthy. Attribute any published range you "
+        + "cite.";
 }

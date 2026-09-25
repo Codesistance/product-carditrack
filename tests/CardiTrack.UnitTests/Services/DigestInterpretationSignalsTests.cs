@@ -148,7 +148,10 @@ public class DigestInterpretationSignalsTests
             yesterday: null,
             Morning);
 
-        Assert.Contains("- Last night: 3.6 hours of sleep (usual 7.0) — well short of their usual.", section);
+        Assert.Contains(
+            "- Last night: 3.6 hours of sleep (usual 7.0) — below the 7 hours a night recommended for adults (NSF), "
+            + "and well short of their usual.",
+            section);
     }
 
     [Fact]
@@ -166,10 +169,12 @@ public class DigestInterpretationSignalsTests
     /// <summary>
     /// The same threshold the alert engine fires on, so a summary can never soothe over a night it
     /// pages about — and, in the other direction, never make an ordinary night sound like an event.
+    /// Ordinary means inside the published range as well as near their usual: a five-hour night is
+    /// no longer one (<see cref="AShortNightInsideTheUsual_IsStillNamed_AgainstTheRange"/>). With no
+    /// age, nine hours is not judged against a ceiling it cannot place.
     /// </summary>
     [Theory]
     [InlineData(420)]
-    [InlineData(300)]
     [InlineData(540)]
     public void ANightInsideTheOrdinaryBand_EarnsNoObservation(int sleepMinutes)
     {
@@ -182,8 +187,29 @@ public class DigestInterpretationSignalsTests
         Assert.DoesNotContain("Last night", section);
     }
 
+    /// <summary>
+    /// Five hours is within 30% of a seven-hour usual, so their own usual raises nothing — and it is
+    /// below the published range, which is what normal means for sleep (decision 2026-09-25). Before
+    /// that, this night produced no line at all.
+    /// </summary>
     [Fact]
-    public void NoSleepBaseline_MeansNothingToJudgeTheNightAgainst()
+    public void AShortNightInsideTheUsual_IsStillNamed_AgainstTheRange()
+    {
+        var section = DigestInterpretationSignals.Section(
+            Baseline(),
+            today: Log(Today, sleepMinutes: 300),
+            yesterday: null,
+            Morning,
+            ageYears: 80);
+
+        Assert.Contains(
+            "- Last night: 5.0 hours of sleep (usual 7.0) — below the 7-8 hours recommended at their age (NSF).",
+            section);
+    }
+
+    /// <summary>No usual to judge the night against, and still the published range to judge it by.</summary>
+    [Fact]
+    public void NoSleepBaseline_StillJudgesTheNight_AgainstTheRange()
     {
         var baseline = Baseline();
         baseline.AvgSleepMinutes = null;
@@ -194,7 +220,10 @@ public class DigestInterpretationSignalsTests
             yesterday: null,
             Morning);
 
-        Assert.DoesNotContain("Last night", section);
+        Assert.Contains(
+            "- Last night: 3.6 hours of sleep — below the 7 hours a night recommended for adults (NSF).",
+            section);
+        Assert.DoesNotContain("usual", section);
     }
 
     /// <summary>
@@ -354,17 +383,35 @@ public class DigestInterpretationSignalsTests
         Assert.DoesNotContain("still day", section);
     }
 
+    /// <summary>
+    /// Without a baseline, only what a published range can say: a resting heart rate of 110 is
+    /// outside AHA's 60–100 whatever this member's usual turns out to be. Nothing that needs a usual
+    /// — a quiet day, a raised average — is said.
+    /// </summary>
     [Fact]
-    public void Empty_WithoutABaseline()
+    public void WithoutABaseline_OnlyThePublishedRangesSpeak()
     {
+        var section = DigestInterpretationSignals.Section(
+            null,
+            today: Log(Today, steps: 0, restingHr: 110),
+            yesterday: Log(Yesterday, steps: 200, restingHr: 110),
+            Afternoon);
+
+        Assert.Contains("- Yesterday: resting heart rate 110 bpm, outside the 60-100 bpm published range (AHA).", section);
+        Assert.Contains("- Today so far: resting heart rate 110 bpm, outside the 60-100 bpm published range (AHA).", section);
+        Assert.DoesNotContain("steps", section);
+        Assert.DoesNotContain("usual", section);
+    }
+
+    [Fact]
+    public void Empty_WithoutABaseline_WhenEverythingIsInsideItsRange() =>
         Assert.Equal(
             string.Empty,
             DigestInterpretationSignals.Section(
                 null,
-                today: Log(Today, steps: 0, restingHr: 110),
-                yesterday: Log(Yesterday, steps: 200, restingHr: 110),
+                today: Log(Today, steps: 0, restingHr: 72, sleepMinutes: 450),
+                yesterday: Log(Yesterday, steps: 200, restingHr: 70),
                 Afternoon));
-    }
 
     [Fact]
     public void FormatsEveryFigureInvariantly_WhateverTheHostCulture()

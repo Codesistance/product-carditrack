@@ -81,6 +81,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         Say what the readings show in clinical terms, and name the mechanism they are consistent with where there is one.
         In the data, trend is the denoised underlying heart rate, and the deviation score says how many typical jitters the latest reading sits from it; scores under 3 are ordinary variation.
         Read the activity in the data before calling a rate unusual.
+        Blood oxygen below its published range is worth attention whatever this person's usual is.
         """ + "If \"" + EnvironmentalContextSource.SessionConditionsLabel + "\" is present, weigh"
         + " the temperature, humidity and air against the rate before calling it unusual; when it"
         + " is absent, never mention weather at all.\n" + """
@@ -440,6 +441,12 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
                 : null,
             ["average_spo2_percent"] = spo2.HasValue
                 ? JsonValue.Create(Math.Round(spo2.Value, 0, MidpointRounding.AwayFromZero))
+                : null,
+            // The one published range this hour can be read against (decision 2026-09-25,
+            // PublishedNormal): the hour's heart rate is not a resting one, so AHA's 60-100 does
+            // not describe it, and nothing else here has a range. Only beside a reading it grades.
+            ["spo2_published_range"] = spo2.HasValue
+                ? $"{HealthReferenceRanges.SpO2.Low:0}-{HealthReferenceRanges.SpO2.High:0}% ({HealthReferenceRanges.SpO2.Source})"
                 : null,
             ["average_hrv_ms"] = heartRateVariability.HasValue
                 ? JsonValue.Create(Math.Round(heartRateVariability.Value, 0, MidpointRounding.AwayFromZero))
