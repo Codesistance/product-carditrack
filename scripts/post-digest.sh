@@ -22,24 +22,29 @@ DIGEST="${1:?usage: post-digest.sh <digest-file>}"
 # aborts only the subshell, so the guard would print its message and the script
 # would carry on and post an empty parent message.
 CHANNEL="${SLACK_CHANNEL:?set SLACK_CHANNEL to the channel ID, e.g. C0XXXXXXX}"
-: "${SLACK_BOT_TOKEN:?set SLACK_BOT_TOKEN (bot token with chat:write)}"
 REPO="${GITHUB_REPOSITORY:?set GITHUB_REPOSITORY to owner/repo}"
+# A dry run (see post) sends nothing, so it is the one mode that needs no token.
+[ "${DIGEST_DRY_RUN:-}" = "1" ] || : "${SLACK_BOT_TOKEN:?set SLACK_BOT_TOKEN (bot token with chat:write)}"
 API="https://slack.com/api/chat.postMessage"
 
-jq -e 'has("summary") and (.items | type == "array")' "$DIGEST" >/dev/null 2>&1 \
-  || { echo "malformed digest: $DIGEST needs .summary and .items[]" >&2; exit 1; }
+jq -e '(.summary | type == "string") and (.items | type == "array")' "$DIGEST" >/dev/null 2>&1 \
+  || { echo "malformed digest: $DIGEST needs a string .summary and .items[]" >&2; exit 1; }
 
 # `notes` is optional. When present it is an ordered list of sections, each a
 # heading and its lines; the parent renders one bulleted block per section so
 # the standing context (deadlines, what was checked and found clean, what was
 # held back) reads as a list rather than one run-on paragraph.
+#
+# Tested with has(), not `//`: jq's alternative operator treats false and null
+# as absent, which would let `"notes": false` through as an empty list.
 jq -e '
-  (.notes // []) as $n
-  | ($n | type == "array")
-  and all($n[]; (.heading | type == "string") and (.lines | type == "array")
-                and all(.lines[]; type == "string"))
+  if has("notes") then
+    (.notes | type == "array")
+    and all(.notes[]; (.heading | type == "string") and (.lines | type == "array")
+                      and all(.lines[]; type == "string"))
+  else true end
 ' "$DIGEST" >/dev/null 2>&1 \
-  || { echo "malformed digest: .notes must be [{heading, lines[]}]" >&2; exit 1; }
+  || { echo "malformed digest: .notes, when present, must be [{heading, lines[]}]" >&2; exit 1; }
 
 # Slack caps a section block at 3000 characters and rejects the whole message
 # past it. Failing here, with the section named, beats a silent lost post.
