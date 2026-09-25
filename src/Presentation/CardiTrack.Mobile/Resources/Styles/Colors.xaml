@@ -207,6 +207,9 @@
          so the pill has a little depth without a shadow. TabPillBackground is its middle. -->
     <!-- The bar itself: white fading to a pale blue at the bottom edge, so it settles into the
          page ground rather than sitting on it, and echoes the pill's gradient. -->
+    <!-- The hairline along the bar's visible top edge (BottomNavBar), standing in for the upward
+         shadow the see-through strip above it rules out. -->
+    <Color x:Key="TabBarEdge">#D5E1EE</Color>
     <LinearGradientBrush x:Key="TabBarBrush" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Color="#FFFFFF" Offset="0"/>
         <GradientStop Color="#E6F0FB" Offset="0.3"/>

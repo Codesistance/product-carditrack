@@ -43,8 +43,11 @@ public partial class BottomNavBar : ContentView
     /// <summary>How much smaller the glyphs of the tabs not selected are drawn.</summary>
     private const double UnselectedIconShrink = 3;
 
-    /// <summary>How far the selected glyph is lifted, so it rises out of the top of the pill.</summary>
-    private const double SelectedIconLift = -7;
+    /// <summary>
+    /// How far the selected glyph is lifted off the tabs' shared centre line. None: the pill is
+    /// symmetric about the row, so the selected glyph and label sit where every other tab's do.
+    /// </summary>
+    private const double SelectedIconLift = 0;
 
     private bool _navigating;
 
@@ -66,6 +69,7 @@ public partial class BottomNavBar : ContentView
         InitializeComponent();
         ApplySelection();
         TabsGrid.SizeChanged += (_, _) => SnapPill(_shown);
+        BarBorder.SizeChanged += (_, _) => PaintGround();
         Loaded += (_, _) =>
         {
             _page = FindPage();
@@ -78,6 +82,33 @@ public partial class BottomNavBar : ContentView
                 _page.Appearing -= OnPageAppearing;
             _page = null;
         };
+    }
+
+    /// <summary>How much of the bar's top is see-through, for the pill to rise into.</summary>
+    private const double ClearStrip = 8;
+
+    /// <summary>
+    /// The bar's fill: nothing for its top <see cref="ClearStrip"/>, then TabBarBrush's white into
+    /// pale blue down to the bottom of the screen. Built against the bar's height because a
+    /// gradient's stops are fractions of it, and the bar's height depends on the phone's bottom
+    /// inset; a hard stop at the strip's fraction is the only way to say "8 down" in them.
+    /// </summary>
+    private void PaintGround()
+    {
+        var height = BarBorder.Height;
+        if (height <= ClearStrip)
+            return;
+
+        var edge = (float)(ClearStrip / height);
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        var stops = ((LinearGradientBrush)resources["TabBarBrush"]).GradientStops;
+
+        var ground = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+        ground.GradientStops.Add(new GradientStop(Colors.Transparent, 0));
+        ground.GradientStops.Add(new GradientStop(Colors.Transparent, edge));
+        foreach (var stop in stops)
+            ground.GradientStops.Add(new GradientStop(stop.Color, edge + (stop.Offset * (1 - edge))));
+        BarBorder.Background = ground;
     }
 
     private Page? FindPage()

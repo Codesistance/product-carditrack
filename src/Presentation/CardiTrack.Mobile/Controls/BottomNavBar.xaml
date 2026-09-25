@@ -17,17 +17,19 @@
 
          MinimumHeightRequest, not HeightRequest: the inset has to add to the bar's 77, and a
          fixed height would have squeezed the icons up into it instead. -->
+    <!-- The bar's top 8 is see-through (TabBarGround, built in code against the bar's height):
+         the ground's visible edge sits 8 down, so the selection pill can rise above it while
+         staying inside the bar's own bounds — anything drawn outside them is clipped by the page.
+         The upward shadow went with it, since a shadow follows the Border's outline and would
+         have floated 8 above the visible edge; a hairline marks the edge instead. -->
     <Border x:Name="BarBorder"
-            Background="{StaticResource TabBarBrush}"
-            Stroke="{StaticResource White}"
+            Background="Transparent"
+            Stroke="Transparent"
             StrokeThickness="0"
             Padding="0"
             MinimumHeightRequest="77"
             SafeAreaEdges="None, None, None, Container"
             VerticalOptions="End">
-        <Border.Shadow>
-            <Shadow Brush="#014297" Opacity="0.11" Radius="14" Offset="0,-5"/>
-        </Border.Shadow>
 
         <!-- Five columns since D-18 put Family in the third slot, which is where the original
              Family stub sat before the Journal took it. Five is the platform ceiling and this is
@@ -36,20 +38,29 @@
              size up, its glyph a box up, and the pill larger still, and a bar sized by whichever
              of those was tallest moved its top edge — and with it the page above — every time
              the selection or a font settled. Fixed, the bar stays put while the page loads. -->
-        <Grid x:Name="TabsGrid" ColumnDefinitions="*,*,*,*,*" Padding="0,14,0,0" HeightRequest="72" VerticalOptions="Start">
+        <Grid x:Name="TabsGrid" ColumnDefinitions="*,*,*,*,*" Padding="0,12,0,0" HeightRequest="78" VerticalOptions="Start">
+
+            <!-- The ground's top edge: a hairline where the see-through strip ends. -->
+            <BoxView Grid.ColumnSpan="5"
+                     Margin="0,-4,0,0"
+                     HeightRequest="1"
+                     VerticalOptions="Start"
+                     Color="{StaticResource TabBarEdge}"
+                     InputTransparent="True"/>
 
             <!-- The selection pill: one tinted shape in the first column, slid under whichever
                  tab is selected (TranslationX, whole columns at a time), declared first so the
                  tabs draw over it. Not in Figma 101:2949, which marks the selection with the
                  filled glyph and its shadow only — both kept; see the design-sync backlog.
 
-                 Only as tall as an unselected tab (glyph box, gap, label) and level with the tabs,
-                 so the selected glyph — magnified and lifted — rises out of its top edge: the one
-                 thing on the bar that breaks the line. -->
+                 Symmetric about the tab row: it reaches the same 12 past the row's top as past
+                 its bottom, so the selected glyph and label sit on the centre line every other tab
+                 sits on, with even room above and below — and its top rises 8 above the ground's
+                 edge, into the see-through strip. -->
             <Border x:Name="SelectionPill"
                     Grid.Column="0"
-                    Margin="4,1,4,0"
-                    HeightRequest="56"
+                    Margin="4,-12,4,0"
+                    HeightRequest="73"
                     VerticalOptions="Start"
                     StrokeThickness="0"
                     Background="{StaticResource TabPillBrush}"
