@@ -24,18 +24,28 @@
 
 <h2>How alerting works</h2>
 <p>
-    CardiTrack compares each person against their own recent history — not a population
-    average — and tells caregivers when today's readings sit well outside that picture.
-    A human caregiver always decides whether to check in. CardiTrack does not diagnose,
+    CardiTrack reads each person's readings against two things. For sleep, resting heart
+    rate and blood oxygen, the first is the range health bodies publish — the National Sleep
+    Foundation's recommended hours for the person's age, the American Heart Association's
+    60–100 beats per minute at rest, and the World Health Organization's 94–100% blood
+    oxygen — and that range is what counts as normal: a reading outside it is worth a word
+    even when it is usual for that person. The second is the person's own recent history,
+    which says whether a reading is new for them, and is the only comparison for everything
+    else. A human caregiver always decides whether to check in. CardiTrack does not diagnose,
     contact emergency services, or change anyone's care.
 </p>
 <p>
     For the first weeks we build a picture of a typical day. Until we have about a month
-    of data (at least 80% of those days with readings), we do not raise statistical alerts.
-    Early “provisional” pictures may colour the dashboard but never page you.
+    of data (at least 80% of those days with readings), we do not raise alerts that compare
+    against that picture. Early “provisional” pictures may colour the dashboard but never page
+    you. Readings outside a published range are the exception: sleep outside the hours
+    recommended for the person's age, a resting heart rate outside 60–100 beats per minute, or
+    blood oxygen below 94%, on at least three of the last five days with a reading, can raise an alert from
+    the first week — once for each stretch, not every day.
 </p>
 <p>
-    Statistical alerts use the same thresholds for everyone. There is no low, medium, or high sensitivity setting yet.
+    Apart from the recommended sleep hours, which depend on the person's age, statistical
+    alerts use the same thresholds for everyone. There is no low, medium, or high sensitivity setting yet.
     A quieter day than usual is a drop of more than 30%
     below that person's average steps; sleep is flagged when it is more than 30% above or
     below their average; resting heart rate is flagged when it sits above their average by
