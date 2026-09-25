@@ -114,10 +114,14 @@ public static class MemberPhotoCache
     }
 
     /// <summary>The saved file for this photo, if it is already on the phone.</summary>
+    /// <remarks>
+    /// A lookup, not a claim: it leaves <see cref="Latest"/> alone. An avatar still holding the
+    /// member's old link would otherwise mark the old photo current just by being drawn, and the
+    /// old download landing afterwards would then clear the new photo away.
+    /// </remarks>
     public static string? Cached(MemberPhotoCacheKey key)
     {
         var path = PathFor(key);
-        Latest[Path.GetDirectoryName(path)!] = path;
         return File.Exists(path) ? path : null;
     }
 
@@ -129,15 +133,20 @@ public static class MemberPhotoCache
     {
         var path = PathFor(key);
         Latest[Path.GetDirectoryName(path)!] = path;
-        return InFlight.GetOrAdd(path, _ => new Lazy<Task<string?>>(() => FetchCoreAsync(url, key))).Value;
+
+        // Keyed by session as well as photo: a download begun before a sign-out is thrown away
+        // when it lands, and a request after the sign-out must start its own rather than join
+        // that one and get nothing back.
+        var generation = Volatile.Read(ref _generation);
+        var flight = $"{generation}|{path}";
+        return InFlight.GetOrAdd(flight, _ => new Lazy<Task<string?>>(() => FetchCoreAsync(url, key, path, generation, flight))).Value;
     }
 
-    private static async Task<string?> FetchCoreAsync(Uri url, MemberPhotoCacheKey key)
+    private static async Task<string?> FetchCoreAsync(
+        Uri url, MemberPhotoCacheKey key, string path, int generation, string flight)
     {
-        var path = PathFor(key);
         var folder = Path.GetDirectoryName(path)!;
         var temp = path + ".part";
-        var generation = Volatile.Read(ref _generation);
         try
         {
             Directory.CreateDirectory(folder);
@@ -165,14 +174,24 @@ public static class MemberPhotoCache
                 File.Move(temp, path, overwrite: true);
 
                 // The member has one photo: anything else in their folder is the one this replaced
-                // — but only when this is the photo the folder was last asked for. An older one
-                // landing late keeps its own file for the screen that asked, and leaves the
-                // clearing to the current photo.
+                // — but only when this is the photo the folder was last asked for.
                 if (key.Folder != MemberPhotoCacheKey.SharedFolder
-                    && Latest.TryGetValue(folder, out var latest) && latest == path)
+                    && Latest.TryGetValue(folder, out var latest))
                 {
-                    foreach (var stale in Directory.EnumerateFiles(folder).Where(f => f != path))
-                        TryDelete(stale);
+                    if (latest == path)
+                    {
+                        foreach (var stale in Directory.EnumerateFiles(folder).Where(f => f != path))
+                            TryDelete(stale);
+                    }
+                    else if (File.Exists(latest))
+                    {
+                        // An older photo landing after the current one already has: nothing is
+                        // left to clear it, so it goes now, and the screen that asked for it gets
+                        // the current photo instead. Had the current one not landed yet, this
+                        // file stays, and the current photo's own clearing takes it.
+                        TryDelete(path);
+                        return latest;
+                    }
                 }
             }
 
@@ -187,7 +206,7 @@ public static class MemberPhotoCache
         }
         finally
         {
-            InFlight.TryRemove(path, out _);
+            InFlight.TryRemove(flight, out _);
         }
     }
 
