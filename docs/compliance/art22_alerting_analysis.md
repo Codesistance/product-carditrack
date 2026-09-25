@@ -20,7 +20,7 @@ in the pipeline's assessor job, gated on `enable_pipeline_jobs`, which prod has 
 |---|---|---|---|
 | Real-time assessor | **LLM-routed**: SSA features → MedGemma verdict → severity parse | `HeartRate` red/orange | `RealtimeAssessmentService`, `AssessmentSeverityParser` |
 | Inactivity detector | Deterministic rule (device silence) | `Inactivity` yellow | `InactivityDetectionService` |
-| Statistical engine (R1) | Eleven deterministic rules produce *findings* — nine **comparative** rules vs the 30-day baseline (silent without one) and two **measured** rhythm rules (`irregular_rhythm`, `ecg_afib`, DPIA A26) that relay a finding the wearer's device already classified and are deliberately not gated on a baseline; **since 2026-09-19 LLM-routed** — MedGemma returns the severity, headline and message for every finding (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`) | yellow/orange/red per the model's verdict, mapped strictly, fail closed | `StatisticalAlertRules`, `StatisticalAlertService` (pipeline `assess` job) |
+| Statistical engine (R1) | Fourteen deterministic rules produce *findings* — nine **comparative** rules vs the 30-day baseline (silent without one), two **measured** rhythm rules (`irregular_rhythm`, `ecg_afib`, DPIA A26) that relay a finding the wearer's device already classified, and since 2026-09-25 three **published-range** rules (`sleep_outside_range`, `resting_hr_outside_range`, `spo2_below_range`) that compare against the NSF, AHA and WHO ranges; the last five are deliberately not gated on a baseline; **since 2026-09-19 LLM-routed** — MedGemma returns the severity, headline and message for every finding (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`) | yellow/orange/red per the model's verdict, mapped strictly, fail closed | `StatisticalAlertRules`, `StatisticalAlertService` (pipeline `assess` job) |
 | Caregiver-defined alarms (R2) | Deterministic threshold arithmetic, **on numbers the caregiver chose** | yellow/orange/red, chosen by the caregiver | `MetricAlarmEvaluator`, `MetricAlarmEngine` |
 
 The first and third involve a model; the other two are deterministic — the inactivity detector
@@ -88,9 +88,9 @@ section's facts under a different test. Four things changed since §2 was writte
    rhythm rules relay the device's own classification and are judged for severity only, so they
    add model-written words but no new profiling) — and with it the Arts. 13–15 duty to explain
    the logic. It does not move the Art. 22 test: the output is still an `Alert` row awaiting a named
-   caregiver's acknowledgment, the eleven rules still decide whether a finding reaches the
+   caregiver's acknowledgment, the fourteen rules still decide whether a finding reaches the
    model at all (nine baseline thresholds, algorithm card §2; two device-measured rhythm
-   findings, DPIA A26), and the fail-closed parse and strict mapping carry over (§3). R1 rows
+   findings, DPIA A26; three published-range thresholds, item 5), and the fail-closed parse and strict mapping carry over (§3). R1 rows
    now fall under **V2b** and V3 (§5) — V2 as written cannot cover them, see V2b.
 3. **Member chat can change alert settings** (2026-09-17; DPIA A20 restated). A model reads
    which rule or alarm the caregiver meant; the change is proposed in one turn and applied only
@@ -103,6 +103,22 @@ section's facts under a different test. Four things changed since §2 was writte
    `enable_pipeline_jobs = false`); only the Worker's inactivity detector and caregiver-defined
    alarms run there. The conclusions above describe dev, and prod after the flag flips — which
    is why the flip is now a DPIA §13 trigger.
+5. **Published ranges are the normal, and three rules alert on them** (2026-09-25; DPIA A15
+   restated, change entry of that date). For sleep, resting heart rate and blood oxygen the
+   judgement — and every narrative — now reads a reading against the published range first and
+   the person's own usual as context, and three rules (`sleep_outside_range`,
+   `resting_hr_outside_range`, `spo2_below_range`) raise a finding when the reading sat outside
+   the range on at least three of the last five days, once per stretch. *Profiling:* these compare
+   the person with a population range rather than with their own pattern, and they run without an
+   established baseline, so they reach members in their first 30 days whom the comparative rules
+   never alerted on — a wider profiling footprint, recorded as such. *Solely automated?* Unchanged:
+   the output is an `Alert` row awaiting a named caregiver, severity is the model's under the same
+   fail-closed parse and strict mapping (§3), and the thresholds are fixed constants in code with
+   published sources (algorithm card §2). *Transparency gap:* the detail screen names each
+   yardstick in code (`AlertEvidenceComposer`), but the three new rules have no evidence line yet,
+   so their alerts show the range as the chart's band and the model's words, without the code-written
+   sentence the other rules carry. Tracked as a product follow-up; it is the same Arts. 13–15 duty
+   item 2 names. V2b's protocol (§5) should include these rules once they have run in dev.
 
 **Re-run conclusion (draft):** the as-built alerting most likely remains **outside Art. 22(1)**
 — there is still no solely-automated decision with significant effect, and the human in the
@@ -174,7 +190,8 @@ product target.
 carries only the member, the rule, the day and a hash of the finding — deliberately not the
 figures judged or the severity returned — so stored rows that can be read against a rule's former
 constant are alerts only. Protocol: (a) for
-every `Alert` row from the **nine comparative rules** since 2026-09-19, compare the model's
+every `Alert` row from the **nine comparative rules** since 2026-09-19 (and from the three
+published-range rules since 2026-09-25, against their range rather than a former constant), compare the model's
 severity with the rule's former constant (the lineage column in the algorithm card §2), by rule,
 **age band and sex** — agreement, escalation and de-escalation rates, with every de-escalation of
 a former red read individually; (b) a **shadow log of judged findings including benign

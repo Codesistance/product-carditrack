@@ -1,6 +1,6 @@
 # Alerting algorithm card
 
-**Status:** Matches the code as of 2026-09-23 (the two measured rhythm rules of 2026-09-22 added to §1 and §2). Companion to [art22_alerting_analysis.md](art22_alerting_analysis.md) and [mathnet_numerics.md](../technical/mathnet_numerics.md). Caregiver-facing summary lives on `/privacy` (“How alerting works”). This card is the Art. 15 artefact: named formulas, named engine, named constants.
+**Status:** Matches the code as of 2026-09-25 (the two measured rhythm rules of 2026-09-22 and the three published-range rules of 2026-09-25 added to §1 and §2). Companion to [art22_alerting_analysis.md](art22_alerting_analysis.md) and [mathnet_numerics.md](../technical/mathnet_numerics.md). Caregiver-facing summary lives on `/privacy` (“How alerting works”). This card is the Art. 15 artefact: named formulas, named engine, named constants.
 
 CardiTrack computes every number in-process. MedGemma only interprets numbers it is given. It never sets a threshold, never writes an `Alert` by mumbling, and never replaces the rules below.
 
@@ -40,6 +40,16 @@ Three of the four rules added on 2026-08-22 threshold on data types CardiTrack d
 **Elevated zone without movement is a pairing, not a threshold.** Raised-zone minutes after a walk are what exercise looks like; the finding is those minutes on a day the activity-decline rule already calls quiet. It reuses that rule rather than restating its threshold, so the two cannot disagree about what a quiet day is.
 
 Bedtime / wake time on the baseline are a **circular mean** on the 24-hour clock (UTC as stored). There is no Math.NET circular clock-mean; that formula stays homemade.
+
+**Three published-range rules (2026-09-25, DPIA A15).** Each compares against a range someone else publishes, not against the member's own usual, so none is gated by §1's established-baseline check. Constants are fixed in code (`StatisticalAlertRules`) with the source named in every finding:
+
+| Rule | Fires when | Severity | Constant |
+|---|---|---|---|
+| Sleep outside range (`sleep_outside_range`) | Sleep outside the NSF range for the member's age (7–9 h, 7–8 h from 65) on ≥3 of the last 5 nights with a reading. An awake night (worn all night, no sleep) counts as 0 h; no-data and pending nights are skipped; with no known age only the 7 h floor is judged | Model's | 3 of 5, NSF band |
+| Resting HR outside range (`resting_hr_outside_range`) | Resting heart rate outside 60–100 bpm, either side, on ≥3 of the last 5 days, through yesterday | Model's | 3 of 5, AHA 60–100 |
+| Blood oxygen below range (`spo2_below_range`) | Blood oxygen below 94% on ≥3 of the last 5 days | Model's | 3 of 5, WHO floor 94% |
+
+One alert per **stretch**: an alert of the same rule raised on or after the day the stretch began — standing, resolved or deleted — keeps it quiet; a stretch ends after 3 measured days in a row back inside the range, and one whose start is not visible in the 90 days read is treated as the stretch any earlier alert belonged to. Each finding states three weekly averages and whether each sits further outside the range than the last; the judgement brief weighs a worsening stretch above a steady one. No former constant exists for these rules — they were built model-judged.
 
 **Two measured rules (2026-09-22, DPIA A26).** `ecg_afib` fires on an ECG the wearer's device classified as atrial fibrillation; `irregular_rhythm` fires on an irregular-rhythm notification the device raised. Neither compares anything to a baseline — the finding is the device's own classification, so there is no inference in it for a thin window to weaken — and neither is gated by §1's established-window rule, on purpose: a member two weeks into wearing a watch must still hear that it reported atrial fibrillation. Both go to the same MedGemma judgement call as the nine rules above, which decides severity, headline and message; nothing in code supplies a severity for them. Eleven rules in all. Both are `AlertType.Rhythm`; the beat-level intervals A26 stores never reach a prompt.
 

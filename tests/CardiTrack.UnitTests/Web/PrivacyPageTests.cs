@@ -44,4 +44,28 @@ public class PrivacyPageTests : BunitContext
         Assert.Contains("match it to your account", text);
         Assert.DoesNotContain("not linked to your account", text);
     }
+
+    /// <summary>
+    /// The published-range decision (2026-09-25), as a caregiver reads it: for sleep, resting heart
+    /// rate and blood oxygen the published range is the normal, and those readings can alert before
+    /// a month of history exists. The page used to say CardiTrack compared people only with their
+    /// own history, "not a population average", and raised no statistical alert in the first
+    /// month — both untrue once the published-range rules shipped.
+    /// </summary>
+    [Fact]
+    public void PrivacyPage_SaysThePublishedRangeIsTheNormal_AndCanAlertInTheFirstWeeks()
+    {
+        var cut = Render<Privacy>();
+        var text = string.Join(
+            ' ',
+            cut.FindAll("p").Select(p =>
+                string.Join(' ', p.TextContent.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))));
+
+        Assert.Contains("that range is what counts as normal", text);
+        Assert.Contains("60–100 beats per minute", text);
+        Assert.Contains("94%", text);
+        Assert.Contains("can raise an alert from the first week", text);
+        Assert.Contains("once for each stretch", text);
+        Assert.DoesNotContain("not a population average", text);
+    }
 }
