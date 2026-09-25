@@ -64,7 +64,7 @@ public class OAuthCodeExchangeService : IOAuthCodeExchangeService
             // contain a live token fragment — report length + error locations, not content.
             throw new OAuthExchangeException(
                 $"{providerConfig.Provider} token response was not valid JSON " +
-                $"({content.Length} chars): {string.Join("; ", jsonErrors)}");
+                $"({content.Length} chars) at {JsonError.PositionsOf(jsonErrors)}");
 
         var accessToken = root!.Value<string>("access_token");
         if (string.IsNullOrEmpty(accessToken))

@@ -92,6 +92,22 @@ public class OAuthCodeExchangeServiceTests
         Assert.DoesNotContain(sentinel, ex.Message);
     }
 
+    // A 2xx body that fails to parse can still hold a live token fragment: positions only, never
+    // the parser's text or the JSON path, both of which echo the body.
+    [Theory]
+    [InlineData("""{ "provider-free-text-sentinel": tru }""", "provider-free-text-sentinel")]
+    [InlineData("""{ "access_token": 9876.54.321 }""", "9876.54.321")]
+    public async Task ExchangeCodeAsync_KeepsTheBodyOutOfTheMessage_WhenTheTokenResponseIsNotJson(
+        string body, string mustNotAppear)
+    {
+        var ex = await Assert.ThrowsAsync<OAuthExchangeException>(() =>
+            CreateSut(new FakeHttpHandler(body))
+                .ExchangeCodeAsync(_config, "auth_code", "carditrack://oauth/callback", "verifier"));
+
+        Assert.Contains("not valid JSON", ex.Message);
+        Assert.DoesNotContain(mustNotAppear, ex.Message);
+    }
+
     [Fact]
     public async Task ExchangeCodeAsync_Throws_WhenAccessTokenMissing()
     {

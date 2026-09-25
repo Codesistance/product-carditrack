@@ -301,6 +301,25 @@ public class OAuthTokenRefreshServiceTests
         Assert.DoesNotContain(BodySentinel, failure.Message);
     }
 
+    // A 2xx body that fails to parse can still hold a live token fragment: positions only, never
+    // the parser's text or the JSON path, both of which echo the body.
+    [Theory]
+    [InlineData("{ \"" + BodySentinel + "\": tru }", BodySentinel)]
+    [InlineData("""{ "access_token": 9876.54.321 }""", "9876.54.321")]
+    public async Task RefreshIfExpiredAsync_KeepsTheBodyOutOfTheMessage_WhenTheTokenResponseIsNotJson(
+        string body, string mustNotAppear)
+    {
+        _encryption.Decrypt("enc_refresh").Returns("plain_refresh");
+        _encryption.Decrypt("enc_access").Returns("plain_access");
+
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateSut(new FakeHttpHandler(body))
+                .RefreshIfExpiredAsync(ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10)), _config));
+
+        Assert.Contains("not valid JSON", failure.Message);
+        Assert.DoesNotContain(mustNotAppear, failure.Message);
+    }
+
     [Fact]
     public async Task RefreshIfExpiredAsync_Throws_WhenProviderNotConfigured()
     {

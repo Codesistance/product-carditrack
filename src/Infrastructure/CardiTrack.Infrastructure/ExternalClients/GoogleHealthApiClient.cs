@@ -2313,7 +2313,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         if (!JsonUtility.TryParse(body, out var root, out var errors))
             throw new GoogleHealthApiException((int)response.StatusCode,
                 $"Google Health API {what} response was not valid JSON ({body.Length} chars) at "
-                + string.Join("; ", errors.Select(e => $"line {e.LineNumber}, pos {e.LinePosition}")));
+                + JsonError.PositionsOf(errors));
         return root!;
     }
 
