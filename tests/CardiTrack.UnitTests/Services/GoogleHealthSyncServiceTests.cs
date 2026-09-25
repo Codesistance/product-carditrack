@@ -1208,9 +1208,34 @@ public class DeviceSyncServiceTests
         Assert.Equal(WindowEndingAt(new DateOnly(2026, 7, 14), 5), fetched);
     }
 
+    // Scheduling counts SyncFrequencyMinutes from this stamp, so an ordinary pull records when it
+    // finished — stamping its start would make a long repair pull due again the moment it lands.
+    [Fact]
+    public async Task SyncCardiMemberAsync_StampsTheCompletionTime_ForAPullThatEndsOnItsOwnDay()
+    {
+        AnchorMemberTo(Sydney);
+        SetupSuccessfulTokenRefresh();
+        var clock = ClockAt(new DateTime(2026, 7, 14, 10, 0, 0)); // 20:00 on the 14th
+        _fitbitConnection.LastSyncDate = null; // the full window, so the pull takes a while
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(_ =>
+            {
+                clock.Advance(TimeSpan.FromMinutes(4));
+                return Snapshot();
+            });
+        DateTime? stamped = null;
+        _deviceConnections.MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Do<DateTime>(d => stamped = d))
+            .Returns(Task.CompletedTask);
+
+        await CreateSut(clock).SyncCardiMemberAsync(_fitbitConnection);
+
+        Assert.Equal(clock.GetUtcNow().UtcDateTime, stamped);
+        Assert.Equal(new DateTime(2026, 7, 14, 10, 16, 0, DateTimeKind.Utc), stamped);
+    }
+
     // A pull that starts at 23:58 and lands after midnight was for the 14th. Stamped with its
-    // finish time it would read as a pull for the 15th, and the 00:10 pull would skip the repair
-    // pass for the day that had just closed.
+    // finish time alone it would read as a pull for the 15th, and the 00:10 pull would skip the
+    // repair pass for the day that had just closed — so it is held to the 14th's last second.
     [Fact]
     public async Task SyncCardiMemberAsync_RunsTheNextRepairPass_WhenAPullCrossesLocalMidnight()
     {
@@ -1230,7 +1255,7 @@ public class DeviceSyncServiceTests
 
         await CreateSut(clock).SyncCardiMemberAsync(_fitbitConnection);
 
-        Assert.Equal(new DateTime(2026, 7, 14, 13, 58, 0, DateTimeKind.Utc), stamped);
+        Assert.Equal(new DateTime(2026, 7, 14, 13, 59, 59, DateTimeKind.Utc), stamped); // 23:59:59 local
 
         _fitbitConnection.LastSyncDate = stamped;
         _deviceApi.ClearReceivedCalls();
