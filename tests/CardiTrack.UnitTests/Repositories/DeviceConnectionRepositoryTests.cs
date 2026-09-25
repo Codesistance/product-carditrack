@@ -432,6 +432,31 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.False(await repo.AnyOtherActiveWithHealthUserIdAsync(connection.Id, account));
     }
 
+    // ── GetByCardiMemberIdAsync ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// A removed connection is never one of the member's devices. Every device action, and a
+    /// reconnect or replace completing at the callback, finds its target in this list — so a
+    /// removed device cannot be revived onto a grant already queued for revocation (Copilot review
+    /// round 14 on #1290).
+    /// </summary>
+    [Fact]
+    public async Task GetByCardiMemberIdAsync_LeavesOutRemovedConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var live = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
+        var removed = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.Disconnected, isActive: false);
+
+        var result = (await repo.GetByCardiMemberIdAsync(member.Id)).ToList();
+
+        Assert.Contains(result, c => c.Id == live.Id);
+        Assert.DoesNotContain(result, c => c.Id == removed.Id);
+    }
+
     // ── Update ───────────────────────────────────────────────────────────────────
 
     /// <summary>

@@ -290,9 +290,10 @@ public class MemberErasureService : IMemberErasureService
     /// before — ending an erased member's access is what this is for.
     /// </para>
     /// <para>
-    /// Called twice, before the transaction and again under its locks. A grant already decided —
-    /// revoked, kept or failed — is recorded in <paramref name="handled"/> by connection and token,
-    /// so the second call acts only on one that appeared since, or whose token a reconnect replaced.
+    /// Called twice, before the transaction and again under its locks. A grant already sent to the
+    /// provider — revoked or failed — is recorded in <paramref name="handled"/> by connection and
+    /// token, so the second call acts only on one that appeared since, whose token a reconnect
+    /// replaced, or that the first call kept as shared (sharing is re-checked under the locks).
     /// The reads are untracked for the same reason: a tracked read would hand the second call the
     /// first call's copy of each row.
     /// </para>
@@ -320,7 +321,8 @@ public class MemberErasureService : IMemberErasureService
 
         foreach (var (grant, account) in grants)
         {
-            if (!handled.Add((grant.Id, grant.RefreshToken ?? grant.AccessToken)))
+            var key = (grant.Id, grant.RefreshToken ?? grant.AccessToken);
+            if (handled.Contains(key))
                 continue;
 
             if (account is not null
@@ -334,9 +336,12 @@ public class MemberErasureService : IMemberErasureService
                     "Kept the grant of DeviceConnection {DeviceConnectionId} while erasing CardiMember "
                     + "{CardiMemberId}: another member's live connection reads through the same account.",
                     grant.Id, cardiMemberId);
+                // Not recorded as handled: sharing can end while erasure waits for its locks — the
+                // other member's device removed meanwhile — so the second call decides it again.
                 continue;
             }
 
+            handled.Add(key);
             bool revoked;
             try
             {

@@ -462,6 +462,64 @@ public class MemberErasureCascadeTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Copilot review round 14 on #1290: a grant kept as shared before erasure took its locks is
+    /// decided again under them. The other member's device removed while erasure waited leaves the
+    /// grant theirs alone, and it is revoked rather than deleted with its last local copy.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_RevokesAGrantThatStoppedBeingSharedWhileItWaited()
+    {
+        var (organizationId, userId, memberId) = await SeedMemberWithDataAsync();
+        var otherMemberId = await SeedSecondMemberAsync(organizationId, userId);
+        const string sharedAccount = "hu-shared-then-not";
+        var otherConnectionId = Guid.NewGuid();
+        using (var seed = _services.CreateScope())
+        {
+            var db = seed.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            foreach (var connection in db.DeviceConnections.Where(c => c.CardiMemberId == memberId))
+                connection.HealthUserId = sharedAccount;
+            db.DeviceConnections.Add(new DeviceConnection
+            {
+                Id = otherConnectionId,
+                CardiMemberId = otherMemberId,
+                DeviceType = DeviceType.Fitbit,
+                DeviceName = "Other member's Fitbit",
+                ConnectionStatus = ConnectionStatus.Connected,
+                IsActive = true,
+                RefreshToken = "enc(other_refresh)",
+                HealthUserId = sharedAccount,
+            });
+            await db.SaveChangesAsync();
+        }
+        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        using var holder = _services.CreateScope();
+        var holderDb = holder.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        await using var held = await holderDb.Database.BeginTransactionAsync();
+        await DeviceMemberLock.AcquireAsync(holderDb.Database, memberId);
+
+        var erasure = EraseAsync(memberId);
+        var raced = await Task.WhenAny(erasure, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.NotSame(erasure, raced);
+        await _grantRevoker.DidNotReceive().TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId && c.RefreshToken != SeededQueuedToken),
+            Arg.Any<CancellationToken>());
+
+        // The other member's device is removed while erasure waits.
+        await holderDb.DeviceConnections
+            .Where(c => c.Id == otherConnectionId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(c => c.IsActive, false)
+                .SetProperty(c => c.ConnectionStatus, ConnectionStatus.Disconnected));
+        await held.CommitAsync();
+
+        await erasure.WaitAsync(TimeSpan.FromSeconds(30));
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId && c.RefreshToken != SeededQueuedToken),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// Copilot review round 11 on #1290: erasure takes the device lock before the member row, the
     /// order a removal takes them in — device lock, then an update of the member row. The other
     /// way round, the removal's update would wait on erasure's row lock while erasure waited on the
