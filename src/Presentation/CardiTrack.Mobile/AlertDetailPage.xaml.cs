@@ -456,13 +456,34 @@ public partial class AlertDetailPage : ContentPage
     /// is final for caregivers: it re-arms the rule, so taking it back would mean un-firing an
     /// alert that may already have fired again.
     /// </summary>
+    /// <summary>
+    /// Lays the visible action buttons side by side in equal columns, primary first and Remove
+    /// last — [Acknowledge][Close][Remove] while open, [Close][Undo][Remove] once acknowledged,
+    /// Remove alone once resolved. Rebuilt from what is visible so a hidden button never leaves
+    /// an empty column in the row.
+    /// </summary>
+    private void PackActionRow(bool acknowledged)
+    {
+        Button[] order = acknowledged
+            ? [CloseButton, UndoAcknowledgeButton, AcknowledgeButton, RemoveButton]
+            : [AcknowledgeButton, CloseButton, UndoAcknowledgeButton, RemoveButton];
+        var shown = order.Where(button => button.IsVisible).ToList();
+
+        ActionRow.ColumnDefinitions.Clear();
+        for (var column = 0; column < shown.Count; column++)
+        {
+            ActionRow.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            Grid.SetColumn(shown[column], column);
+        }
+    }
+
     private void ApplyAcknowledgement(AlertDetailResponse alert)
     {
         var acknowledged = alert.Status == "acknowledged";
         var handled = acknowledged || alert.Status == "resolved";
 
         AcknowledgeButton.IsVisible = !handled;
-        AcknowledgeButton.Text = alert.Severity == "red" ? "I'm on my way" : "Mark as acknowledged";
+        AcknowledgeButton.Text = alert.Severity == "red" ? "I'm on my way" : "Acknowledge";
         UndoAcknowledgeButton.IsVisible = acknowledged;
 
         // Closing stays available on an alert somebody has acknowledged — that is the ordinary
@@ -473,6 +494,8 @@ public partial class AlertDetailPage : ContentPage
         // somebody has — the next real step either way.
         CloseButton.Style = (Style)Microsoft.Maui.Controls.Application.Current!.Resources[
             acknowledged ? "PrimaryGradientButton" : "SecondaryOutlineButton"];
+
+        PackActionRow(acknowledged);
 
         if (!handled)
         {
