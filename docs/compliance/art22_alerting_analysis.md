@@ -72,7 +72,7 @@ moment push/SMS dispatch lands (a notification that wakes a family at 3am moves 
 ### 2.1 Re-run — 2026-09-23, against the as-built system
 
 Drafted alongside the [AI Act classification](ai_act_classification.md), which reuses this
-section's facts under a different test. Four things changed since §2 was written against the
+section's facts under a different test. Five things changed since §2 was written against the
 2026-08-10 code:
 
 1. **Push dispatch and the escalation ladder** (2026-08-11; DPIA A18). *Solely automated?* No
@@ -119,7 +119,8 @@ section's facts under a different test. Four things changed since §2 was writte
    yardstick in code (`AlertEvidenceComposer`), but the three new rules have no evidence line yet,
    so their alerts show the range as the chart's band and the model's words, without the code-written
    sentence the other rules carry. Tracked as a product follow-up; it is the same Arts. 13–15 duty
-   item 2 names. V2b's protocol (§5) should include these rules once they have run in dev.
+   item 2 names. V2b (d) in §5 validates these rules — their trigger and their severity
+   separately, since there is no former constant — once they have run in dev.
 
 **Re-run conclusion (draft):** the as-built alerting most likely remains **outside Art. 22(1)**
 — there is still no solely-automated decision with significant effect, and the human in the
@@ -191,8 +192,7 @@ product target.
 carries only the member, the rule, the day and a hash of the finding — deliberately not the
 figures judged or the severity returned — so stored rows that can be read against a rule's former
 constant are alerts only. Protocol: (a) for
-every `Alert` row from the **nine comparative rules** since 2026-09-19 (and from the three
-published-range rules since 2026-09-25, against their range rather than a former constant), compare the model's
+every `Alert` row from the **nine comparative rules** since 2026-09-19, compare the model's
 severity with the rule's former constant (the lineage column in the algorithm card §2), by rule,
 **age band and sex** — agreement, escalation and de-escalation rates, with every de-escalation of
 a former red read individually; (b) a **shadow log of judged findings including benign
@@ -205,7 +205,18 @@ severity has only ever been the model's), so their report is separate and differ
 the distribution of model severities per rule against the device classification that raised
 the finding, every benign or yellow verdict on an `ecg_afib` or `irregular_rhythm` finding read
 individually, and the
-same shadow log as (b). Acceptance to propose at sign-off, as V2's.
+same shadow log as (b); (d) the three **published-range rules** (2026-09-25) have no former
+severity constant either — their range is the trigger, not a severity — so they are validated in
+two separate steps. *Trigger validation:* for every judged finding in the shadow log, recompute
+from the stored `ActivityLog` rows that the rule fired correctly — the days outside the range, the
+3-of-5 count, the stretch start and whether it was open-ended, and the worsening flag — which is
+deterministic and should agree exactly; any disagreement is a code defect, not a model one.
+*Severity validation:* a clinician reviewer assigns a **reference severity** (the same four-word
+scale) to a stratified sample of those findings, blind to the model's verdict and pre-registered
+before the comparison is run — stratified by rule, steady versus worsening, how far outside the
+range, age band and sex — and the model's severity is compared with it: agreement, escalation and
+de-escalation rates, with every benign (`low`) verdict on a worsening stretch or on blood oxygen
+held below its floor read individually. Acceptance to propose at sign-off, as V2's.
 
 **V3 — Prod shadow period (to run at enablement):** enable the pipeline's assessor job in prod
 with alert audience restricted to staff-owned test members for ≥2 weeks; measure alert volume,
