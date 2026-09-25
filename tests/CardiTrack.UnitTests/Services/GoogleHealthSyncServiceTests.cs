@@ -7,6 +7,7 @@ using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -54,12 +55,20 @@ public class DeviceSyncServiceTests
         SyncLookbackDays = LookbackDays
     };
 
-    private DeviceSyncService CreateSut()
+    public DeviceSyncServiceTests()
+    {
+        // No caregiver link by default, so the member's clock falls back to UTC — which is what
+        // every test reading Today above assumes. The local-day tests below anchor a zone.
+        _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(Arg.Any<Guid>())
+            .Returns(Array.Empty<UserCardiMember>());
+    }
+
+    private DeviceSyncService CreateSut(TimeProvider? clock = null)
     {
         var options = Options.Create(new List<DeviceProviderSettings> { _googleHealthConfig });
         return new DeviceSyncService(
             _tokenRefresh, _deviceApi, _deviceConnections, _deviceActivityLogs,
-            _aggregation, _granularIngestion, _unitOfWork, _gapResolver, options);
+            _aggregation, _granularIngestion, _unitOfWork, _gapResolver, options, clock: clock);
     }
 
     private static DeviceHealthSnapshot Snapshot(int steps = 8000) =>
@@ -1046,5 +1055,169 @@ public class DeviceSyncServiceTests
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
         await _deviceApi.Received(1).GetIrnProfileAsync(Arg.Any<string>());
+    }
+
+    // ── The member's local day ──────────────────────────────────────────────────────────────
+    //
+    // The provider reads a civil day — sleep by civil end time, samples by civil time — so the
+    // day asked for has to be the member's, not UTC's. July dates keep both zones off their
+    // daylight-saving changes: Sydney is UTC+10 (AEST), New York UTC-4 (EDT).
+
+    private const string Sydney = "Australia/Sydney";
+    private const string NewYork = "America/New_York";
+
+    private void AnchorMemberTo(string timeZoneId)
+    {
+        var caregiverId = Guid.NewGuid();
+        _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(_fitbitConnection.CardiMemberId)
+            .Returns(new[]
+            {
+                new UserCardiMember
+                {
+                    UserId = caregiverId,
+                    CardiMemberId = _fitbitConnection.CardiMemberId,
+                    IsActive = true,
+                },
+            });
+        _unitOfWork.Users.GetByIdAsync(caregiverId)
+            .Returns(new User { Id = caregiverId, TimeZoneId = timeZoneId });
+    }
+
+    private static FakeTimeProvider ClockAt(DateTime utc) =>
+        new(new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)));
+
+    private List<DateOnly> CaptureSnapshotDates()
+    {
+        var fetched = new List<DateOnly>();
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Do<DateOnly>(fetched.Add))
+            .Returns(Snapshot());
+        return fetched;
+    }
+
+    /// <summary>The routine window's days, oldest first — the order the pull fetches them in.</summary>
+    private static List<DateOnly> WindowEndingAt(DateOnly today, int lookbackDays) =>
+        Enumerable.Range(0, lookbackDays + 1).Select(i => today.AddDays(i - lookbackDays)).ToList();
+
+    // 07:00 on 15 July in Sydney is still 14 July in UTC. The night that just ended is 15 July's
+    // sleep row, and under UTC it would not be asked for until 10:00 local.
+    [Fact]
+    public async Task SyncCardiMemberAsync_EastOfUtc_PullsTheMembersToday_BeforeTheUtcDateRolls()
+    {
+        AnchorMemberTo(Sydney);
+        SetupSuccessfulTokenRefresh();
+        var fetched = CaptureSnapshotDates();
+        _fitbitConnection.LastSyncDate = new DateTime(2026, 7, 14, 20, 50, 0, DateTimeKind.Utc); // 06:50 local
+
+        await CreateSut(ClockAt(new DateTime(2026, 7, 14, 21, 0, 0))).SyncCardiMemberAsync(_fitbitConnection);
+
+        Assert.Equal([new DateOnly(2026, 7, 15)], fetched);
+        await _deviceActivityLogs.Received(1).UpsertAsync(Arg.Is<DeviceActivityLog>(log =>
+            log != null && log.Date == new DateOnly(2026, 7, 15)));
+    }
+
+    // Ten minutes past Sydney midnight, and the last pull was ten minutes before it — the same
+    // UTC date, so the UTC gate would skip the repair pass until 10:00 local.
+    [Fact]
+    public async Task SyncCardiMemberAsync_EastOfUtc_RunsTheRepairPass_OnTheFirstPullAfterLocalMidnight()
+    {
+        AnchorMemberTo(Sydney);
+        SetupSuccessfulTokenRefresh();
+        var fetched = CaptureSnapshotDates();
+        _fitbitConnection.LastSyncDate = new DateTime(2026, 7, 14, 13, 50, 0, DateTimeKind.Utc); // 23:50 on the 14th
+
+        await CreateSut(ClockAt(new DateTime(2026, 7, 14, 14, 10, 0))).SyncCardiMemberAsync(_fitbitConnection);
+
+        Assert.Equal(WindowEndingAt(new DateOnly(2026, 7, 15), LookbackDays), fetched);
+    }
+
+    // 22:00 on 14 July in New York is already 15 July in UTC. Asking for the 15th would read a
+    // civil day that has not started and leave this evening to tomorrow's repair pass.
+    [Fact]
+    public async Task SyncCardiMemberAsync_WestOfUtc_PullsTheMembersToday_NotATomorrowThatHasNotStarted()
+    {
+        AnchorMemberTo(NewYork);
+        SetupSuccessfulTokenRefresh();
+        var fetched = CaptureSnapshotDates();
+        _fitbitConnection.LastSyncDate = new DateTime(2026, 7, 15, 1, 50, 0, DateTimeKind.Utc); // 21:50 local
+
+        await CreateSut(ClockAt(new DateTime(2026, 7, 15, 2, 0, 0))).SyncCardiMemberAsync(_fitbitConnection);
+
+        Assert.Equal([new DateOnly(2026, 7, 14)], fetched);
+        await _deviceActivityLogs.DidNotReceive().UpsertAsync(Arg.Is<DeviceActivityLog>(log =>
+            log != null && log.Date == new DateOnly(2026, 7, 15)));
+    }
+
+    // The UTC date rolled at 20:00 New York time, but the member's day has not closed: re-reading
+    // the trailing days now would spend the quota on a window that still misses tonight.
+    [Fact]
+    public async Task SyncCardiMemberAsync_WestOfUtc_SkipsTheRepairPass_WhenOnlyTheUtcDateRolled()
+    {
+        AnchorMemberTo(NewYork);
+        SetupSuccessfulTokenRefresh();
+        var fetched = CaptureSnapshotDates();
+        _fitbitConnection.LastSyncDate = new DateTime(2026, 7, 14, 23, 50, 0, DateTimeKind.Utc); // 19:50 local
+
+        await CreateSut(ClockAt(new DateTime(2026, 7, 15, 0, 10, 0))).SyncCardiMemberAsync(_fitbitConnection);
+
+        Assert.Equal([new DateOnly(2026, 7, 14)], fetched);
+    }
+
+    // Ten minutes past New York midnight: the 14th has just closed, including the evening hours
+    // the UTC gate used to leave for a whole day.
+    [Fact]
+    public async Task SyncCardiMemberAsync_WestOfUtc_RunsTheRepairPass_OnTheFirstPullAfterLocalMidnight()
+    {
+        AnchorMemberTo(NewYork);
+        SetupSuccessfulTokenRefresh();
+        var fetched = CaptureSnapshotDates();
+        _fitbitConnection.LastSyncDate = new DateTime(2026, 7, 15, 3, 50, 0, DateTimeKind.Utc); // 23:50 on the 14th
+
+        await CreateSut(ClockAt(new DateTime(2026, 7, 15, 4, 10, 0))).SyncCardiMemberAsync(_fitbitConnection);
+
+        Assert.Equal(WindowEndingAt(new DateOnly(2026, 7, 15), LookbackDays), fetched);
+    }
+
+    // The granular series is read on the same civil-day filters, so it follows the same day.
+    [Fact]
+    public async Task SyncCardiMemberAsync_EastOfUtc_FetchesGranularForTheMembersToday_OnWorkerCadence()
+    {
+        AnchorMemberTo(Sydney);
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.LastSyncDate = new DateTime(2026, 7, 14, 20, 50, 0, DateTimeKind.Utc);
+        var granularDates = new List<DateOnly>();
+        _deviceApi.GetGranularDayAsync(Arg.Any<string>(), Arg.Do<DateOnly>(granularDates.Add))
+            .Returns(DeviceGranularDay.Empty);
+
+        await CreateSut(ClockAt(new DateTime(2026, 7, 14, 21, 0, 0)))
+            .SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
+
+        Assert.Equal([new DateOnly(2026, 7, 15)], granularDates);
+    }
+
+    [Fact]
+    public async Task AuditSyncAsync_WestOfUtc_EndsItsWindowAtTheMembersToday()
+    {
+        AnchorMemberTo(NewYork);
+        _googleHealthConfig.AuditLookbackDays = 5;
+        SetupSuccessfulTokenRefresh();
+        var fetched = CaptureSnapshotDates();
+
+        await CreateSut(ClockAt(new DateTime(2026, 7, 15, 2, 0, 0))).AuditSyncAsync(_fitbitConnection);
+
+        Assert.Equal(WindowEndingAt(new DateOnly(2026, 7, 14), 5), fetched);
+    }
+
+    // No caregiver with a resolvable zone: the member is still synced, on UTC, as before.
+    [Fact]
+    public async Task SyncCardiMemberAsync_FallsBackToUtc_WhenNoCaregiverZoneResolves()
+    {
+        SetupSuccessfulTokenRefresh();
+        var fetched = CaptureSnapshotDates();
+        _fitbitConnection.LastSyncDate = new DateTime(2026, 7, 14, 20, 50, 0, DateTimeKind.Utc);
+
+        await CreateSut(ClockAt(new DateTime(2026, 7, 14, 21, 0, 0))).SyncCardiMemberAsync(_fitbitConnection);
+
+        Assert.Equal([new DateOnly(2026, 7, 14)], fetched);
     }
 }
