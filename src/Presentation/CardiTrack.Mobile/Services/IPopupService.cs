@@ -137,15 +137,12 @@ public interface IPopupService
     Task<ContactEdit?> EditContactAsync(ContactEditKind kind, string? name, string? phone);
 
     /// <summary>
-    /// Opens the health background's own edit form. Returns the notes as typed, an empty string
-    /// when the caregiver cleared them, or null when they cancelled or dismissed.
+    /// Opens the form for one line of the medical-information ledger. <paramref name="text"/> null
+    /// adds a line; otherwise it is the line being changed. Returns the kind and words saved, or
+    /// null when the caregiver cancelled or dismissed it.
     /// </summary>
-    /// <remarks>
-    /// Three outcomes rather than two, because clearing a background is a real instruction and
-    /// must not arrive looking like walking away. The caller compares against what it had before
-    /// saving: an unchanged return is still a return.
-    /// </remarks>
-    Task<string?> EditMedicalNotesAsync(string? firstName, string? notes);
+    Task<(MedicalEntryKind Kind, string Text)?> EditMedicalEntryAsync(
+        string? firstName, MedicalEntryKind kind, string? text);
 
     /// <summary>Shows the detail behind a dashboard/detail weather chip. Completes once dismissed.</summary>
     Task ShowWeatherAsync(WeatherSnapshotResponse weather);

@@ -133,14 +133,15 @@ public sealed class PopupService : IPopupService
             }
         });
 
-    public Task<string?> EditMedicalNotesAsync(string? firstName, string? notes) =>
+    public Task<(MedicalEntryKind Kind, string Text)?> EditMedicalEntryAsync(
+        string? firstName, MedicalEntryKind kind, string? text) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {
             var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
             if (page is null)
-                return null;
+                return ((MedicalEntryKind, string)?)null;
 
-            var form = new MedicalNotesEditPopupPage(firstName, notes);
+            var form = new MedicalEntryEditPopupPage(firstName, kind, text);
             Interlocked.Increment(ref _open);
             try
             {

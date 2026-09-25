@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Members;
@@ -10,13 +11,18 @@ using CardiTrack.Mobile.Services;
 namespace CardiTrack.Mobile;
 
 /// <summary>
-/// The medical notes kept for one CardiMember — allergies, chronic conditions, anything a
-/// caregiver arriving in a hurry should have read already.
+/// The medical information kept for one CardiMember, as a ledger: one line per condition, allergy
+/// or medication, each dated and signed, and a history of the lines that were changed or removed.
 /// </summary>
 /// <remarks>
 /// A page rather than the drop down this used to be on Member Detail, so it reads as a peer of
 /// Questions &amp; Answers: both are places the family keeps something, and both can run long
 /// enough that opening them in place pushed the rest of the screen out of reach.
+/// <para>
+/// Lines rather than the one block of text this began as, so each can be confirmed, changed or
+/// taken off on its own, and nothing a caregiver changes is lost — the old wording goes to the
+/// history. The member's single note is still kept, by the server, as a summary of the lines.
+/// </para>
 /// <para>
 /// Not a live screen — nothing here changes unless somebody edits it — so it refetches when opened
 /// and on a pull, and does not poll.
@@ -30,17 +36,24 @@ public partial class MedicalInformationPage : ContentPage
     public const string Route = "medicalinformation";
 
     /// <summary>
-    /// Query key that opens the editor as soon as the page has something to edit — what the
+    /// Query key that opens the add form as soon as the page has loaded — what the
     /// <c>#medicalNotes</c> deep link sets, so a caregiver who tapped "Add notes" on a
     /// notification lands on somewhere to type rather than on a screen with another button.
     /// </summary>
     public const string EditOnArrivalQuery = "edit";
+
+    // The row actions, in the order the sheet offers them.
+    private const string StillAccurate = "Still accurate";
+    private const string Change = "Change";
+    private const string Remove = "Remove";
+    private const string DeletePermanently = "Delete permanently";
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
 
     private readonly MemberRoute _route = new();
     private CardiMemberDetailResponse? _member;
+    private MedicalEntriesResponse? _ledger;
 
     private readonly LoadGate _gate = new();
     private readonly RefreshFeedback _feedback;
@@ -48,6 +61,7 @@ public partial class MedicalInformationPage : ContentPage
     /// <summary>Set by the deep link; consumed once the first load lands.</summary>
     private bool _editOnArrival;
     private bool _isSaving;
+    private bool _historyOpen;
 
     public MedicalInformationPage(ICardiTrackApiClient api, IPopupService popups)
     {
@@ -58,7 +72,7 @@ public partial class MedicalInformationPage : ContentPage
     }
 
     /// <summary>
-    /// Whether to open the editor on arrival. A string rather than a bool because Shell hands
+    /// Whether to open the add form on arrival. A string rather than a bool because Shell hands
     /// query values over as text; anything but "true" is read as no.
     /// </summary>
     public string EditOnArrival
@@ -86,6 +100,10 @@ public partial class MedicalInformationPage : ContentPage
         _ = LoadAsync();
     }
 
+    private bool CanEdit => _member?.IsPrimaryCaregiver == true;
+
+    private string FirstName => NameFormatting.FirstName(_member?.Name);
+
     private async void OnBackTapped(object? sender, EventArgs e) =>
         await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
 
@@ -97,61 +115,105 @@ public partial class MedicalInformationPage : ContentPage
         Refresher.IsRefreshing = false;
     }
 
-    private async void OnEditTapped(object? sender, TappedEventArgs e) => await OpenEditorAsync();
+    private async void OnAddClicked(object? sender, EventArgs e) => await AddAsync();
 
-    private async void OnEditClicked(object? sender, EventArgs e) => await OpenEditorAsync();
+    private async void OnAllAccurateClicked(object? sender, EventArgs e) =>
+        await WriteAsync(async id =>
+        {
+            // The member endpoint confirms every current line at once; the ledger is read back
+            // so the dates on screen are the ones on file.
+            await _api.ConfirmMedicalNotesAsync(id);
+            return await _api.GetMedicalEntriesAsync(id);
+        }, "Couldn't confirm these");
 
-    private async void OnStillAccurateClicked(object? sender, EventArgs e) => await ConfirmAsync();
-
-    /// <summary>
-    /// Opens the notes in their own form and saves what comes back.
-    /// </summary>
-    /// <remarks>
-    /// A popup rather than the trip to M1-14 this used to make. That screen is the whole profile —
-    /// name, date of birth, sex, relationship, photo — and every one of those is a field a
-    /// caregiver can disturb on the way to the one they came for. It also makes the asking
-    /// repeatable, which is the point of dating the background: a notification saying it has been
-    /// six months can put this in front of somebody in one tap.
-    /// </remarks>
-    private async Task OpenEditorAsync()
+    private void OnHistoryToggled(object? sender, TappedEventArgs e)
     {
-        if (_member is null || _isSaving)
+        _historyOpen = !_historyOpen;
+        ShowHistoryOpen();
+    }
+
+    private async Task AddAsync()
+    {
+        if (!CanEdit || _isSaving)
             return;
 
-        var edited = await _popups.EditMedicalNotesAsync(
-            _member.DisplayFirstName(), _member.MedicalNotes);
-
-        // Null is "cancelled"; an empty string is a background the caregiver deliberately cleared.
-        if (edited is null)
+        var line = await _popups.EditMedicalEntryAsync(FirstName, MedicalEntryKind.Condition, text: null);
+        if (line is not { } saved)
             return;
 
-        // Unchanged text is not a save. The server would decline to re-date it anyway — only a
-        // real change moves the review date — so a request here would be a round trip that
-        // reports nothing, and a "Still accurate" tap is how somebody says this on purpose.
-        if (string.Equals(edited, _member.MedicalNotes?.Trim() ?? string.Empty, StringComparison.Ordinal))
+        await WriteAsync(
+            id => _api.AddMedicalEntryAsync(id, new MedicalEntryRequest { Kind = saved.Kind, Text = saved.Text }),
+            "Couldn't add this");
+    }
+
+    /// <summary>What can be done with a current line, offered on a tap.</summary>
+    private async Task OnLineTappedAsync(MedicalEntryResponse line)
+    {
+        if (!CanEdit || _isSaving)
             return;
 
-        await SaveAsync(
-            member => _api.UpdateCardiMemberAsync(member.Id, RequestFor(member, edited)),
-            "Couldn't save these notes");
+        var choice = await _popups.ChooseAsync(
+            Shorten(line.Text), "Cancel", StillAccurate, Change, Remove, DeletePermanently);
+
+        switch (choice)
+        {
+            case StillAccurate:
+                await WriteAsync(id => _api.ConfirmMedicalEntryAsync(id, line.Id), "Couldn't confirm this");
+                break;
+
+            case Change:
+                var edited = await _popups.EditMedicalEntryAsync(FirstName, line.Kind, line.Text);
+                if (edited is { } saved)
+                {
+                    await WriteAsync(
+                        id => _api.ReviseMedicalEntryAsync(
+                            id, line.Id, new MedicalEntryRequest { Kind = saved.Kind, Text = saved.Text }),
+                        "Couldn't save this");
+                }
+                break;
+
+            // No confirmation: nothing is lost — the line goes to the history, and the history is
+            // one tap below.
+            case Remove:
+                await WriteAsync(id => _api.RemoveMedicalEntryAsync(id, line.Id), "Couldn't remove this");
+                break;
+
+            case DeletePermanently:
+                await EraseAsync(line);
+                break;
+        }
+    }
+
+    /// <summary>A line in the history can only be deleted for good; nothing else about it changes.</summary>
+    private async Task OnHistoryLineTappedAsync(MedicalEntryResponse line)
+    {
+        if (!CanEdit || _isSaving)
+            return;
+
+        if (await _popups.ChooseAsync(Shorten(line.Text), "Cancel", DeletePermanently) == DeletePermanently)
+            await EraseAsync(line);
     }
 
     /// <summary>
-    /// Records that the notes were read and found still current, without changing them — the
-    /// confirmation the edit form cannot express, since it carries the notes on every save whether
-    /// or not anybody looked at them.
+    /// The one change that cannot be undone, so the only one asked twice. Removing keeps the line
+    /// in the history; this takes it out of the record altogether.
     /// </summary>
-    private Task ConfirmAsync() =>
-        SaveAsync(
-            member => _api.ConfirmMedicalNotesAsync(member.Id),
-            "Couldn't confirm these notes");
+    private async Task EraseAsync(MedicalEntryResponse line)
+    {
+        var sure = await _popups.ConfirmWarningAsync(
+            "This line will be gone from the record and its history for everyone. Remove keeps it in the history instead.",
+            "Delete permanently?",
+            confirmText: "Delete",
+            cancelText: "Keep it");
+        if (sure)
+            await WriteAsync(id => _api.EraseMedicalEntryAsync(id, line.Id), "Couldn't delete this");
+    }
 
     /// <summary>
-    /// Runs a write against the member and repaints from what the server stored, so the review
-    /// date on screen is the one on file rather than one this screen guessed at.
+    /// Runs a ledger write and repaints from the ledger the server answers with, so every date on
+    /// screen is the one on file rather than one this screen guessed at.
     /// </summary>
-    private async Task SaveAsync(
-        Func<CardiMemberDetailResponse, Task<CardiMemberDetailResponse>> write, string errorTitle)
+    private async Task WriteAsync(Func<Guid, Task<MedicalEntriesResponse>> write, string errorTitle)
     {
         if (_member is null || _isSaving)
             return;
@@ -159,8 +221,7 @@ public partial class MedicalInformationPage : ContentPage
         _isSaving = true;
         try
         {
-            _member = await write(_member);
-            Apply(_member);
+            ShowLedger(await write(_member.Id));
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
@@ -176,31 +237,6 @@ public partial class MedicalInformationPage : ContentPage
             _isSaving = false;
         }
     }
-
-    /// <summary>
-    /// The edit form is a full replacement, so everything this screen did not ask about is echoed
-    /// back from the copy it holds — an omitted field is a cleared one. Sex and the photo are the
-    /// two that mean "leave it alone" when omitted, and they are omitted for exactly that reason:
-    /// a form that never showed them must not be the thing that restates them.
-    /// </summary>
-    private static UpdateCardiMemberRequest RequestFor(CardiMemberDetailResponse member, string notes) =>
-        new()
-        {
-            // Display* rather than the raw fields: from an API that predates the split, FirstName
-            // is empty and the parts come from the full name. Name is the old API's single name,
-            // held to its 2–100 rule; a current API ignores it whenever FirstName is sent.
-            FirstName = member.DisplayFirstName(),
-            LastName = member.DisplayLastName(),
-            Name = MemberNameRules.LegacyName(member.DisplayFirstName(), member.DisplayLastName()),
-            DateOfBirth = member.DateOfBirth,
-            RelationshipType = member.Relationship,
-            Email = member.Email,
-            Phone = member.Phone,
-            EmergencyContactName = member.EmergencyContactName,
-            EmergencyContactPhone = member.EmergencyContactPhone,
-            MedicalNotes = string.IsNullOrWhiteSpace(notes) ? null : notes,
-            AlertSensitivity = member.AlertSensitivity,
-        };
 
     /// <param name="force">
     /// Supersedes a load already in flight rather than skipping — for anything the caregiver
@@ -232,7 +268,8 @@ public partial class MedicalInformationPage : ContentPage
         try
         {
             // The saved profile first on a landing with nothing on screen, the live one behind
-            // it. Notes rarely change, so identical notes are left alone rather than flashed.
+            // it — for the name, and for whether this caregiver may change anything. The ledger
+            // itself is always read live, below.
             var outcome = await SnapshotRefresh.RunAsync(
                 _api, _gate, ticket,
                 peek: _member is null ? ct => _api.PeekCardiMemberAsync(memberId, ct) : null,
@@ -240,35 +277,29 @@ public partial class MedicalInformationPage : ContentPage
                 render: member =>
                 {
                     _member = member;
-                    Apply(member);
+                    ApplyMember(member);
                     SetState(loaded: true);
                 },
                 _feedback,
-                // What Apply draws, and only that: a member payload changes whenever a sync
-                // lands, and notes that have not moved must not flash "Updating…" for it.
-                // Compared whole rather than field by field, so nothing inside these can slip past.
                 sameAs: (a, b) => SamePayload.Same(
                     new { a.Name, a.MedicalNotes, a.IsPrimaryCaregiver, a.MedicalNotesReviewedAtUtc },
                     new { b.Name, b.MedicalNotes, b.IsPrimaryCaregiver, b.MedicalNotesReviewedAtUtc }));
 
-            // Keep whatever is already on screen — a failed refresh must not blank notes somebody
-            // may be reading (the banner says they are saved) — and only offer the error when
-            // there is nothing behind it, or when the member is gone.
             if (outcome.Result == RefreshResult.NothingAndFailed)
             {
                 _member = null;
                 ErrorDetailLabel.Text = outcome.Error!.Message;
                 SetState(error: true);
+                return;
             }
+
+            await LoadLedgerAsync(memberId);
         }
         catch (Exception ex)
         {
-            // Anything that is not the API answering badly — a fault while putting the notes on
+            // Anything that is not the API answering badly — a fault while putting the record on
             // screen. Without this it is silent and permanent: the callers are an async void pull
-            // handler and a fire-and-forget OnAppearing, so nothing observes the throw, the page
-            // never leaves its skeleton, and every retry meets the same data and fails the same
-            // way. The same hole was fixed on DashboardPage in this branch; this page inherited it
-            // by being written from the same shape.
+            // handler and a fire-and-forget OnAppearing, so nothing observes the throw.
             ScreenRefresh.LogFailure(ex, this, "while loading");
             if (_member is null)
             {
@@ -282,58 +313,189 @@ public partial class MedicalInformationPage : ContentPage
         }
     }
 
-    private void Apply(CardiMemberDetailResponse member)
+    /// <summary>
+    /// The lines themselves. A failure here keeps the page: the member's own summary of the notes
+    /// is already on the profile, so the record is shown as that one block with a way to try again,
+    /// rather than an error screen over information the caregiver may need right now.
+    /// </summary>
+    private async Task LoadLedgerAsync(Guid memberId)
     {
-        var hasNotes = !string.IsNullOrWhiteSpace(member.MedicalNotes);
-        var firstName = member.DisplayFirstName();
-        ChatBot.MemberId = _route.Id;
-        ChatBot.MemberFirstName = firstName;
+        try
+        {
+            ShowLedger(await _api.GetMedicalEntriesAsync(memberId));
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired && _ledger is null)
+        {
+            ShowSummaryFallback();
+        }
+        catch (ApiException)
+        {
+            // A failed refresh keeps the lines already on screen; an expired session is already
+            // on its way back to sign-in.
+        }
 
-        NotesLabel.Text = hasNotes
-            ? member.MedicalNotes
-            : $"Nothing recorded for {firstName} yet. Allergies, chronic conditions and anything a "
-              + "caregiver should know before they arrive belong here.";
-
-        // The pencil is for changing notes that exist; the button below is for starting them. Only
-        // one of the two is ever offered, and only to the caregiver allowed to act on it.
-        EditButton.IsVisible = member.IsPrimaryCaregiver && hasNotes;
-        AddNotesButton.IsVisible = member.IsPrimaryCaregiver && !hasNotes;
-
-        // Confirming is only meaningful once there is something on file to confirm.
-        StillAccurateButton.IsVisible = member.IsPrimaryCaregiver && hasNotes;
-
-        ReviewedLabel.IsVisible = hasNotes;
-        ReviewedLabel.Text = ReviewedLine(member.MedicalNotesReviewedAtUtc);
-
-        // The deep link's request, honoured once rather than on every repaint — a save calls
-        // Apply again, and reopening the editor on top of the save that just closed it would trap
-        // whoever tapped the notification.
-        if (_editOnArrival)
+        // The deep link's request, honoured once rather than on every repaint — and only by opening
+        // the add form on an empty record. The same link arrives from the "notes are out of date"
+        // reminder, and there the thing to do is read what is on file and confirm or change it,
+        // which this screen already puts in front of them; a blank form would be the wrong ask.
+        if (_editOnArrival && _ledger is not null)
         {
             _editOnArrival = false;
-            if (member.IsPrimaryCaregiver)
-                _ = OpenEditorAsync();
+            if (_ledger.Current.Count == 0)
+                _ = AddAsync();
         }
     }
 
-    /// <summary>
-    /// When somebody last said the background is still true, in both forms a caregiver might want:
-    /// the date, for the record, and how long ago that was, which is the part that tells them
-    /// whether to look.
-    /// </summary>
-    /// <remarks>
-    /// A null says so plainly rather than falling back to the member's created or updated date.
-    /// Neither is evidence anybody read the notes — updated moves on any profile edit — and a
-    /// date that implies a review nobody did is worse than admitting there has not been one.
-    /// </remarks>
-    private static string ReviewedLine(DateTime? reviewedAtUtc)
+    private void ApplyMember(CardiMemberDetailResponse member)
     {
-        if (reviewedAtUtc is not { } reviewed)
-            return "Not confirmed yet — nobody has said whether this is still current.";
-
-        var local = DateTime.SpecifyKind(reviewed, DateTimeKind.Utc).ToLocalTime();
-        return $"Confirmed {local:d MMM yyyy} · {RelativeTime.Format(reviewed)}";
+        ChatBot.MemberId = _route.Id;
+        ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
+        AddButton.IsVisible = member.IsPrimaryCaregiver;
     }
+
+    private void ShowLedger(MedicalEntriesResponse ledger)
+    {
+        _ledger = ledger;
+        LedgerList.Clear();
+
+        foreach (var (kind, lines) in MedicalLedgerLines.Group(ledger.Current))
+        {
+            LedgerList.Add(GroupHeading(kind, first: LedgerList.Count == 0));
+            for (var i = 0; i < lines.Count; i++)
+            {
+                var line = lines[i];
+                LedgerList.Add(Row(line, historic: false, ruled: i > 0, () => _ = OnLineTappedAsync(line)));
+            }
+        }
+
+        var hasLines = ledger.Current.Count > 0;
+        EmptyLabel.IsVisible = !hasLines;
+        EmptyLabel.Text =
+            $"Nothing recorded for {FirstName} yet. Conditions, allergies, medications — anything a "
+            + "caregiver should know before they arrive — each go on a line of their own.";
+        ReviewedLabel.IsVisible = hasLines;
+        ReviewedLabel.Text = MedicalLedgerLines.ReviewedLine(ledger.ReviewedAtUtc);
+        AllAccurateButton.IsVisible = hasLines && CanEdit;
+
+        HistoryList.Clear();
+        for (var i = 0; i < ledger.History.Count; i++)
+        {
+            var line = ledger.History[i];
+            HistoryList.Add(Row(line, historic: true, ruled: i > 0, () => _ = OnHistoryLineTappedAsync(line)));
+        }
+        HistoryCard.IsVisible = ledger.History.Count > 0;
+        HistoryTitleLabel.Text = $"History ({ledger.History.Count})";
+        ShowHistoryOpen();
+    }
+
+    /// <summary>The ledger could not be read: the member's own one-block summary, as before the ledger.</summary>
+    private void ShowSummaryFallback()
+    {
+        LedgerList.Clear();
+        HistoryCard.IsVisible = false;
+        AllAccurateButton.IsVisible = false;
+        ReviewedLabel.IsVisible = false;
+
+        var notes = _member?.MedicalNotes;
+        EmptyLabel.IsVisible = true;
+        EmptyLabel.Text = string.IsNullOrWhiteSpace(notes)
+            ? "We couldn't load this just now. Pull down to try again."
+            : $"{notes}\n\nWe couldn't load the separate lines just now. Pull down to try again.";
+    }
+
+    private void ShowHistoryOpen()
+    {
+        HistoryList.IsVisible = _historyOpen;
+        HistoryChevron.Rotation = _historyOpen ? 180 : 0;
+    }
+
+    private static View GroupHeading(MedicalEntryKind kind, bool first) =>
+        new Label
+        {
+            Text = MedicalLedgerLines.Heading(kind).ToUpperInvariant(),
+            Style = Resource<Style>("Caption"),
+            FontFamily = "QuicksandSemiBold",
+            CharacterSpacing = 1,
+            Margin = new Thickness(0, first ? 6 : 16, 0, 2),
+        };
+
+    /// <summary>
+    /// One ruled line of the ledger: the date it went on file (or left it, in the history) down a
+    /// narrow left column, the words and where they came from beside it. A hairline above every row
+    /// but the first of its group is what gives the card its ledger look.
+    /// </summary>
+    private View Row(MedicalEntryResponse line, bool historic, bool ruled, Action tapped)
+    {
+        var dated = historic ? line.RemovedAtUtc ?? line.AddedAtUtc : line.AddedAtUtc;
+        var local = DateTime.SpecifyKind(dated, DateTimeKind.Utc).ToLocalTime();
+
+        var date = new Label
+        {
+            Text = $"{local:d MMM}\n{local:yyyy}",
+            Style = Resource<Style>("Caption"),
+            FontFamily = "QuicksandSemiBold",
+            LineHeight = 1.1,
+            VerticalOptions = LayoutOptions.Start,
+        };
+
+        var text = new Label
+        {
+            Text = line.Text,
+            Style = Resource<Style>("Body2"),
+            TextColor = Resource<Color>(historic ? "MutedText" : "HeadingText"),
+            TextDecorations = historic ? TextDecorations.Strikethrough : TextDecorations.None,
+        };
+        var caption = new Label
+        {
+            Text = historic ? MedicalLedgerLines.HistoryCaption(line) : MedicalLedgerLines.Caption(line),
+            Style = Resource<Style>("Caption"),
+        };
+        var words = new VerticalStackLayout { Spacing = 2, Children = { text, caption } };
+        if (historic)
+        {
+            // A line from the history says what it was filed under, since it no longer sits
+            // under a heading of its own.
+            words.Children.Insert(0, new Label
+            {
+                Text = MedicalLedgerLines.KindName(line.Kind).ToUpperInvariant(),
+                Style = Resource<Style>("Caption"),
+                FontSize = 10,
+                CharacterSpacing = 1,
+            });
+        }
+
+        var grid = new Grid
+        {
+            ColumnDefinitions = { new ColumnDefinition(56), new ColumnDefinition(GridLength.Star) },
+            ColumnSpacing = 12,
+            Padding = new Thickness(0, 10),
+        };
+        grid.Add(date, 0);
+        grid.Add(words, 1);
+
+        var row = new VerticalStackLayout();
+        if (ruled)
+            row.Add(new BoxView { HeightRequest = 1, Color = Resource<Color>("Divider") });
+        row.Add(grid);
+
+        if (CanEdit)
+        {
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += (_, _) => tapped();
+            row.GestureRecognizers.Add(tap);
+            SemanticProperties.SetHint(row, historic ? "Offers to delete this for good" : "Shows what you can do with this line");
+        }
+        SemanticProperties.SetDescription(row, $"{line.Text}. {caption.Text}");
+        return row;
+    }
+
+    private static T Resource<T>(string key) =>
+        Microsoft.Maui.Controls.Application.Current!.Resources.TryGetValue(key, out var value) && value is T t
+            ? t
+            : default!;
+
+    /// <summary>A line as a sheet's title: long ones cut short, since the sheet is about what to do with it.</summary>
+    private static string Shorten(string text) => text.Length <= 60 ? text : $"{text[..57].TrimEnd()}…";
 
     private void SetState(bool loading = false, bool loaded = false, bool error = false)
     {

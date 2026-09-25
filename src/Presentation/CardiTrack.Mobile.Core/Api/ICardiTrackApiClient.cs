@@ -67,6 +67,30 @@ public interface ICardiTrackApiClient
     Task<CardiMemberDetailResponse> ConfirmMedicalNotesAsync(
         Guid cardiMemberId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The member's medical information as separate lines, with the history of changed and removed
+    /// ones. Every write below answers with the whole ledger as it now stands.
+    /// </summary>
+    Task<MedicalEntriesResponse> GetMedicalEntriesAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    Task<MedicalEntriesResponse> AddMedicalEntryAsync(
+        Guid cardiMemberId, MedicalEntryRequest request, CancellationToken ct = default);
+
+    /// <summary>Changes a line; the old wording stays in the history as changed.</summary>
+    Task<MedicalEntriesResponse> ReviseMedicalEntryAsync(
+        Guid cardiMemberId, Guid entryId, MedicalEntryRequest request, CancellationToken ct = default);
+
+    /// <summary>Takes a line off the list; it stays in the history.</summary>
+    Task<MedicalEntriesResponse> RemoveMedicalEntryAsync(
+        Guid cardiMemberId, Guid entryId, CancellationToken ct = default);
+
+    Task<MedicalEntriesResponse> ConfirmMedicalEntryAsync(
+        Guid cardiMemberId, Guid entryId, CancellationToken ct = default);
+
+    /// <summary>Deletes a line outright, from the list or the history.</summary>
+    Task<MedicalEntriesResponse> EraseMedicalEntryAsync(
+        Guid cardiMemberId, Guid entryId, CancellationToken ct = default);
+
     /// <summary>Removes a CardiMember (M1-13 danger zone).</summary>
     Task RemoveCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default);
 

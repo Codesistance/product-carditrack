@@ -50,6 +50,7 @@ internal static class ApiPaths
         $"{CardiMember(cardiMemberId)}?seriesEndsOn="
         + seriesEndsOn.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
     public static string Dashboard(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/dashboard";
+    public static string MedicalEntries(Guid cardiMemberId) => $"{CardiMember(cardiMemberId)}/medical-entries";
     public static string AlertPreferences(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/alert-preferences";
     public static string MemberAlarms(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/alarms";
     public static string JournalSettings(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/journal-settings";

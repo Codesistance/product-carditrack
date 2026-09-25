@@ -25,13 +25,6 @@ public partial class EditCardiMemberPage : ContentPage
     /// <summary>Scrolls to and focuses the emergency contact number after the form loads.</summary>
     public const string FocusEmergencyPhone = "emergency";
 
-    /// <summary>
-    /// Scrolls to the medical notes after the form loads. Used by the Medical Information page,
-    /// whose whole subject is this one field — landing at the top of Basic Info would make the
-    /// caregiver hunt for the thing they tapped Edit on.
-    /// </summary>
-    public const string FocusMedical = "medical";
-
     // Same order and labels as the M1-04 add form, so a member's relationship doesn't
     // appear to change wording between the two screens.
     private static readonly (string Label, RelationshipType Value)[] Relationships =
@@ -213,7 +206,6 @@ public partial class EditCardiMemberPage : ContentPage
         FirstNameEntry.Text = member.DisplayFirstName();
         LastNameEntry.Text = member.DisplayLastName();
         DobPicker.Date = member.DateOfBirth.ToDateTime(TimeOnly.MinValue);
-        MedicalNotesEditor.Text = member.MedicalNotes;
         EmergencyNameEntry.Text = member.EmergencyContactName;
         EmergencyPhoneEntry.Text = member.EmergencyContactPhone;
         PhoneEntry.Text = member.Phone;
@@ -254,7 +246,6 @@ public partial class EditCardiMemberPage : ContentPage
         {
             FocusPhone => PhoneFieldSection,
             FocusEmergencyPhone => EmergencyPhoneFieldSection,
-            FocusMedical => MedicalNotesFieldSection,
             _ => null,
         };
         if (section is null)
@@ -265,13 +256,10 @@ public partial class EditCardiMemberPage : ContentPage
         await Task.Yield();
         await FormScroller.ScrollToAsync(section, ScrollToPosition.MakeVisible, animated: true);
 
-        // VisualElement rather than Entry: the medical notes are a multi-line Editor, and both
-        // carry Focus() from here.
-        VisualElement? field = _focusField switch
+        Entry? field = _focusField switch
         {
             FocusPhone => PhoneEntry,
             FocusEmergencyPhone => EmergencyPhoneEntry,
-            FocusMedical => MedicalNotesEditor,
             _ => null,
         };
         field?.Focus();
@@ -361,7 +349,6 @@ public partial class EditCardiMemberPage : ContentPage
             || SelectedSex() is { } sex && sex != _member.Gender
             || SelectedRelationship() != _member.Relationship
             || SelectedSensitivity() != _member.AlertSensitivity
-            || NullIfEmpty(MedicalNotesEditor.Text) != NullIfEmpty(_member.MedicalNotes)
             || NullIfEmpty(EmergencyNameEntry.Text) != NullIfEmpty(_member.EmergencyContactName)
             || NullIfEmpty(EmergencyPhoneEntry.Text) != NullIfEmpty(_member.EmergencyContactPhone)
             || NullIfEmpty(PhoneEntry.Text) != NullIfEmpty(_member.Phone);
@@ -402,7 +389,10 @@ public partial class EditCardiMemberPage : ContentPage
                 Phone = NullIfEmpty(PhoneEntry.Text),
                 EmergencyContactName = NullIfEmpty(EmergencyNameEntry.Text),
                 EmergencyContactPhone = NullIfEmpty(EmergencyPhoneEntry.Text),
-                MedicalNotes = NullIfEmpty(MedicalNotesEditor.Text),
+                // Echoed back exactly as loaded. The medical information is a ledger of lines
+                // kept on its own page, and this is only the server's summary of them: a changed
+                // value here would replace every line with one block of text.
+                MedicalNotes = _member.MedicalNotes,
                 AlertSensitivity = SelectedSensitivity(),
             };
             photoEdit.ApplyTo(request);
@@ -460,7 +450,6 @@ public partial class EditCardiMemberPage : ContentPage
         FirstNameError.IsVisible = false;
         LastNameError.IsVisible = false;
         DobError.IsVisible = false;
-        MedicalNotesError.IsVisible = false;
         EmergencyPhoneError.IsVisible = false;
         PhoneError.IsVisible = false;
 
@@ -488,13 +477,6 @@ public partial class EditCardiMemberPage : ContentPage
         {
             DobError.Text = dobError;
             DobError.IsVisible = true;
-            valid = false;
-        }
-
-        if ((MedicalNotesEditor.Text?.Length ?? 0) > 2000)
-        {
-            MedicalNotesError.Text = "Medical notes cannot exceed 2000 characters";
-            MedicalNotesError.IsVisible = true;
             valid = false;
         }
 
