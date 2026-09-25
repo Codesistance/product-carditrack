@@ -38,9 +38,9 @@ public partial class AlertMiniCard : ContentView
         // No status pill: DashboardResponse.RecentAlerts carries unacknowledged alerts only, so
         // every card in this strip would say "New" — a word that never changes tells a caregiver
         // nothing. Acknowledged and resolved alerts are read on the alerts list, which keeps the
-        // pill (see AlertListCard). Severity is the one thing that varies, and the edge and the
+        // pill (see AlertListCard). Severity is the one thing that varies, and the rail and the
         // tile both carry it.
-        var (tileKey, edgeKey) = alert.Severity switch
+        var (tileKey, railKey) = alert.Severity switch
         {
             "red" => ("AlertTileRed", "StatusRed"),
             "orange" => ("AlertTileOrange", "StatusOrange"),
@@ -50,7 +50,7 @@ public partial class AlertMiniCard : ContentView
         };
 
         IconTileBorder.BackgroundColor = (Color)resources[tileKey];
-        SeverityEdge.Color = (Color)resources[edgeKey];
+        SeverityRail.BackgroundColor = (Color)resources[railKey];
     }
 
     private void OnTapped(object? sender, EventArgs e) =>

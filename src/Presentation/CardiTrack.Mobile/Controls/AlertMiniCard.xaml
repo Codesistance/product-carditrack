@@ -10,15 +10,19 @@
          Width is the dashboard's call, not the card's — full width when it is the only alert,
          most of the width in the carousel when it is not (see DashboardPage.ApplyAlerts). -->
     <!-- A row inside the Recent Alerts card, not a card of its own: filled and flat like the
-         "Complete the picture" rows (NudgeMiniRow) — InputBackground, 12 of radius, no stroke,
-         no shadow. White with a shadow was right while these floated on the page background;
-         inside a white card it is white on white, held apart only by a shadow the card's own
-         clip cuts off at the edges. No padding on the Border itself: the severity edge has to
-         run flush to the row's edge and be clipped by its corners, so the padding lives on the
-         content beside it. -->
-    <Border BackgroundColor="{StaticResource InputBackground}"
+         "Complete the picture" rows (NudgeMiniRow) — InputBackground, no stroke, no shadow.
+         White with a shadow was right while these floated on the page background; inside a
+         white card it is white on white, held apart only by a shadow the card's own clip cuts
+         off at the edges.
+
+         The severity edge is the Alerts List's (AlertListCard, Figma 101:6525): two stacked
+         rounded rects, the severity colour underneath and the row inset 4 from its left edge,
+         so the colour rounds into the corners rather than running down the side as a straight
+         bar. The same rail on both lists, so an alert reads as the same object wherever it
+         turns up. -->
+    <Border x:Name="SeverityRail"
             StrokeThickness="0"
-            Padding="0">
+            Padding="4,0,0,0">
         <Border.StrokeShape>
             <RoundRectangle CornerRadius="12"/>
         </Border.StrokeShape>
@@ -26,20 +30,18 @@
             <TapGestureRecognizer Tapped="OnTapped"/>
         </Border.GestureRecognizers>
 
-        <Grid ColumnDefinitions="4,*">
-
-            <!-- Severity, the way the "Complete the picture" rows mark priority, but run to the
-                 card's edge rather than inset: here it is the card being coloured, not a line
-                 of text being flagged. -->
-            <BoxView x:Name="SeverityEdge" Grid.Column="0"/>
+        <Border BackgroundColor="{StaticResource InputBackground}"
+                StrokeThickness="0"
+                Padding="12,10,10,12">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="12"/>
+            </Border.StrokeShape>
 
             <!-- Only the title sits beside the tile. The message and the timestamp run the full
                  width underneath it, from the tile's left edge: indenting them under the title
                  spent a tile's width of every line on nothing, and the message is the line that
                  needs the room. -->
-            <Grid Grid.Column="1"
-                  Padding="12,10,10,12"
-                  RowDefinitions="Auto,Auto,Auto"
+            <Grid RowDefinitions="Auto,Auto,Auto"
                   ColumnDefinitions="Auto,*,Auto"
                   ColumnSpacing="11"
                   RowSpacing="4">
@@ -90,6 +92,6 @@
                        Grid.Row="2" Grid.ColumnSpan="3"
                        Style="{StaticResource Caption}"/>
             </Grid>
-        </Grid>
+        </Border>
     </Border>
 </ContentView>
