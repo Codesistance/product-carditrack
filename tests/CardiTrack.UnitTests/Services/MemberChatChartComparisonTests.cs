@@ -71,9 +71,9 @@ public class MemberChatChartComparisonTests
         Assert.NotNull(heart);
         Assert.Equal((60, 100, "AHA"), (heart.Low, heart.High, heart.Source));
 
-        var breathing = Series(charts, "Breathing while asleep").Reference;
-        Assert.NotNull(breathing);
-        Assert.Equal((12, 20, "WHO"), (breathing.Low, breathing.High, breathing.Source));
+        // No band behind breathing asleep: WHO's 12–20 is a waking rate at rest
+        // (HealthReferenceRanges.NoOvernightBreathingBand).
+        Assert.Null(Series(charts, "Breathing while asleep").Reference);
 
         Assert.Null(Series(charts, "Steps").Reference);
         Assert.Null(Series(charts, "Heart rate variability").Reference);

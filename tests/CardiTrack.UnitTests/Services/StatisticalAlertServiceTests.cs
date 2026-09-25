@@ -485,11 +485,12 @@ public class StatisticalAlertServiceTests
         Assert.Equal(0, raised);
         Assert.Empty(_medicalAi.ReceivedCalls());
 
-        // Two days, not four weeks: without a baseline the trend rule cannot run, so nothing
-        // reads further back than the measured rules need.
+        // Three weeks, not four: without a baseline the trend rule cannot run, but the
+        // published-range rules can — they compare against a range, not a usual — and they read a
+        // stretch and three weekly averages (decision 2026-09-25).
         await _activityLogs.Received(1).GetByCardiMemberAndDateRangeAsync(
             _memberId,
-            Arg.Is<DateOnly>(from => from == DateOnly.FromDateTime(UtcNow).AddDays(-1)),
+            Arg.Is<DateOnly>(from => from == DateOnly.FromDateTime(UtcNow).AddDays(-StatisticalAlertRules.RangeLookbackDays)),
             Arg.Any<DateOnly>());
     }
 
@@ -1185,5 +1186,81 @@ public class StatisticalAlertServiceTests
                 Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
-}
+    // ── Published-range rules (decision 2026-09-25) ───────────────────────────────────────
 
+    /// <summary>Five nights of five hours, ending this morning on the member's own clock.</summary>
+    private void FiveShortNights() =>
+        SetupLogs([.. Enumerable.Range(0, 5).Select(i => new ActivityLog
+        {
+            CardiMemberId = _memberId,
+            Date = new DateOnly(2026, 8, 6).AddDays(i),
+            SleepMinutes = 300,
+            NightStatus = NightSleepStatus.Slept,
+        })]);
+
+    /// <summary>
+    /// A range rule needs no usual: a member still being learned who has slept five hours a night
+    /// all week is outside the range now, and the finding goes to the model like any other.
+    /// </summary>
+    [Fact]
+    public async Task ASustainedNightOutsideTheRange_IsJudged_WithoutABaseline()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+        FiveShortNights();
+        ModelJudges([Verdict(StatisticalAlertRules.SleepOutsideRangeRule, "medium")]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.MetricValues!.Contains("\"rule\":\"sleep_outside_range\"")));
+    }
+
+    /// <summary>
+    /// Once per stretch: an alert of the same rule raised since the stretch began — here resolved,
+    /// so the standing-alert cooldown does not cover it — keeps the stretch quiet, and the model is
+    /// never asked.
+    /// </summary>
+    [Fact]
+    public async Task AStretchAlreadyAlertedOn_IsNotJudgedAgain_EvenOnceResolved()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+        FiveShortNights();
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId, AlertType = AlertType.Sleep, IsResolved = true,
+                TriggeredDate = new DateTime(2026, 8, 8, 9, 0, 0, DateTimeKind.Utc),
+                MetricValues = """{"rule":"sleep_outside_range","stretchStart":"2026-08-06"}""",
+            },
+        ]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
+    /// <summary>An alert from before the stretch began is a different stretch, and does not keep this one quiet.</summary>
+    [Fact]
+    public async Task AnAlertFromAnEarlierStretch_DoesNotSilenceThisOne()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+        FiveShortNights();
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId, AlertType = AlertType.Sleep, IsResolved = true,
+                TriggeredDate = new DateTime(2026, 7, 20, 9, 0, 0, DateTimeKind.Utc),
+                MetricValues = """{"rule":"sleep_outside_range","stretchStart":"2026-07-15"}""",
+            },
+        ]);
+        ModelJudges([Verdict(StatisticalAlertRules.SleepOutsideRangeRule, "medium")]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+    }
+}

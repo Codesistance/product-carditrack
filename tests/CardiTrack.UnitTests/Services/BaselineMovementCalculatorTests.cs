@@ -304,6 +304,46 @@ public class BaselineMovementCalculatorTests
         Assert.Equal(trend.OrderBy(m => m), judged.OrderBy(m => m));
     }
 
+    /// <summary>
+    /// Five-hour nights for a member whose usual is five hours have not moved — and are below the
+    /// seven-hour floor, which is what normal means for sleep (decision 2026-09-25). They are said,
+    /// not listed as steady, and the card is worth writing.
+    /// </summary>
+    [Fact]
+    public void ASteadyWeekOutsideThePublishedRange_IsWorthSaying_NotSteady()
+    {
+        var logs = Enumerable.Range(0, BaselineMovementCalculator.RecentDays)
+            .Select(offset => new ActivityLog { CardiMemberId = _memberId, Date = Through.AddDays(-offset), SleepMinutes = 300 })
+            .ToList();
+
+        var movements = BaselineMovementCalculator.Compute(
+            logs, new PatternBaseline { PeriodDays = 30, AvgSleepMinutes = 300 }, Through, ageYears: 80)!;
+
+        Assert.Empty(movements.Notable);
+        Assert.DoesNotContain("Sleep", movements.Steady);
+        var outside = Assert.Single(movements.OutsidePublishedRange);
+        Assert.Equal("below the 7-8 hours recommended at their age (NSF)", outside.Placement);
+        Assert.True(movements.HasAnythingToSay);
+        Assert.False(movements.ShowsNothingIsOff);
+        Assert.Contains(
+            "- Sleep: averaging 5 hours a night, below the 7-8 hours recommended at their age (NSF).",
+            BaselineMovementCalculator.Render(movements));
+    }
+
+    /// <summary>A resting heart rate steady at 58 is outside AHA's 60–100 on the low side.</summary>
+    [Fact]
+    public void ARestingHeartRateBelowTheRange_IsPlacedToo()
+    {
+        var logs = Enumerable.Range(0, BaselineMovementCalculator.RecentDays)
+            .Select(offset => new ActivityLog { CardiMemberId = _memberId, Date = Through.AddDays(-offset), RestingHeartRate = 56 })
+            .ToList();
+
+        var movements = BaselineMovementCalculator.Compute(
+            logs, new PatternBaseline { PeriodDays = 30, AvgRestingHeartRate = 56, StdDevHeartRate = 2m }, Through)!;
+
+        Assert.Equal("below the 60-100 bpm published range (AHA)", Assert.Single(movements.OutsidePublishedRange).Placement);
+    }
+
     private BaselineMovements? Compute(
         PatternBaseline baseline,
         int? steps = null,

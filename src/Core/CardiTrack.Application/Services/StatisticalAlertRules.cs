@@ -19,8 +19,15 @@ namespace CardiTrack.Application.Services;
 /// because late-arriving data can put the same night in front of the rule on two calendar days.
 /// </para>
 /// </summary>
+/// <param name="StretchStart">
+/// For the published-range rules only: the first day of the run of readings outside the range this
+/// finding belongs to. The orchestrator raises at most one alert per rule per stretch — an alert of
+/// the same rule triggered on or after this day, resolved, deleted or standing, keeps the stretch
+/// quiet — so a range a member sits outside for weeks is one alert, not one a day.
+/// </param>
 public sealed record StatisticalFinding(
-    string Rule, AlertType Type, string Observation, string MetricValues, DateOnly? NightOf = null);
+    string Rule, AlertType Type, string Observation, string MetricValues, DateOnly? NightOf = null,
+    DateOnly? StretchStart = null);
 
 /// <summary>
 /// The R1 statistical rules (docs/execution/backend/api/alerts.md taxonomy) — pure functions
@@ -64,6 +71,15 @@ public static class StatisticalAlertRules
     public const string ElevatedZoneWithoutMovementRule = "elevated_zone_without_movement";
     public const string DaytimeInactivityBlockRule = "daytime_inactivity_block";
 
+    /// <summary>Sleep outside the NSF range for the member's age — see <see cref="SleepOutsideRange"/>.</summary>
+    public const string SleepOutsideRangeRule = "sleep_outside_range";
+
+    /// <summary>Resting heart rate outside AHA's 60–100 — see <see cref="RestingHeartRateOutsideRange"/>.</summary>
+    public const string RestingHeartRateOutsideRangeRule = "resting_hr_outside_range";
+
+    /// <summary>Blood oxygen below WHO's 94% — see <see cref="OxygenBelowRange"/>.</summary>
+    public const string OxygenBelowRangeRule = "spo2_below_range";
+
     /// <summary>
     /// Every rule this class can produce a finding for. The judgement reply's <c>rule</c> field
     /// carries the same eleven as an <c>[AllowedValues]</c> enum, which has to list them one by one
@@ -84,6 +100,20 @@ public static class StatisticalAlertRules
         OvernightBreathingUpRule,
         ElevatedZoneWithoutMovementRule,
         DaytimeInactivityBlockRule,
+        SleepOutsideRangeRule,
+        RestingHeartRateOutsideRangeRule,
+        OxygenBelowRangeRule,
+    ];
+
+    /// <summary>
+    /// The rules that compare against a published range rather than against the member's own
+    /// usual, and so run without an established baseline — see <see cref="SleepOutsideRange"/>.
+    /// </summary>
+    public static readonly IReadOnlyList<string> PublishedRangeRules =
+    [
+        SleepOutsideRangeRule,
+        RestingHeartRateOutsideRangeRule,
+        OxygenBelowRangeRule,
     ];
 
     /// <summary>
@@ -177,6 +207,31 @@ public static class StatisticalAlertRules
     /// </summary>
     public const int SedentaryStretchFloorMinutes = 180;
     public const double SedentaryStretchMarginFraction = 0.5;
+
+    /// <summary>
+    /// The published-range rules: at least <see cref="RangeMinimumDaysOutside"/> of the last
+    /// <see cref="RangeWindowDays"/> measured days outside the range. Sustained rather than one day,
+    /// because a single short night or a single high reading is ordinary life; three in five is a
+    /// pattern.
+    /// </summary>
+    public const int RangeWindowDays = 5;
+    public const int RangeMinimumDaysOutside = 3;
+
+    /// <summary>
+    /// Consecutive measured days back inside the range that end a stretch. Until then a day or two
+    /// inside is a pause in the same stretch, not a new one to alert about again.
+    /// </summary>
+    public const int RangeStretchResetDays = 3;
+
+    /// <summary>
+    /// Weekly averages the worsening check reads, and the measured days each week needs before its
+    /// average means anything — the same four of seven every other weekly figure here uses.
+    /// </summary>
+    public const int RangeTrendWeeks = 3;
+    public const int RangeTrendMinDaysPerWeek = 4;
+
+    /// <summary>How far back the orchestrator has to read for the range rules' stretch and weekly averages.</summary>
+    public const int RangeLookbackDays = RangeTrendWeeks * 7;
 
     /// <summary>Yesterday's steps more than 30% below the baseline average.</summary>
     public static StatisticalFinding? ActivityDecline(PatternBaseline baseline, ActivityLog? yesterday)
@@ -711,6 +766,233 @@ public static class StatisticalAlertRules
                 ecgReadings = day.EcgReadings,
             }),
             NightOf: day.Date);
+    }
+
+    /// <summary>
+    /// Sleep outside the National Sleep Foundation's range for the member's age on at least three of
+    /// the last five nights with a reading, whatever their own usual is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Decision 2026-09-25 (<see cref="PublishedNormal"/>): the published range is what normal means
+    /// for sleep, so a member who has slept five hours a night for a month is outside it every one
+    /// of those nights — and <see cref="IrregularSleep"/>, which asks whether a night departed from
+    /// their own usual, never says a word, because five hours is their usual. This rule is the one
+    /// that does. The two answer different questions and both stay.
+    /// </para>
+    /// <para>
+    /// An awake night (<see cref="NightSleepStatus.Awake"/>) counts, as 0 hours: the watch was worn
+    /// through it and recorded no sleep. A night with no data or still pending has no reading and is
+    /// skipped — nothing is known about it either way. With no age the floor is still judged, since
+    /// it is seven hours at every adult age; the ceiling moves at 65 and is left unjudged rather than
+    /// guessed.
+    /// </para>
+    /// <para>
+    /// Severity is the model's, like every finding here: the observation states how many nights, how
+    /// far outside, since when, and whether the weekly average is still moving further out, and the
+    /// judgement brief weighs a worsening stretch above a steady one (decision 2026-09-25).
+    /// </para>
+    /// </remarks>
+    /// <param name="lastNight">The day last night's sleep is filed under — the newest day judged.</param>
+    public static StatisticalFinding? SleepOutsideRange(
+        IReadOnlyDictionary<DateOnly, ActivityLog> logsByDate, DateOnly lastNight, int? ageYears, PatternBaseline? baseline)
+    {
+        var band = HealthReferenceRanges.Sleep(ageYears ?? HealthReferenceRanges.OlderAdultAge - 1);
+        var rangeText = ageYears is null
+            ? string.Create(CultureInfo.InvariantCulture,
+                $"{band.Low:0.#} hours or more a night recommended for adults ({band.Source})")
+            : string.Create(CultureInfo.InvariantCulture,
+                $"{band.Low:0.#}-{band.High:0.#} hours a night recommended at their age ({band.Source})");
+
+        return OutsideRange(
+            new RangeRule(
+                SleepOutsideRangeRule, AlertType.Sleep, "Sleep", "nights",
+                l => l.SleepMinutes is { } minutes ? minutes / 60m : null,
+                band.Low, ageYears is null ? null : band.High, rangeText, band.Source,
+                (l, v) => l.NightStatus == NightSleepStatus.Awake
+                    ? ReadingFigures.AwakeNight
+                    : string.Create(CultureInfo.InvariantCulture, $"{v:0.#} hours"),
+                v => string.Create(CultureInfo.InvariantCulture, $"{v:0.#} hours")),
+            logsByDate, lastNight, baseline?.AvgSleepMinutes is { } usual ? usual / 60m : null);
+    }
+
+    /// <summary>
+    /// Resting heart rate outside the American Heart Association's 60–100 bpm on at least three of
+    /// the last five days with a reading, whatever the member's own usual is — the range-first
+    /// counterpart of <see cref="ElevatedHeartRate"/>, for the reasons <see cref="SleepOutsideRange"/>
+    /// gives. Both directions: a resting rate held under 60 is outside the range too, and whether it
+    /// is fitness, medication or something else is the judgement's to weigh with what is known about
+    /// the person.
+    /// </summary>
+    /// <param name="latest">The newest complete day — yesterday; today's resting rate is still settling.</param>
+    public static StatisticalFinding? RestingHeartRateOutsideRange(
+        IReadOnlyDictionary<DateOnly, ActivityLog> logsByDate, DateOnly latest, PatternBaseline? baseline)
+    {
+        var band = HealthReferenceRanges.RestingHeartRate;
+        return OutsideRange(
+            new RangeRule(
+                RestingHeartRateOutsideRangeRule, AlertType.HeartRate, "Resting heart rate", "days",
+                l => l.RestingHeartRate,
+                band.Low, band.High,
+                string.Create(CultureInfo.InvariantCulture, $"{band.Low:0}-{band.High:0} bpm published for an adult at rest ({band.Source})"),
+                band.Source,
+                (_, v) => string.Create(CultureInfo.InvariantCulture, $"{v:0} bpm"),
+                v => string.Create(CultureInfo.InvariantCulture, $"{v:0} bpm")),
+            logsByDate, latest, baseline?.AvgRestingHeartRate);
+    }
+
+    /// <summary>
+    /// Blood oxygen below WHO's 94% on at least three of the last five days with a reading. Below
+    /// only: the range tops out at 100, which a reading cannot pass. No baseline comparison is
+    /// offered because none is learned for oxygen — the published floor is the whole yardstick.
+    /// </summary>
+    /// <param name="latest">The newest day with an oxygen reading — the night it was measured ended on.</param>
+    public static StatisticalFinding? OxygenBelowRange(
+        IReadOnlyDictionary<DateOnly, ActivityLog> logsByDate, DateOnly latest)
+    {
+        var band = HealthReferenceRanges.SpO2;
+        return OutsideRange(
+            new RangeRule(
+                OxygenBelowRangeRule, AlertType.PatternBreak, "Blood oxygen", "days",
+                l => l.SpO2Average,
+                band.Low, null,
+                string.Create(CultureInfo.InvariantCulture, $"{band.Low:0}-{band.High:0}% published range ({band.Source})"),
+                band.Source,
+                (_, v) => string.Create(CultureInfo.InvariantCulture, $"{v:0.#}%"),
+                v => string.Create(CultureInfo.InvariantCulture, $"{v:0.#}%")),
+            logsByDate, latest, usual: null);
+    }
+
+    /// <summary>One published-range rule's shape: what it reads, the range, and how its figures are written.</summary>
+    /// <param name="High">The ceiling, or null where it is not judged — no ceiling exists, or the age that picks it is unknown.</param>
+    /// <param name="DayFigure">One day's figure as the observation lists it.</param>
+    /// <param name="Figure">An average or a usual, in the same unit.</param>
+    private sealed record RangeRule(
+        string Rule,
+        AlertType Type,
+        string Metric,
+        string DaysNoun,
+        Func<ActivityLog, decimal?> Read,
+        decimal Low,
+        decimal? High,
+        string RangeText,
+        string Source,
+        Func<ActivityLog, decimal, string> DayFigure,
+        Func<decimal, string> Figure);
+
+    /// <summary>
+    /// The shared body of the published-range rules: sustained outside, the stretch it belongs to,
+    /// and the weekly trend — all computed here, never left to the model.
+    /// </summary>
+    private static StatisticalFinding? OutsideRange(
+        RangeRule rule, IReadOnlyDictionary<DateOnly, ActivityLog> logsByDate, DateOnly latest, decimal? usual)
+    {
+        bool Outside(decimal value) => value < rule.Low || (rule.High is { } high && value > high);
+
+        decimal? ReadOn(DateOnly day) =>
+            logsByDate.TryGetValue(day, out var log) ? rule.Read(log) : null;
+
+        // The last five days, oldest first, and which of them carried a reading outside the range.
+        var window = Enumerable.Range(0, RangeWindowDays)
+            .Select(offset => latest.AddDays(offset - (RangeWindowDays - 1)))
+            .Where(day => ReadOn(day).HasValue)
+            .ToList();
+        var outsideDays = window.Where(day => Outside(ReadOn(day)!.Value)).ToList();
+        if (outsideDays.Count < RangeMinimumDaysOutside)
+            return null;
+
+        // The stretch: back from the newest day until three measured days in a row sat inside the
+        // range, or the readings run out. Unmeasured days neither extend nor end it.
+        var stretchStart = outsideDays[0];
+        var insideRun = 0;
+        var earliest = logsByDate.Keys.Min();
+        for (var day = latest; day >= earliest; day = day.AddDays(-1))
+        {
+            if (ReadOn(day) is not { } value)
+                continue;
+
+            if (Outside(value))
+            {
+                stretchStart = day;
+                insideRun = 0;
+            }
+            else if (++insideRun >= RangeStretchResetDays)
+            {
+                break;
+            }
+        }
+
+        // Weekly averages, oldest first, and whether each sits further outside the range than the
+        // one before — the worsening the judgement weighs above a steady stretch.
+        var weekly = new List<decimal>();
+        for (var week = RangeTrendWeeks - 1; week >= 0; week--)
+        {
+            var end = latest.AddDays(-7 * week);
+            var values = Enumerable.Range(0, 7)
+                .Select(offset => ReadOn(end.AddDays(-offset)))
+                .OfType<decimal>()
+                .ToList();
+            if (values.Count < RangeTrendMinDaysPerWeek)
+            {
+                weekly.Clear();
+                break;
+            }
+
+            weekly.Add(values.Average());
+        }
+
+        decimal Distance(decimal average) =>
+            average < rule.Low
+                ? rule.Low - average
+                : rule.High is { } high && average > high ? average - high : 0m;
+
+        var worsening = weekly.Count == RangeTrendWeeks
+            && Distance(weekly[^1]) > 0
+            && weekly.Zip(weekly.Skip(1), (older, newer) => Distance(newer) > Distance(older)).All(further => further);
+
+        var newestOutside = ReadOn(outsideDays[^1])!.Value;
+        var side = newestOutside < rule.Low ? "below" : "above";
+
+        var readings = string.Join(", ", window.Select(day =>
+            $"{Day(day)} {rule.DayFigure(logsByDate[day], ReadOn(day)!.Value)}"));
+
+        var observation = new StringBuilder()
+            .Append(string.Create(CultureInfo.InvariantCulture,
+                $"{rule.Metric} outside the {rule.RangeText} on {outsideDays.Count} of the last {window.Count} {rule.DaysNoun} with a reading, ending {Day(latest)}: {readings}. "))
+            .Append(string.Create(CultureInfo.InvariantCulture, $"Most recently {side} the range; outside it since {Day(stretchStart)}."));
+
+        if (usual is { } usualValue)
+        {
+            var usualClause = Outside(usualValue) ? ", itself outside the range" : string.Empty;
+            observation.Append($" Their usual is {rule.Figure(usualValue)}{usualClause}.");
+        }
+
+        if (weekly.Count == RangeTrendWeeks)
+        {
+            var trend = worsening ? "further outside the range each week." : "not moving further outside it week on week.";
+            observation.Append($" Weekly averages, oldest first: {string.Join(", ", weekly.Select(rule.Figure))} — {trend}");
+        }
+
+        observation.Append(string.Create(CultureInfo.InvariantCulture,
+            $" The yardstick is {RangeMinimumDaysOutside} of the last {RangeWindowDays} {rule.DaysNoun} outside the published range."));
+
+        return new StatisticalFinding(
+            rule.Rule, rule.Type, observation.ToString(),
+            Serialize(new
+            {
+                rule = rule.Rule,
+                day = latest.ToString("O"),
+                daysOutside = outsideDays.Count,
+                daysMeasured = window.Count,
+                stretchStart = stretchStart.ToString("O"),
+                rangeLow = rule.Low,
+                rangeHigh = rule.High,
+                rangeSource = rule.Source,
+                usual,
+                weeklyAverages = weekly.Select(w => Math.Round(w, 1)).ToArray(),
+                worsening,
+            }),
+            StretchStart: stretchStart);
     }
 
     /// <summary>

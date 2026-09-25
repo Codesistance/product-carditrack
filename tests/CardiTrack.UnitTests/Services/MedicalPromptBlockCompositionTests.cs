@@ -118,7 +118,7 @@ public class MedicalPromptBlockCompositionTests
                 "A precise term for something that was measured is also fine, if you explain what it measures in plain words in the same sentence you first use it in.",
                 "Never name, suggest or guess at a medical condition, and never say a reading is a sign of one.",
                 "Never propose starting, stopping or changing any treatment or medication.",
-                "Say what was measured, what their own usual is, and where the reading sat against it."));
+                "Say what was measured, where it sat against the published range where one is given, and what their own usual is."));
     }
 
     [Fact]
