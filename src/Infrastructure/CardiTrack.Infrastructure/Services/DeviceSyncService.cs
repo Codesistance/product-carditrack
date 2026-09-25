@@ -36,6 +36,12 @@ public class DeviceSyncService : IDeviceSyncService
     /// </summary>
     private readonly ILogger<DeviceSyncService>? _logger;
 
+    /// <summary>
+    /// The clock "today" is read from. Defaults to <see cref="TimeProvider.System"/>; tests pin it
+    /// to put a member either side of UTC midnight, which is the whole behaviour under test.
+    /// </summary>
+    private readonly TimeProvider _clock;
+
     public DeviceSyncService(
         IOAuthTokenRefreshService tokenRefresh,
         IDeviceApiClient deviceApi,
@@ -46,9 +52,11 @@ public class DeviceSyncService : IDeviceSyncService
         IUnitOfWork unitOfWork,
         INotificationGapResolver gapResolver,
         IOptions<List<DeviceProviderSettings>> providers,
-        ILogger<DeviceSyncService>? logger = null)
+        ILogger<DeviceSyncService>? logger = null,
+        TimeProvider? clock = null)
     {
         _logger = logger;
+        _clock = clock ?? TimeProvider.System;
         _tokenRefresh = tokenRefresh;
         _deviceApi = deviceApi;
         _deviceConnections = deviceConnections;
@@ -70,18 +78,22 @@ public class DeviceSyncService : IDeviceSyncService
         var accessToken = await _tokenRefresh.RefreshIfExpiredAsync(connection, providerConfig);
 
         // Read once and passed down, rather than each step asking the clock again. The token
-        // refresh above is network I/O, so a sync that starts just before UTC midnight can reach
-        // the pull on the following day: two independent reads would then decide "no repair pass
-        // needed" against the old day and fetch against the new one, skipping that day's backfill
-        // entirely — and the next pull, now stamped with the new day, would not make it up.
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // refresh above is network I/O, so a sync that starts just before the member's midnight
+        // can reach the pull on the following day: two independent reads would then decide "no
+        // repair pass needed" against the old day and fetch against the new one, skipping that
+        // day's backfill entirely — and the next pull, now stamped with the new day, would not
+        // make it up. The success stamp below takes this same instant for the same reason.
+        var (zone, today, readAtUtc) = await MemberTodayAsync(connection);
 
-        // The trailing repair days are re-fetched once a UTC day, not on every pull. They exist to
-        // catch a provider revising a *finished* day, which happens on the order of hours — paying
-        // for them every ten minutes would spend the whole per-user quota re-reading numbers that
-        // cannot have moved. Today is pulled every time, which is the part a caregiver sees.
+        // The trailing repair days are re-fetched once a member-local day, not on every pull. They
+        // exist to catch a provider revising a *finished* day, which happens on the order of hours
+        // — paying for them every ten minutes would spend the whole per-user quota re-reading
+        // numbers that cannot have moved. Today is pulled every time, which is the part a
+        // caregiver sees. Local rather than UTC so the pass lands on the first pull after the day
+        // it repairs has actually closed for the wearer; on UTC it fired mid-evening west of
+        // Greenwich and re-read a day still in progress, leaving that evening for the next pass.
         var needsRepairPass = connection.LastSyncDate is not { } last
-            || DateOnly.FromDateTime(last) != today;
+            || LocalDate(last, zone) != today;
         var lookbackDays = needsRepairPass ? Math.Max(1, providerConfig.SyncLookbackDays) : 0;
 
         try
@@ -109,7 +121,14 @@ public class DeviceSyncService : IDeviceSyncService
             // and the connection would not come due again until the next interval. This also
             // clears a SyncError left by an earlier run: the window just landed, so whatever
             // the provider was doing then, the connection is working now.
-            await _deviceConnections.MarkSyncSucceededAsync(connection.Id, DateTime.UtcNow);
+            //
+            // Stamped with the instant `today` was read from, not the time the window finished
+            // landing. The repair gate above reads this stamp's local date as "the day the last
+            // pull was for", and a pull that starts before the member's midnight and lands after
+            // it would otherwise record the new day: the next pull would then skip the repair
+            // pass for the day that just closed, leaving it to a later pass's lookback. It is also
+            // the truer "last synced" — nothing fetched is newer than the moment the pull began.
+            await _deviceConnections.MarkSyncSucceededAsync(connection.Id, readAtUtc);
 
             // The worker-cadence extras run after the routine window succeeded, never inside its
             // success envelope: both are enrichment, and a transient failure in either must not
@@ -144,8 +163,47 @@ public class DeviceSyncService : IDeviceSyncService
         // No LastSyncDate stamp and no SyncError transition: see IDeviceSyncService.AuditSyncAsync.
         // Any revision this turns up still lands in the raw row and is merged, so the audit
         // repairs history as a side effect of measuring it.
-        await PullWindowAsync(connection, accessToken, lookbackDays, DateOnly.FromDateTime(DateTime.UtcNow));
+        var (_, today, _) = await MemberTodayAsync(connection);
+        await PullWindowAsync(connection, accessToken, lookbackDays, today);
     }
+
+    /// <summary>
+    /// The member's local zone and today's date in it — the day every provider read means.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The <see cref="DateOnly"/> handed to <see cref="IDeviceApiClient"/> is a <em>civil</em>
+    /// day: <c>GoogleHealthApiClient</c> filters sleep on <c>civil_end_time</c>, samples on
+    /// <c>civil_time</c>, intervals on <c>civil_start_time</c> and rollups on a
+    /// <c>CivilDateTime</c>. Choosing that date from the UTC clock asked for the wrong day for
+    /// part of every day: east of Greenwich a night that ended at 07:00 was not "today" until the
+    /// UTC date rolled (10:00 at UTC+10), and west of it the evening pulls asked for a tomorrow
+    /// that had not started, leaving the real evening to the next day's repair pass.
+    /// </para>
+    /// <para>
+    /// The zone is <see cref="MemberAnchorTimeZone"/>, the clock <c>StatisticalAlertService</c>
+    /// already uses to decide which of these rows is "yesterday" — so the day ingestion writes and
+    /// the day the rules read cannot drift apart. It is the caregiver's zone, not the watch's; a
+    /// family split across zones still pulls on one clock, and the repair pass covers the gap as
+    /// it did for everyone under UTC. Costs two reads per sync, outside the provider try-block so
+    /// a database failure never parks the connection in <see cref="ConnectionStatus.SyncError"/>.
+    /// </para>
+    /// </remarks>
+    private async Task<(TimeZoneInfo Zone, DateOnly Today, DateTime ReadAtUtc)> MemberTodayAsync(
+        DeviceConnection connection)
+    {
+        var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, connection.CardiMemberId);
+        var readAtUtc = _clock.GetUtcNow().UtcDateTime;
+        return (zone, LocalDate(readAtUtc, zone), readAtUtc);
+    }
+
+    /// <summary>
+    /// A stored UTC instant's date on the member's clock. <see cref="DateTimeKind.Unspecified"/>,
+    /// which is what a timestamp column reads back as, is taken as UTC — that is how it was written.
+    /// </summary>
+    private static DateOnly LocalDate(DateTime utc, TimeZoneInfo zone) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone));
 
     public async Task<int> PullHistoryRangeAsync(
         DeviceConnection connection, DateOnly from, DateOnly to, CancellationToken ct = default)
@@ -325,8 +383,9 @@ public class DeviceSyncService : IDeviceSyncService
     /// </para>
     /// <para>
     /// <paramref name="lookbackDays"/> of 0 fetches today alone. That is the routine case: callers
-    /// pass the trailing days only on the first pull of a UTC day, because re-reading finished days
-    /// every ten minutes costs a per-user quota that today's numbers have a better claim on.
+    /// pass the trailing days only on the first pull of the member's local day, because re-reading
+    /// finished days every ten minutes costs a per-user quota that today's numbers have a better
+    /// claim on. <paramref name="today"/> is that local day too — see <see cref="MemberTodayAsync"/>.
     /// </para>
     /// </remarks>
     private async Task PullWindowAsync(
@@ -457,10 +516,10 @@ public class DeviceSyncService : IDeviceSyncService
         }
         catch (Exception ex)
         {
-            // Deliberately not claiming the next pull will retry this. Only the first pull of a
-            // UTC day carries the repair lookback; every later pull that day runs with lookback 0,
-            // so a window from a repair day that fails to write here is not re-read and its beat
-            // detail is gone for good. The day's counts survive — they were written before this —
+            // Deliberately not claiming the next pull will retry this. Only the first pull of the
+            // member's local day carries the repair lookback; every later pull that day runs with
+            // lookback 0, so a window from a repair day that fails to write here is not re-read and
+            // its beat detail is gone for good. The day's counts survive — they were written before this —
             // so what is lost is the evidence behind a finding, not the finding. Persisting a
             // retry queue for beat detail is the follow-up this log is honest about needing.
             _logger?.LogError(
