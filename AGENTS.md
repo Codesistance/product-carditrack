@@ -67,8 +67,8 @@ Docker 29 must use `fuse-overlayfs` with the containerd snapshotter disabled and
 hands every process on the VM root through Docker). `scripts/agent/services-up.sh` does the
 install, the daemon configuration and the group membership when Docker is absent. Run tests
 with `TESTCONTAINERS_RYUK_DISABLED=true` (matches CI) — this VM is thrown away, so nothing a
-killed run leaks outlives it. Nowhere else sets it: on a workstation or in the dev container,
-Ryuk is what removes a killed run's Postgres containers from Docker Desktop.
+killed run leaks outlives it. Workstations and the dev container never set it: there, Ryuk is
+what removes a killed run's Postgres containers from Docker Desktop.
 
 Apply EF migrations once the db is up (command in README). MedGemma/Ollama and the AI
 pipeline are optional (`docker compose --profile full ...`) and not needed for the core stack.

@@ -91,9 +91,9 @@ TESTCONTAINERS_RYUK_DISABLED=true
 ```
 
 `TESTCONTAINERS_RYUK_DISABLED=true` turns off Ryuk, the reaper that removes a killed test run's
-containers. The session VM is thrown away, so nothing it leaks outlives it. Nowhere else
-sets it: on a workstation or in the dev container, Ryuk is what keeps killed runs from
-piling containers onto Docker Desktop.
+containers. The session VM is thrown away, so nothing it leaks outlives it — the same reason
+CI's test jobs set it. Workstations and the dev container never do: there, Ryuk is what
+keeps killed runs from piling containers onto Docker Desktop.
 
 `INSTALL_MAUI=1` makes the `SessionStart` hook (`.devcontainer/bootstrap.sh`) install the
 `maui-android` workload, a JDK and the Android SDK, and restore `CardiTrack.sln` rather than
