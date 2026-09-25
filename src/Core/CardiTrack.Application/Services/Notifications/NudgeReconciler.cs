@@ -94,7 +94,7 @@ public static class NudgeReconciler
         {
             if (storedByFingerprint.TryGetValue(fingerprint, out var existing))
             {
-                Refresh(existing, verdict, rule, utcNow);
+                Refresh(existing, context, verdict, rule, utcNow);
                 plan.ToUpdate.Add(existing);
                 continue;
             }
@@ -201,9 +201,16 @@ public static class NudgeReconciler
     /// moves — a rule that silently stops being evaluated should be visible as a stale timestamp,
     /// not inferred from an absence.
     /// </summary>
-    private static void Refresh(Notification existing, NudgeVerdict verdict, INudgeRule rule, DateTime utcNow)
+    private static void Refresh(
+        Notification existing, NudgeContext context, NudgeVerdict verdict, INudgeRule rule, DateTime utcNow)
     {
         existing.LastEvaluatedDate = utcNow;
+
+        // Ownership re-targets in place: the primary caregiver changes, an owner's account is
+        // deactivated, or a row was stored under a wrong answer. The fingerprint is per user and
+        // does not include ownership, so this flips the flag on the same row — a snooze or a
+        // dismissal the row carries survives the handover rather than being reset by it.
+        existing.IsOwner = context.IsOwner;
 
         // A snooze that has run out reopens on its own; a live one is left strictly alone.
         if (existing.State == NotificationState.Snoozed && existing.SnoozedUntil <= utcNow)
