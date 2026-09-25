@@ -9,21 +9,19 @@
          caregiver can decide whether to open it without opening it. The tile keeps its tint.
          Width is the dashboard's call, not the card's — full width when it is the only alert,
          most of the width in the carousel when it is not (see DashboardPage.ApplyAlerts). -->
-    <!-- Squarer and flatter than the shared ElevatedCard: 20 of radius and a 14-radius shadow
-         are drawn for the full-width cards the style was written for, and on a carousel tile
-         they eat the corners and pool underneath. 14 and a shadow half the spread at two thirds
-         the opacity, sitting 2 down rather than 4, leave the strip reading as a row of cards
-         rather than a row of pills. No padding on the Border itself: the severity edge has to
-         run flush to the card's edge and be clipped by its corners, so the padding lives on
-         the content beside it. Overridden here rather than in the style, which every
-         full-width card on every page shares. -->
-    <Border Style="{StaticResource ElevatedCard}" Padding="0">
+    <!-- A row inside the Recent Alerts card, not a card of its own: filled and flat like the
+         "Complete the picture" rows (NudgeMiniRow) — InputBackground, 12 of radius, no stroke,
+         no shadow. White with a shadow was right while these floated on the page background;
+         inside a white card it is white on white, held apart only by a shadow the card's own
+         clip cuts off at the edges. No padding on the Border itself: the severity edge has to
+         run flush to the row's edge and be clipped by its corners, so the padding lives on the
+         content beside it. -->
+    <Border BackgroundColor="{StaticResource InputBackground}"
+            StrokeThickness="0"
+            Padding="0">
         <Border.StrokeShape>
-            <RoundRectangle CornerRadius="14"/>
+            <RoundRectangle CornerRadius="12"/>
         </Border.StrokeShape>
-        <Border.Shadow>
-            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.1" Radius="7" Offset="0,2"/>
-        </Border.Shadow>
         <Border.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnTapped"/>
         </Border.GestureRecognizers>

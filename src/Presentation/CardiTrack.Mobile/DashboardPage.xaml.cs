@@ -118,7 +118,7 @@ public partial class DashboardPage : ContentPage
         Header.BellTapped += OnBellClicked;
         DisclosureBanner.LearnMoreRequested += OnDisclosureLearnMore;
         DisclosureBanner.DismissRequested += OnDisclosureDismiss;
-        AlertsSection.SizeChanged += (_, _) => SizeAlertCards();
+        AlertsHeader.SizeChanged += (_, _) => SizeAlertCards();
 
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
@@ -763,11 +763,11 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// The Recent Alerts strip. A lone alert gets the whole row; two or more go into the
+    /// The Recent Alerts card. A lone alert gets the card's full width; two or more go into the
     /// carousel, sized by <see cref="SizeAlertCards"/> so the next card peeks in at the edge.
     /// </summary>
     /// <remarks>
-    /// "View All" carries the count only when the strip is short of it. The strip and
+    /// "View all" carries the count only when the strip is short of it. The strip and
     /// <see cref="DashboardResponse.UnreadAlertCount"/> are the same set — unacknowledged,
     /// unresolved — but the server caps the strip, so a count equal to the cards on screen
     /// would only be restating them.
@@ -783,8 +783,8 @@ public partial class DashboardPage : ContentPage
         AlertsScroller.IsVisible = alerts.Count > 1;
 
         ViewAllAlertsLink.Text = data.UnreadAlertCount > alerts.Count
-            ? $"View All ({data.UnreadAlertCount})"
-            : "View All";
+            ? $"View all ({data.UnreadAlertCount})"
+            : "View all";
 
         foreach (var alert in alerts)
         {
@@ -802,16 +802,18 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// Sizes the carousel's cards off the row they scroll in: most of its width, so one card is
-    /// read at a time and the edge of the next says the row scrolls. Re-run whenever the section
-    /// is resized, since the first <see cref="ApplyAlerts"/> can land before it has been measured.
+    /// Sizes the carousel's cards to most of the card's content width, so one is read at a time
+    /// and the edge of the next says the row scrolls. Measured off the heading, since the
+    /// carousel itself runs edge to edge and is wider than the content. Re-run whenever the
+    /// heading is resized, since the first <see cref="ApplyAlerts"/> can land before it has been
+    /// measured.
     /// </summary>
     private void SizeAlertCards()
     {
-        if (AlertsSection.Width <= 0)
+        if (AlertsHeader.Width <= 0)
             return;
 
-        var width = Math.Floor(AlertsSection.Width * CarouselCardWidthFraction);
+        var width = Math.Floor(AlertsHeader.Width * CarouselCardWidthFraction);
         foreach (var card in AlertsStack.Children.OfType<AlertMiniCard>())
             card.WidthRequest = width;
     }

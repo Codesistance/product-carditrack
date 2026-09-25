@@ -349,32 +349,72 @@
                             </Grid>
                         </Border>
 
-                        <!-- Recent alerts -->
-                        <VerticalStackLayout x:Name="AlertsSection" Spacing="20" IsVisible="False">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <Label Grid.Column="0" Text="Recent Alerts" Style="{StaticResource Heading2}"/>
-                                <!-- Text set in code: it carries the count when the strip holds
-                                     fewer alerts than are waiting (see ApplyAlerts). -->
-                                <Label x:Name="ViewAllAlertsLink"
-                                       Grid.Column="1"
-                                       Text="View All"
-                                       Style="{StaticResource SectionLink}">
-                                    <Label.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnViewAllAlertsTapped"/>
-                                    </Label.GestureRecognizers>
-                                </Label>
-                            </Grid>
-                            <!-- One alert fills the row; a carousel of one is half a row of card
-                                 beside half a row of nothing. Two or more scroll, each card a
-                                 little narrower than the row so the next one shows at the edge
-                                 and says there is more to swipe to. -->
-                            <ContentView x:Name="SingleAlertHost" IsVisible="False" Padding="0,0,0,6"/>
-                            <ScrollView x:Name="AlertsScroller"
-                                        Orientation="Horizontal"
-                                        HorizontalScrollBarVisibility="Never">
-                                <HorizontalStackLayout x:Name="AlertsStack" Spacing="11" Padding="0,0,0,6"/>
-                            </ScrollView>
-                        </VerticalStackLayout>
+                        <!-- Recent alerts: a card, like "Complete the picture" above it, rather
+                             than Figma's bare heading over a row of floating tiles (101:2805) —
+                             a section title loose on the background read as a different screen's
+                             furniture beside two cards that carry their own. The bell tile is
+                             Figma's metric-row tile (MetricTileTint) at the Key Metrics size. -->
+                        <!-- ElevatedCard's 14,14,13,17 is split rather than set on the Border:
+                             Android clips a Border's content to its padded area, so a carousel
+                             inside it would be cut off in a hard line 14 in from the rounded
+                             edge. The vertical padding stays on the card; the horizontal moves
+                             onto the heading, the single-alert host and the carousel's content,
+                             which leaves the scroller itself free to run edge to edge. -->
+                        <Border x:Name="AlertsSection"
+                                IsVisible="False"
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="0,14,0,17">
+                            <VerticalStackLayout Spacing="12">
+                                <Grid x:Name="AlertsHeader"
+                                      ColumnDefinitions="Auto,*,Auto"
+                                      ColumnSpacing="10"
+                                      Margin="14,0,13,0">
+                                    <Border Style="{StaticResource IconTile}"
+                                            BackgroundColor="{StaticResource MetricTileTint}"
+                                            Padding="7"
+                                            WidthRequest="36" HeightRequest="36"
+                                            VerticalOptions="Center">
+                                        <Image Source="icon_bell.svg"
+                                               WidthRequest="22" HeightRequest="22"/>
+                                    </Border>
+                                    <!-- The same title style as "Complete the picture": this used
+                                         Heading2, a size up from every other section on the
+                                         screen, which made alerts the loudest heading on a
+                                         dashboard whose top card is the member. -->
+                                    <Label Grid.Column="1"
+                                           Text="Recent Alerts"
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           VerticalOptions="Center"/>
+                                    <!-- Text set in code: it carries the count when the strip holds
+                                         fewer alerts than are waiting (see ApplyAlerts). Sentence
+                                         case, like the "See all" link above. -->
+                                    <Label x:Name="ViewAllAlertsLink"
+                                           Grid.Column="2"
+                                           Text="View all"
+                                           Style="{StaticResource SectionLink}">
+                                        <Label.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnViewAllAlertsTapped"/>
+                                        </Label.GestureRecognizers>
+                                    </Label>
+                                </Grid>
+
+                                <!-- One alert fills the card; a carousel of one is half a row of
+                                     card beside half a row of nothing. -->
+                                <ContentView x:Name="SingleAlertHost" IsVisible="False" Margin="14,0,13,0"/>
+
+                                <!-- Two or more scroll, each a little narrower than the card so
+                                     the next one shows at the edge and says there is more to
+                                     swipe to. Its content is padded in by the card's side
+                                     padding, so cards line up with the heading at rest and slide
+                                     out under the card's rounded edge rather than vanishing at
+                                     an invisible line inside it. -->
+                                <ScrollView x:Name="AlertsScroller"
+                                            Orientation="Horizontal"
+                                            HorizontalScrollBarVisibility="Never">
+                                    <HorizontalStackLayout x:Name="AlertsStack" Spacing="10" Padding="14,0,13,0"/>
+                                </ScrollView>
+                            </VerticalStackLayout>
+                        </Border>
 
                     </VerticalStackLayout>
                 </Grid>
