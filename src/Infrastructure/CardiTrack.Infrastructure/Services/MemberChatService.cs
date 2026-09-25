@@ -1092,7 +1092,7 @@ public class MemberChatService : IMemberChatService
         // and the only method that can unwrap it is the one building the Private-slot prompt. The
         // rewrite builder's signature takes DeidentifiedFindings and cannot take this.
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today, age)}\n\n{ChatDataRegistry.BandsBlock}");
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today, age, plan.Result.ChartMetrics)}\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(flattened, clinicalOnly, history.QuestionsOnly);
         progress?.Step(MemberChatStep.Reading);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
@@ -1106,7 +1106,7 @@ public class MemberChatService : IMemberChatService
         var voice = MemberVoice.For(member);
         var reply = ComposeReply(
             rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
-            fetched.RecentActivityWindow, today, SupportedSleepFigures(today, fetched));
+            fetched.RecentActivityWindow, today, SupportedSleepFigures(today, age, fetched));
 
         return new MemberChatWorkflowResult
         {
@@ -1179,7 +1179,7 @@ public class MemberChatService : IMemberChatService
         // The status line carries the member's resolved name, which is why it renders here — into
         // the Private-slot block — and never into the rewrite prompt.
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today, age)}"
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today, age, plan.Result.ChartMetrics)}"
             + (dashboard is { } status ? $"\n\n{FormatDashboardStatus(status)}" : string.Empty)
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
@@ -1196,7 +1196,7 @@ public class MemberChatService : IMemberChatService
         var voice = MemberVoice.For(member);
         var reply = ComposeReply(
             rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
-            fetched.RecentActivityWindow, today, SupportedSleepFigures(today, fetched));
+            fetched.RecentActivityWindow, today, SupportedSleepFigures(today, age, fetched));
 
         var calls = new List<AiCallRecord>
         {
@@ -1227,7 +1227,7 @@ public class MemberChatService : IMemberChatService
 
             var secondReply = ComposeReply(
                 reaskRewrite.Result, reasked.Result.Analysis, voice, reasked.Result.ReadingsFrom,
-                reasked.Result.ReadingsTo, fetched.RecentActivityWindow, today, SupportedSleepFigures(today, fetched));
+                reasked.Result.ReadingsTo, fetched.RecentActivityWindow, today, SupportedSleepFigures(today, age, fetched));
 
             if (MemberChatReplies.ClaimsSettled(secondReply))
             {
@@ -1317,8 +1317,8 @@ public class MemberChatService : IMemberChatService
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"[PATIENT CONTEXT]\n{memberContext}\n\n--- Data about the change ---\n{FormatFetchedData(anchor, today, age)}"
-            + $"\n\n--- What else was happening around the same time ---\n{FormatFetchedData(surroundings, today, age)}"
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n--- Data about the change ---\n{FormatFetchedData(anchor, today, age, plan.Result.ChartMetrics)}"
+            + $"\n\n--- What else was happening around the same time ---\n{FormatFetchedData(surroundings, today, age, askedMetrics: null)}"
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
             flattened, clinicalOnly, history.QuestionsOnly, InvestigationClinicalInstructions);
@@ -1337,7 +1337,7 @@ public class MemberChatService : IMemberChatService
         var reply = ComposeReply(
             rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             anchor.RecentActivityWindow ?? surroundings.RecentActivityWindow, today,
-            SupportedSleepFigures(today, anchor, surroundings));
+            SupportedSleepFigures(today, age, anchor, surroundings));
 
         return new MemberChatWorkflowResult
         {
@@ -2470,7 +2470,11 @@ public class MemberChatService : IMemberChatService
 
     /// <param name="ageYears">Picks the sleep band in the window summary; null leaves it out
     /// rather than guessing one.</param>
-    internal static string FormatFetchedData(FetchedMemberData data, DateOnly today, int? ageYears)
+    /// <param name="askedMetrics">The readings the planner said the question is about. Each is
+    /// written into the window summary even when no day carried it, so a reading the question
+    /// asked for is stated as missing rather than left for the model to fill.</param>
+    internal static string FormatFetchedData(
+        FetchedMemberData data, DateOnly today, int? ageYears, IReadOnlyList<ChartMetricKind>? askedMetrics)
     {
         var sections = new List<string>();
 
@@ -2503,7 +2507,7 @@ public class MemberChatService : IMemberChatService
 
             // The window's arithmetic, done here: handed only the rows, the clinical read averaged
             // a week of 4h 18m–7h nights to 2h 22m (2026-09-25). See ChatWindowSummaryBlock.
-            if (ChatWindowSummaryBlock.Render(data, today, ageYears) is { } summary)
+            if (ChatWindowSummaryBlock.Render(data, today, ageYears, askedMetrics) is { } summary)
                 sections.Add(summary);
         }
 
@@ -2941,7 +2945,7 @@ public class MemberChatService : IMemberChatService
     /// guard never accepts an average the prompt refused to give.
     /// </remarks>
     private static RewriteCopyGuards.SleepFigures SupportedSleepFigures(
-        DateOnly today, params FetchedMemberData[] fetches)
+        DateOnly today, int? ageYears, params FetchedMemberData[] fetches)
     {
         var nights = fetches
             .SelectMany(f => f.RecentActivity)
@@ -2953,7 +2957,7 @@ public class MemberChatService : IMemberChatService
             && ReadingWindowSummaries.ForMetric(
                 ChartMetricKind.Sleep, f.RecentActivity, window, today, f.Baseline, ageYears: null) is { IsCovered: true });
 
-        return RewriteCopyGuards.SupportedSleepFigures(nights, usual, covered);
+        return RewriteCopyGuards.SupportedSleepFigures(nights, usual, covered, ageYears);
     }
 
     /// <summary>

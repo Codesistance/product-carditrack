@@ -29,14 +29,17 @@ internal static class ChatWindowSummaryBlock
 {
     /// <summary>
     /// The block, or null when the window has nothing to summarise — a single day, or no reading
-    /// on any day of it.
+    /// on any day of it and none asked about.
     /// </summary>
-    internal static string? Render(FetchedMemberData data, DateOnly today, int? ageYears)
+    /// <param name="askedMetrics">Readings to write even when no day carried them — see
+    /// <see cref="ReadingWindowSummaries.For"/>.</param>
+    internal static string? Render(
+        FetchedMemberData data, DateOnly today, int? ageYears, IReadOnlyList<ChartMetricKind>? askedMetrics)
     {
         if (data.RecentActivityWindow is not { } window)
             return null;
 
-        var summaries = ReadingWindowSummaries.For(data.RecentActivity, window, today, data.Baseline, ageYears);
+        var summaries = ReadingWindowSummaries.For(data.RecentActivity, window, today, data.Baseline, ageYears, askedMetrics);
         if (summaries.Count == 0)
             return null;
 

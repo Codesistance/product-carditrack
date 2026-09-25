@@ -103,24 +103,34 @@ public static class ReadingWindowSummaries
         ChartMetricKind.Sleep or ChartMetricKind.HeartRateVariability or ChartMetricKind.OvernightBreathingRate;
 
     /// <summary>
-    /// One summary per metric the window carried at least one reading of, in chart order. Empty
-    /// when the window is a single day — there is nothing to average across one — or when no day
-    /// in it carried anything.
+    /// One summary per metric the window carried at least one reading of, or that the question
+    /// asked about, in chart order. Empty when the window is a single day — there is nothing to
+    /// average across one.
     /// </summary>
     /// <param name="ageYears">Picks the sleep band's ceiling; null draws no sleep band rather than a guessed one.</param>
+    /// <param name="askedMetrics">
+    /// The readings the question is about, summarised even when no day carried them. A metric the
+    /// member's device never reports is otherwise left out, as the daily rows leave it out — but
+    /// one the question asked for has to be stated as missing, or the model answers it from the
+    /// baseline.
+    /// </param>
     public static IReadOnlyList<ReadingWindowSummary> For(
         IReadOnlyList<ActivityLog> rows,
         (DateOnly From, DateOnly To) window,
         DateOnly today,
         PatternBaseline? baseline,
-        int? ageYears)
+        int? ageYears,
+        IReadOnlyList<ChartMetricKind>? askedMetrics = null)
     {
         var summaries = new List<ReadingWindowSummary>();
         foreach (var metric in Order)
         {
             var summary = ForMetric(metric, rows, window, today, baseline, ageYears);
-            if (summary is { Readings.Count: > 0 })
+            if (summary is not null
+                && (summary.Readings.Count > 0 || askedMetrics?.Contains(metric) == true))
+            {
                 summaries.Add(summary);
+            }
         }
 
         return summaries;
@@ -205,11 +215,13 @@ public static class ReadingWindowSummaries
     /// <summary>
     /// The published band in the metric's own unit — sleep's hours become minutes, because the
     /// readings are minutes. Steps and overnight HRV have none: no accredited body publishes one.
+    /// Nor does breathing asleep: WHO's 12–20 is a waking rate at rest, and graded against it an
+    /// overnight figure would carry WHO's name for a comparison WHO never made
+    /// (<see cref="HealthReferenceRanges.NoOvernightBreathingBand"/>).
     /// </summary>
     private static MetricReference? Band(ChartMetricKind metric, int? ageYears) => metric switch
     {
         ChartMetricKind.RestingHeartRate => HealthReferenceRanges.RestingHeartRate,
-        ChartMetricKind.OvernightBreathingRate => HealthReferenceRanges.BreathingRate,
         ChartMetricKind.Sleep when ageYears is { } age => SleepBandInMinutes(age),
         _ => null,
     };

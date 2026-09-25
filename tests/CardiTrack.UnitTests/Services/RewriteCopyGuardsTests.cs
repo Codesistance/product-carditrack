@@ -144,7 +144,7 @@ public class RewriteCopyGuardsTests
     /// </summary>
     private static readonly RewriteCopyGuards.SleepFigures TheWeek =
         RewriteCopyGuards.SupportedSleepFigures(
-            [10, 430, 400, 350, 340, 260, 225], usualMinutes: 345, averagesAreCovered: true);
+            [10, 430, 400, 350, 340, 260, 225], usualMinutes: 345, averagesAreCovered: true, ageYears: 50);
 
     /// <summary>The reply that prompted the sleep guard, in its own words and with this week's
     /// numbers around it: an average no night, pair of nights or yardstick could produce.</summary>
@@ -188,11 +188,44 @@ public class RewriteCopyGuardsTests
     public void An_average_of_too_few_nights_is_caught_while_the_nights_themselves_pass()
     {
         var thinWeek = RewriteCopyGuards.SupportedSleepFigures(
-            [400, 250, 225], usualMinutes: 345, averagesAreCovered: false);
+            [400, 250, 225], usualMinutes: 345, averagesAreCovered: false, ageYears: 50);
 
         Assert.Equal("4h 52m", RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(
             "CardiTrackCardiMember's sleep averaged 4h 52m a night this week.", thinWeek));
         Assert.Null(RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(
             "Last night CardiTrackCardiMember slept 3h 45m.", thinWeek));
+    }
+
+    /// <summary>
+    /// A thin week's "average" that happens to sit on the usual or a band edge is still an average
+    /// the summary refused to give — while the usual, named as the usual, is still the usual.
+    /// </summary>
+    [Theory]
+    [InlineData("CardiTrackCardiMember's sleep averaged 5h 45m this week.", "5h 45m")]
+    [InlineData("CardiTrackCardiMember slept about 7 hours a night this week.", "7 hours")]
+    public void A_thin_weeks_average_is_caught_even_on_the_usual_or_a_band_edge(string copy, string figure)
+    {
+        var thinWeek = RewriteCopyGuards.SupportedSleepFigures(
+            [400, 250, 225], usualMinutes: 345, averagesAreCovered: false, ageYears: 50);
+
+        Assert.Equal(figure, RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(copy, thinWeek));
+        Assert.Null(RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(
+            "Only three nights reached us, against CardiTrackCardiMember's usual 5h 45m of sleep.", thinWeek));
+    }
+
+    /// <summary>The band edges are the member's own: 7–8 hours from 65, so a 9-hour sleep figure is
+    /// not one the prompt ever showed an older member's read.</summary>
+    [Theory]
+    [InlineData(50, true)]
+    [InlineData(82, false)]
+    public void The_band_edges_follow_the_members_age(int age, bool passes)
+    {
+        var week = RewriteCopyGuards.SupportedSleepFigures(
+            [10, 430, 400, 350, 340, 260, 225], usualMinutes: 345, averagesAreCovered: true, ageYears: age);
+
+        var caught = RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(
+            "Sleep guidance runs up to 9 hours for CardiTrackCardiMember.", week);
+
+        Assert.Equal(passes, caught is null);
     }
 }

@@ -109,7 +109,7 @@ public class ReadingWindowSummaryTests
             Baseline = Usual(),
         };
 
-        var prompt = MemberChatService.FormatFetchedData(data, Today, ageYears: 82);
+        var prompt = MemberChatService.FormatFetchedData(data, Today, ageYears: 82, askedMetrics: null);
 
         Assert.Contains("\"reading\": \"sleep\"", prompt, StringComparison.Ordinal);
         Assert.Contains("\"nights_with_reading\": \"7 of 7\"", prompt, StringComparison.Ordinal);
@@ -133,10 +133,51 @@ public class ReadingWindowSummaryTests
             Baseline = Usual(),
         };
 
-        var prompt = MemberChatService.FormatFetchedData(data, Today, ageYears: 82);
+        var prompt = MemberChatService.FormatFetchedData(data, Today, ageYears: 82, askedMetrics: null);
 
         Assert.Contains("\"average\": null", prompt, StringComparison.Ordinal);
         Assert.Contains("only 3 of 7 nights carried a reading, and 4 are needed", prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A reading the question asked about that no day carried is still written, as missing — left
+    /// out, the model answers it from the baseline. One nobody asked about stays out, as the daily
+    /// rows leave out what the device does not measure.
+    /// </summary>
+    [Fact]
+    public void ThePrompt_StatesAnAskedReadingThatNeverArrived()
+    {
+        var data = new FetchedMemberData
+        {
+            RecentActivity = ReportedWeek().Select(l => new ActivityLog { Date = l.Date, Steps = l.Steps }).ToList(),
+            RecentActivityWindow = Week,
+            Baseline = Usual(),
+        };
+
+        var asked = MemberChatService.FormatFetchedData(
+            data, Today, ageYears: 82, askedMetrics: [ChartMetricKind.Steps, ChartMetricKind.Sleep]);
+        var unasked = MemberChatService.FormatFetchedData(
+            data, Today, ageYears: 82, askedMetrics: [ChartMetricKind.Steps]);
+
+        Assert.Contains("\"nights_with_reading\": \"0 of 7\"", asked, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"reading\": \"sleep\"", unasked, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Breathing asleep is graded against the member alone: WHO's 12–20 is a waking rate at rest,
+    /// and <see cref="HealthReferenceRanges.NoOvernightBreathingBand"/> forbids printing it beside an
+    /// overnight figure.
+    /// </summary>
+    [Fact]
+    public void BreathingAsleep_CarriesNoPublishedRange()
+    {
+        var rows = ReportedWeek().Select(l => new ActivityLog { Date = l.Date, OvernightBreathingRate = 14.2m }).ToList();
+
+        var breathing = ReadingWindowSummaries.ForMetric(
+            ChartMetricKind.OvernightBreathingRate, rows, Week, Today, Usual(), ageYears: 82);
+
+        Assert.NotNull(breathing);
+        Assert.Null(breathing.Band);
     }
 
     /// <summary>
