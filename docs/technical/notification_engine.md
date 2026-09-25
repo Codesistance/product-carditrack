@@ -205,6 +205,32 @@ This rule matters disproportionately because it is the only device signal for me
 registers as silence there. For them it was, until now, possible for monitoring to be dark for two
 days with nothing ever leaving the app.
 
+**A refused grant is "needs reconnecting", never "gone quiet".** When a device's OAuth grant is
+refused (`ConnectionStatus` `TokenExpired` or `AuthError`, one predicate —
+`ConnectionStatusExtensions.NeedsReconnect` — shared by every rule below), the watch has not gone
+quiet; we have lost permission to read it, and "it may need charging" sends the family to fix the
+wrong thing. So while any of a member's collecting devices needs reconnecting, both "gone quiet"
+signals stand down for that member and `DEVICE_AUTH_BROKEN` speaks alone:
+
+- `DEVICE_STALE_LONG` returns no gap, which also resolves one already open on the evaluation that
+  opens `DEVICE_AUTH_BROKEN`.
+- `InactivityDetectionWorker` raises no device-silence alert, and closes one already standing. At
+  the moment it would have raised one — silent past the threshold, inside waking hours — it asks
+  `NotificationGapResolver` to evaluate the member instead, which opens `DEVICE_AUTH_BROKEN` and
+  lets the dispatch sweep push it. It does not probe a refused connection, and a probe whose own
+  refresh is refused (`DeviceGrantRejectedException`) hands over the same way.
+
+The hand-over waits for the silence alert's moment on purpose rather than firing when the sync path
+first records the refusal: a refused refresh is not proof of a revoked grant, the auth-recovery
+probe's first retries land inside the two-hour threshold, and this nudge pierces quiet hours — a
+token lapsing at 3am must not wake a household. The daily `DataCompletenessWorker` run remains the
+backstop for members the inactivity pass never sees. "Any" rather than "all" devices, because with
+one refused and another quiet nothing can tell which one the silence belongs to, and the reconnect
+is the one action certain to be needed; once the grant is restored, silence is judged as silence
+again. The incident behind this: a dev OAuth app in Google's "Testing" status expires refresh tokens
+after seven days, Google answered `invalid_grant` ("Token has been expired or revoked"), and the
+caregiver was told the watch had gone quiet.
+
 A rule opts in by declaring `NudgeSpec.PushesWhenOpen`, and `NotificationDispatchWorker`'s
 enqueue sweep turns its open rows into `NotificationDelivery` rows on the next 30-second tick.
 The flag is per rule rather than read off the category, because `PUSH_UNREACHABLE` is
@@ -467,7 +493,10 @@ The iOS notification service extension (and Android's data-message handler) can 
 real `Alert.Message` over authenticated HTTPS when lock-screen details are opted in; until then
 APNs and FCM only see the teaser.
 
-Examples: Safety → `"Urgent — open CardiTrack now"`; Health heart/orange → title `"Heart rate alert"`,
+Examples: Safety → `"Urgent — open CardiTrack now"`, except a `DEVICE_AUTH_BROKEN` push → title
+`"Device needs reconnecting"`, body `"Open CardiTrack to sign it in again so readings keep coming
+through."` (the rule code rides on `NotificationDelivery.NudgeRuleCode`; "Urgent" would send a family
+to check on someone who is fine, when what is needed is a sign-in); Health heart/orange → title `"Heart rate alert"`,
 body `"Open CardiTrack to check on this."`; Health red → urgent open body; Nudges →
 `"Something needs your attention — open CardiTrack"`. Earlier `"Tap to view"` teasers were PHI-free
 but contentless on a lock screen. Shape and privacy are pinned by `FcmPayloadPrivacyTests`.
@@ -678,6 +707,8 @@ NotificationDelivery                    -- transactional outbox; BOTH producers 
 │                                          generically, so without this the ErasureWorker
 │                                          sweep has nothing to filter on
 ├── Category enum, Channel (Push|InApp)
+├── NudgeRuleCode?                      -- the rule behind a Notification-sourced push, so the
+│                                          teaser can name it without loading the row (§7.1)
 ├── State (Pending|Sent|Delivered|Suppressed|Failed|DeadLettered|Undelivered|Answered)
 ├── PushDeviceTokenId?, DedupKey UNIQUE, CollapseKey, ExpiresAt
 ├── ScheduledFor                        -- quiet-hours deferral lands here
@@ -735,7 +766,7 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 
 | Code | Detection | Copy | Silence | Wave |
 |---|---|---|---|---|
-| `DEVICE_AUTH_BROKEN` | `ConnectionStatus` ∈ {`TokenExpired`, `AuthError`} | "Reconnect to restore monitoring — no data is reaching CardiTrack right now." | Safety | **R1** |
+| `DEVICE_AUTH_BROKEN` | `ConnectionStatus` ∈ {`TokenExpired`, `AuthError`} (`NeedsReconnect`). Variants `expired` / `revoked`; `TemplateData.device` names the kind of device ("Fitbit", "device" for `Other`); deep link `carditrack://cardimembers/{id}/devices`. Replaces "gone quiet" rather than joining it: `DEVICE_STALE_LONG` and the device-silence alert stand down for the member while it stands, and `InactivityDetectionWorker` opens it at the moment it would have raised the silence alert (§3). `PushesWhenOpen`, with its own lock-screen teaser (§7.1). | "{Name}'s watch needs reconnecting." (`NudgeCopy`, mobile). Target once the app reads `{device}`: "{Name}'s {device} needs reconnecting — sign in again so readings keep coming through." | Safety | **R1** |
 | `DEVICE_BATTERY_LOW` | Three tiers from `DeviceBattery.GetTier`: **Warning ≤30%**, **Urgent ≤20%** (or a `Low` band with no percentage), **Critical ≤10%** or `Empty`. Reading must be **< 12h** old (`DeviceBattery.FreshFor`; tightened from 24h). Suppressed when a broken-grant notification outranks it. Flat-battery is re-evaluated on sync. Copy variants: `warning` / `urgent` / `urgent_unknown` / `critical` / `critical_empty`. `PushesWhenOpen`. | "{Name}'s watch battery is getting low / running low / almost out / has run out." | Safety | **R1** |
 | `PUSH_UNREACHABLE` | OS permission denied/revoked, safety channel muted, token dead 7d, or `Permanent` send failure | "Alerts can't reach this phone. Turn notifications on so urgent alerts get through." | Safety | R2 (with push) |
 | `NO_ALERT_RECIPIENT` | Every active `UserCardiMember` has `ReceiveAlerts = false` | "Nobody is set to receive {Name}'s alerts. Turn one on so a red alert reaches someone." | Safety | **R3** |
@@ -751,7 +782,7 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 | Code | Detection | Copy | Priority | Silence | Wave |
 |---|---|---|---|---|---|
 | `DEVICE_REMOVED` | No active `DeviceConnection` for a member that previously had one | "{Name} has no connected wearable. Reconnect one to resume monitoring." | Critical | Snooze 7d | **R1** |
-| `DEVICE_STALE_LONG` | `LastSyncDate` > 48h | "{Name}'s watch hasn't synced in two days. A charge or a phone-app open usually fixes it." | High | Snooze 3d | **R1** |
+| `DEVICE_STALE_LONG` | `LastSyncDate` > 48h across the member's `Connected`/`SyncError` devices. Stands down while the device-silence alert is open, and for the whole member while any device `NeedsReconnect` (§3) | "{Name}'s watch hasn't synced in two days. A charge or a phone-app open usually fixes it." | High | Snooze 3d | **R1** |
 | `TIMEZONE_DEFAULT` | `TimeZoneId = "UTC"` and `Locale` implies otherwise | "Set your time zone so 'no activity yet today' and daily summaries use *your* clock." | High | Snooze 30d | **R1** |
 | `BASELINE_STALLED` | `daysCaptured` flat 7d, < 80% coverage gate | "{Name} is {n}/30 days into learning. Alerts switch on once the picture is complete." | High | Snooze 14d | **R1** |
 

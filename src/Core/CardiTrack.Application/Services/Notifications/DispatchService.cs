@@ -106,7 +106,12 @@ public sealed record EnqueueRequest(
     /// because nothing on a delivery otherwise distinguishes "you are the caregiver" from "nobody
     /// else answered".
     /// </summary>
-    bool IsEscalation = false);
+    bool IsEscalation = false,
+    /// <summary>
+    /// The nudge rule a <see cref="DeliverySourceType.Notification"/> delivery pushes, so the
+    /// teaser can name it. Null for alerts and every other source.
+    /// </summary>
+    string? NudgeRuleCode = null);
 
 /// <summary>
 /// The "immediate send, durable retry" orchestration from §2. Awaited within the caller's request
@@ -209,6 +214,7 @@ public class DispatchService : IDispatchService
             Category = request.Category,
             Severity = request.Severity,
             AlertType = request.AlertType,
+            NudgeRuleCode = request.NudgeRuleCode,
             Channel = plan.Channel,
             State = DeliveryState.Pending,
             DedupKey = plan.DedupKey,
@@ -546,6 +552,7 @@ public class DispatchService : IDispatchService
         Category = source.Category,
         Severity = source.Severity,
         AlertType = source.AlertType,
+        NudgeRuleCode = source.NudgeRuleCode,
         Channel = source.Channel,
         State = source.State,
         // A cloned per-device row shares the semantic dedup key but not the DB-unique one — the

@@ -480,6 +480,24 @@ public class DispatchServiceTests
     }
 
     [Fact]
+    public async Task EnqueueAsync_StoresTheNudgeRuleCode_ForTheTeaserToReadAtSendTime()
+    {
+        var userId = SetupRecipientInQuietHours(piercesWhenEscalated: false);
+
+        var delivery = await CreateSut().EnqueueAsync(EscalationRequest(userId, isEscalation: false) with
+        {
+            SourceType = DeliverySourceType.Notification,
+            Category = DeliveryCategory.Safety,
+            Severity = null,
+            AlertType = null,
+            NudgeRuleCode = "DEVICE_AUTH_BROKEN"
+        });
+
+        Assert.NotNull(delivery);
+        Assert.Equal("DEVICE_AUTH_BROKEN", delivery.NudgeRuleCode);
+    }
+
+    [Fact]
     public async Task EnqueueAsync_AnEscalatedRed_IsSentAtOnce_WhenTheRecipientAskedToBeWoken()
     {
         var userId = SetupRecipientInQuietHours(piercesWhenEscalated: true);

@@ -60,7 +60,7 @@ Seen / snooze / dismiss are **owner-only**. A relative's copy of a family notifi
 Two things about this payload are deliberate:
 
 - **Copy is keys, not sentences.** The client owns the words, so wording and translation change in an app release rather than a data migration, and a notification raised last month renders in today's copy.
-- **`cardiMemberName` is resolved per request**, never stored on the row. `templateData` carries counters only — a wearer's name persisted beside the health-derived gap describing them would be an identifier-to-clinical join in the clear ([data_protection_architecture.md](../../../technical/data_protection_architecture.md) §2).
+- **`cardiMemberName` is resolved per request**, never stored on the row. `templateData` carries counters and device kinds only (`DEVICE_AUTH_BROKEN` adds `{"device":"Fitbit"}` so the copy can say whose *what* needs reconnecting; additive, older clients ignore it) — a wearer's name persisted beside the health-derived gap describing them would be an identifier-to-clinical join in the clear ([data_protection_architecture.md](../../../technical/data_protection_architecture.md) §2).
 
 `isOwner` is false for relatives who can see an item somebody else is responsible for: visible so the family knows it is outstanding, never actionable, so one missing emergency contact does not nag five people.
 

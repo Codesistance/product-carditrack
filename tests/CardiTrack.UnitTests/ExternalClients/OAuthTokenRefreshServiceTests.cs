@@ -5,6 +5,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Settings;
 using NSubstitute;
@@ -227,6 +228,31 @@ public class OAuthTokenRefreshServiceTests
 
         await _deviceConnections.Received(1)
             .UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
+    }
+
+    /// <summary>
+    /// Google's answer, verbatim, when an app in "Testing" publishing status lets a refresh token
+    /// reach its seven-day expiry. This is the refusal that left a caregiver being told a watch had
+    /// gone quiet: it must land as TokenExpired, which is what DEVICE_AUTH_BROKEN and the
+    /// "needs reconnecting" hand-over read.
+    /// </summary>
+    [Fact]
+    public async Task RefreshIfExpiredAsync_RecordsGooglesExpiredOrRevokedAnswer_AsNeedingReconnect()
+    {
+        _encryption.Decrypt("enc_refresh").Returns("plain_refresh");
+        _encryption.Decrypt("enc_access").Returns("plain_access");
+        var connection = ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10));
+        const string googleBody =
+            """{ "error": "invalid_grant", "error_description": "Token has been expired or revoked." }""";
+
+        var rejection = await Assert.ThrowsAsync<DeviceGrantRejectedException>(() =>
+            CreateSut(new FakeHttpHandler(googleBody, HttpStatusCode.BadRequest))
+                .RefreshIfExpiredAsync(connection, _config));
+
+        Assert.Equal(connection.Id, rejection.DeviceConnectionId);
+        await _deviceConnections.Received(1)
+            .UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
+        Assert.True(ConnectionStatus.TokenExpired.NeedsReconnect());
     }
 
     // Not every provider answers in the spec's shape. With no code to read, the status is all we

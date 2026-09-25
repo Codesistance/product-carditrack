@@ -34,6 +34,9 @@ public class NotificationDeliveryConfiguration : IEntityTypeConfiguration<Notifi
             .HasConversion<string>()
             .HasMaxLength(50);
 
+        // Same width as Notifications.RuleCode, the column it is copied from.
+        builder.Property(d => d.NudgeRuleCode).HasMaxLength(64);
+
         builder.Property(d => d.Channel)
             .IsRequired()
             .HasConversion<string>()

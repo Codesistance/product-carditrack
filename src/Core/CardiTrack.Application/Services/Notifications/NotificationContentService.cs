@@ -42,7 +42,8 @@ public class NotificationContentService : INotificationContentService
                 return new NotificationContentResponse { Title = alert.Title, Body = alert.Message };
         }
 
-        var (title, body) = PushTeaser.For(delivery.Category, delivery.Severity, delivery.AlertType);
+        var (title, body) = PushTeaser.For(
+            delivery.Category, delivery.Severity, delivery.AlertType, delivery.NudgeRuleCode);
         return new NotificationContentResponse { Title = title, Body = body };
     }
 }

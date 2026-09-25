@@ -5,7 +5,9 @@ using CardiTrack.Application.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Extensions;
+using CardiTrack.Infrastructure.ExternalClients;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -21,11 +23,21 @@ namespace CardiTrack.Infrastructure.Services;
 /// this alert exists to catch. And it only counts during the member's waking hours, on their
 /// anchor clock — overnight silence is a charging watch, not an emergency.
 /// </para>
+/// <para>
+/// Silence with a known cause is not reported as silence. When a device's grant has been refused
+/// (<see cref="ConnectionStatusExtensions.NeedsReconnect"/>) the watch has not gone quiet — we
+/// have lost permission to read it, and "it may need charging" sends the family to fix the wrong
+/// thing. So at the moment this pass would have raised the device-silence alert it asks the gap
+/// resolver for <c>DEVICE_AUTH_BROKEN</c> instead, and a silence alert already standing is
+/// resolved once the grant is found broken. The reconnect nudge is Safety class and pushes, so the
+/// caregiver hears "needs reconnecting" at the time they would otherwise have heard "gone quiet".
+/// </para>
 /// </summary>
 public class InactivityDetectionService : IInactivityDetectionService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDispatchService _dispatch;
+    private readonly INotificationGapResolver _gapResolver;
     private readonly IServiceProvider _services;
     private readonly ILogger<InactivityDetectionService> _logger;
 
@@ -36,14 +48,21 @@ public class InactivityDetectionService : IInactivityDetectionService
     /// constructor dependency: injecting it directly is what broke this worker on every tick
     /// after the probe first shipped. <c>GetDeviceSyncService</c> is the one resolution path.
     /// </param>
+    /// <param name="gapResolver">
+    /// Opens <c>DEVICE_AUTH_BROKEN</c> for a member whose silence is a refused grant. No cycle:
+    /// the resolver depends on neither this service nor <see cref="IDispatchService"/>, and the
+    /// push that follows comes from <c>NotificationDispatchWorker</c>'s sweep, not from here.
+    /// </param>
     public InactivityDetectionService(
         IUnitOfWork unitOfWork,
         IDispatchService dispatch,
+        INotificationGapResolver gapResolver,
         IServiceProvider services,
         ILogger<InactivityDetectionService> logger)
     {
         _unitOfWork = unitOfWork;
         _dispatch = dispatch;
+        _gapResolver = gapResolver;
         _services = services;
         _logger = logger;
     }
@@ -99,7 +118,8 @@ public class InactivityDetectionService : IInactivityDetectionService
 
     /// <summary>
     /// Forces a pull for every syncable connection this member has, and reports whether readings
-    /// arrived — the self-heal that stands between a stalled puller and a false alarm.
+    /// arrived, or whether the provider refused a grant on the way — the self-heal that stands
+    /// between a stalled puller and a false alarm.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -114,10 +134,12 @@ public class InactivityDetectionService : IInactivityDetectionService
     /// window, and it runs at most once per member per pass, gated behind the silence threshold
     /// and the cooldown above — so it costs a provider request only for members already believed
     /// to be dark. A pull that throws is left to the sync path's own status handling and treated
-    /// here as "no data", which returns the caller to raising the alert.
+    /// here as "no data", which returns the caller to raising the alert — except a refused grant,
+    /// which answers the question outright and is reported as
+    /// <see cref="ProbeOutcome.GrantRejected"/>.
     /// </para>
     /// </remarks>
-    private async Task<bool> ProbedIntoLifeAsync(
+    private async Task<ProbeOutcome> ProbeAsync(
         Guid memberId, DateTime utcNow, InactivityDetectionRules rules, CancellationToken ct)
     {
         // A suspended device is not collecting, so it is not one to probe for signs of life.
@@ -125,7 +147,9 @@ public class InactivityDetectionService : IInactivityDetectionService
             .Where(c => c.SuspendedAt is null)
             .ToList();
         if (connections.Count == 0)
-            return false;
+            return ProbeOutcome.StillSilent;
+
+        var grantRejected = false;
 
         foreach (var connection in connections)
         {
@@ -148,6 +172,18 @@ public class InactivityDetectionService : IInactivityDetectionService
             {
                 await sync.SyncCardiMemberAsync(connection);
             }
+            catch (DeviceGrantRejectedException ex)
+            {
+                // The probe's own refresh was the one the provider refused, and the sync path has
+                // already retired the connection to TokenExpired. That is the answer to "why is it
+                // quiet?", and it is not "the watch" — so the caller hands over to the reconnect
+                // nudge rather than raising the silence alert this probe was guarding.
+                grantRejected = true;
+                _logger.LogWarning(
+                    "Inactivity probe found DeviceConnection {DeviceConnectionId}'s grant refused by the "
+                    + "provider ({StatusCode}); it needs reconnecting.",
+                    connection.Id, (int)ex.StatusCode);
+            }
             catch (Exception ex)
             {
                 // Not this pass's problem to solve: the sync path records what a failure means for
@@ -169,9 +205,26 @@ public class InactivityDetectionService : IInactivityDetectionService
                 "Inactivity probe found readings for CardiMember {CardiMemberId} that the scheduled pull had "
                 + "not fetched (latest {LastDataUtc:o}); no device-silence alert raised.",
                 memberId, lastDataUtc);
+            return ProbeOutcome.Revived;
         }
 
-        return revived;
+        // Readings win over a refused grant: a second device still reporting means the member is
+        // not dark, whatever happened to the first. The reconnect nudge still reaches that one at
+        // the daily gap evaluation; it just does not stand in for a silence alert nobody needs.
+        return grantRejected ? ProbeOutcome.GrantRejected : ProbeOutcome.StillSilent;
+    }
+
+    /// <summary>What forcing a pull told us about a member believed to be dark.</summary>
+    private enum ProbeOutcome
+    {
+        /// <summary>Nothing arrived, and nothing explained why — the device-silence alert stands.</summary>
+        StillSilent,
+
+        /// <summary>Readings landed: the silence was our own puller, not the device.</summary>
+        Revived,
+
+        /// <summary>The provider refused a grant while being asked: it needs reconnecting.</summary>
+        GrantRejected,
     }
 
     private async Task<bool> CheckMemberAsync(
@@ -204,6 +257,14 @@ public class InactivityDetectionService : IInactivityDetectionService
         bool IsThisRule(Alert a) => AlertRuleMarkers.Suppresses(
             a, AlertType.Inactivity, AlertRuleMarkers.DeviceSilenceRule);
 
+        // Read before the episode check, because a refused grant bears on an episode already
+        // running as much as on starting one. "Any" rather than "all": with one device refused
+        // and another merely quiet, nothing here can tell which one the silence belongs to, and
+        // the one action guaranteed to be needed is the reconnect. Once that is done the grant is
+        // intact again, and a silence that persists is reported as silence on the next pass.
+        var devices = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(memberId)).ToList();
+        var awaitingReconnect = devices.Any(c => c.SuspendedAt is null && c.ConnectionStatus.NeedsReconnect());
+
         // An episode already running is settled here, above every gate below. Those gates all
         // answer one question — "is now a fair moment to accuse a watch of being dead?" — and
         // none of them bears on whether an accusation already made is over. Closing an alert
@@ -218,30 +279,54 @@ public class InactivityDetectionService : IInactivityDetectionService
         if (existing.Any(IsThisRule))
         {
             var lastData = await LastGranularMinuteAsync(memberId, utcNow, rules.SilenceThresholdMinutes, ct);
-            if (IsReporting(lastData, utcNow, rules) && AlertResolution.Resolve(existing, IsThisRule, utcNow) > 0)
+            if (IsReporting(lastData, utcNow, rules))
             {
-                await _unitOfWork.SaveChangesAsync();
-                // The persisted status line catches up on the next pipeline pass — the Worker
-                // has no medical model to regenerate it here, by design.
+                if (AlertResolution.Resolve(existing, IsThisRule, utcNow) > 0)
+                {
+                    await _unitOfWork.SaveChangesAsync();
+                    // The persisted status line catches up on the next pipeline pass — the Worker
+                    // has no medical model to regenerate it here, by design.
+                }
+
+                return false;
             }
 
-            // Settled either way. Still silent is the cooldown: one unresolved device-silence
-            // alert at a time, or a dead device re-pages every fifteen minutes. Scoped to this
-            // rule rather than the whole Inactivity type — the statistical engine's
-            // activity-decline alert shares the type but asks for a different action ("encourage
-            // movement", not "charge the watch"), and the two may legitimately stand together.
-            return false;
+            // Still silent is the cooldown: one unresolved device-silence alert at a time, or a
+            // dead device re-pages every fifteen minutes. Scoped to this rule rather than the
+            // whole Inactivity type — the statistical engine's activity-decline alert shares the
+            // type but asks for a different action ("encourage movement", not "charge the
+            // watch"), and the two may legitimately stand together.
+            if (!awaitingReconnect)
+                return false;
+
+            // Unless the silence now has a known cause. A grant refused after the alert was raised
+            // — the watch sat unworn, then its token lapsed — means "it may need charging" is
+            // sending the family to fix the wrong thing, so the alert is closed here, above the
+            // waking-hours gate like the resolve above it. The reconnect request below is not: it
+            // pushes, so it waits for the same moment a new silence alert would.
+            if (AlertResolution.Resolve(existing, IsThisRule, utcNow) > 0)
+            {
+                await _unitOfWork.SaveChangesAsync();
+                _logger.LogInformation(
+                    "Resolved the device-silence alert for CardiMember {CardiMemberId}: a device grant "
+                    + "was refused, so it needs reconnecting rather than charging.",
+                    memberId);
+            }
         }
 
-        var rulePrefs = AlertRuleOverrides.FromJson(
-            (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
-        if (!rulePrefs.IsEnabled(AlertRuleCatalogue.DeviceSilence))
-            return false;
+        // A reconnect is not a device-silence alert, so the switch that turns that rule off does
+        // not turn this off — it is the Safety nudge a caregiver cannot mute.
+        if (!awaitingReconnect)
+        {
+            var rulePrefs = AlertRuleOverrides.FromJson(
+                (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
+            if (!rulePrefs.IsEnabled(AlertRuleCatalogue.DeviceSilence))
+                return false;
+        }
 
         // Every device suspended: collection stopped because a caregiver stopped it, and "the watch
         // has gone quiet" would be telling them something they did themselves. A member with no
         // devices at all is a different case and still falls through.
-        var devices = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(memberId)).ToList();
         if (devices.Count > 0 && devices.All(c => c.SuspendedAt is not null))
             return false;
 
@@ -263,14 +348,32 @@ public class InactivityDetectionService : IInactivityDetectionService
         if (IsReporting(lastDataUtc, utcNow, rules))
             return false;
 
+        // The silence alert's moment, with the reason already known. No probe either: every pull
+        // of a refused connection is another request for a token the provider has said no to,
+        // and DeviceAuthRecoveryWorker already retries those on a widening backoff.
+        if (awaitingReconnect)
+        {
+            await RequestReconnectAsync(memberId, ct);
+            return false;
+        }
+
         // Last check before telling a family their father's watch has stopped: pull now, rather
         // than believing a schedule. Silence at this point means no granular readings have
         // landed — which is a claim about our own puller as much as about the device, and the
         // two are indistinguishable from here. A stalled or lagging pull repairs itself in this
         // call, and no alert is raised; a genuinely quiet watch comes back empty and the alert
         // below is worth the alarm it causes.
-        if (await ProbedIntoLifeAsync(memberId, utcNow, rules, ct))
-            return false;
+        switch (await ProbeAsync(memberId, utcNow, rules, ct))
+        {
+            case ProbeOutcome.Revived:
+                return false;
+
+            // The probe's own refresh was refused. The token lapsed between the scheduled pull and
+            // this one, and the silence is that — which is what the caregiver should be told.
+            case ProbeOutcome.GrantRejected:
+                await RequestReconnectAsync(memberId, ct);
+                return false;
+        }
 
         var silentSince = lastDataUtc is null
             ? "for several hours"
@@ -308,6 +411,36 @@ public class InactivityDetectionService : IInactivityDetectionService
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Asks the gap resolver to evaluate this member now, which opens <c>DEVICE_AUTH_BROKEN</c>
+    /// for the refused connection — the "needs reconnecting" alert, sent in place of "gone quiet".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Raised here, at the silence alert's moment, rather than the instant the sync path records
+    /// the refusal. A refused refresh is not proof of a revoked grant (providers answer
+    /// <c>invalid_grant</c> during their own incidents), and <c>DeviceAuthRecoveryService</c>'s
+    /// first retries land inside the silence threshold — so a refusal that heals on its own never
+    /// reaches the caregiver, exactly as that service intends. And since this nudge is Safety class
+    /// and pierces quiet hours, the waking-hours gate above is what keeps a token lapsing at 3am
+    /// from waking a household over something that can wait until morning.
+    /// </para>
+    /// <para>
+    /// Idempotent: the reconciler converges on the row that already exists, and the dispatch sweep
+    /// pushes once per arming, so re-asking on each pass while the member stays dark costs one
+    /// evaluation and never a second push. The daily <c>DataCompletenessWorker</c> run remains the
+    /// backstop for members this pass never sees — one with no granular series at all.
+    /// </para>
+    /// </remarks>
+    private async Task RequestReconnectAsync(Guid memberId, CancellationToken ct)
+    {
+        await _gapResolver.ResolveForCardiMemberAsync(memberId, ct);
+        _logger.LogInformation(
+            "CardiMember {CardiMemberId} is silent because a device grant was refused; asked for the "
+            + "reconnect nudge instead of raising a device-silence alert.",
+            memberId);
     }
 
     /// <summary>

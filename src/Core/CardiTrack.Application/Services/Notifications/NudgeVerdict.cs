@@ -20,7 +20,9 @@ public sealed record NudgeVerdict
     /// </summary>
     public string Discriminator { get; private init; } = string.Empty;
 
-    /// <summary>Substitutions for the copy. Counters only — never a name or a metric value.</summary>
+    /// <summary>
+    /// Substitutions for the copy. Counters and device kinds only — never a name or a metric value.
+    /// </summary>
     public IReadOnlyDictionary<string, object> TemplateData { get; private init; }
         = new Dictionary<string, object>();
 
