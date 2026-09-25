@@ -1143,12 +1143,14 @@ public class GoogleHealthApiClientTests
 
     /// <summary>
     /// A 200 body that fails to parse is the likeliest to be the wearer's readings: length and
-    /// error locations only, no payload preview. The reader's own error text is left out too: for
-    /// a malformed number it quotes the token, which is a reading.
+    /// error positions only, no payload preview. The reader's own error text is left out too (for
+    /// a malformed number it quotes the token, which is a reading), and so is the JSON path, which
+    /// is built from the body's property names.
     /// </summary>
     [Theory]
     [InlineData("""{ "dataPoints": [ { "sleep": provider-free-text-sentinel """, BodySentinel)]
     [InlineData("""{ "dataPoints": [ { "value": 9876.54.321 } ] }""", "9876.54.321")]
+    [InlineData("""{ "dataPoints": [ { "provider-free-text-sentinel": tru } ] }""", BodySentinel)]
     public async Task GetSleepAsync_KeepsThePayloadOutOfTheMessage_WhenTheBodyIsNotJson(
         string body, string mustNotAppear)
     {
