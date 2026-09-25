@@ -283,7 +283,7 @@
                                      how much is done, "Pop's profile 3 of 5", and the next step,
                                      which a tap opens (SetupProgressLine). The set-up reminders
                                      the rings stand for leave the rows below. -->
-                                <VerticalStackLayout x:Name="SetupRingList" Spacing="10" Margin="14,0,13,0" IsVisible="False"/>
+                                <VerticalStackLayout x:Name="SetupRingList" Spacing="8" Margin="14,0,13,0" IsVisible="False"/>
                                 <ContentView x:Name="SingleNudgeHost" IsVisible="False" Margin="14,0,13,0"/>
                                 <ScrollView x:Name="NudgeScroller"
                                             Orientation="Horizontal"

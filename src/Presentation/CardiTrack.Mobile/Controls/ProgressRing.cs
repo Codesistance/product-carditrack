@@ -16,7 +16,9 @@ public sealed class ProgressRing : GraphicsView
         HeightRequest = 40;
         InputTransparent = true;
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-        _ring.Track = (Color)resources["InputBackground"];
+        // The field border's grey: the rows it sits on are InputBackground, which the track
+        // would vanish into.
+        _ring.Track = (Color)resources["InputBorder"];
         _ring.Fill = (Color)resources["StatusGreen"];
     }
 
@@ -39,7 +41,8 @@ public sealed class ProgressRing : GraphicsView
 
         public void Draw(ICanvas canvas, RectF dirtyRect)
         {
-            const float stroke = 4.5f;
+            // In proportion to the ring, so a small one isn't all stroke.
+            var stroke = Math.Max(2.5f, Math.Min(dirtyRect.Width, dirtyRect.Height) / 9f);
             var size = Math.Min(dirtyRect.Width, dirtyRect.Height) - stroke;
             var x = dirtyRect.Center.X - size / 2;
             var y = dirtyRect.Center.Y - size / 2;

@@ -1505,21 +1505,28 @@ public partial class DashboardPage : ContentPage
         var row = new Grid
         {
             ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto)],
-            ColumnSpacing = 12,
-            Padding = new Thickness(12, 10),
+            ColumnSpacing = 10,
+            Padding = new Thickness(10, 7),
         };
-        row.Add(new ProgressRing { Progress = line.Fraction, VerticalOptions = LayoutOptions.Center }, 0, 0);
+        row.Add(new ProgressRing
+        {
+            Progress = line.Fraction,
+            WidthRequest = 28,
+            HeightRequest = 28,
+            VerticalOptions = LayoutOptions.Center,
+        }, 0, 0);
         row.Add(new VerticalStackLayout
         {
-            Spacing = 2,
+            Spacing = 0,
             VerticalOptions = LayoutOptions.Center,
             Children =
             {
-                new Label { Text = line.Title, Style = (Style)resources["Body1SemiBoldDark"] },
+                new Label { Text = line.Title, Style = (Style)resources["Body1SemiBoldDark"], FontSize = 14 },
                 new Label
                 {
                     Text = line.Next,
                     Style = (Style)resources["Body2"],
+                    FontSize = 12,
                     LineBreakMode = LineBreakMode.TailTruncation,
                 },
             },
@@ -1527,8 +1534,8 @@ public partial class DashboardPage : ContentPage
         row.Add(new Image
         {
             Source = "icon_chevron.svg",
-            WidthRequest = 20,
-            HeightRequest = 20,
+            WidthRequest = 16,
+            HeightRequest = 16,
             VerticalOptions = LayoutOptions.Center,
         }, 2, 0);
 
