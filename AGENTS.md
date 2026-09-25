@@ -32,8 +32,9 @@ local; `--platform both` sends Android to CI as well. Store pushes are a separat
 step: `deploy-mobile-dev.yml`, by tag, on `main`.
 
 ### Test everything: `scripts/agent/test-all.sh`
-Builds the server filter once (Release) and runs the unit and integration suites — with
-`TESTCONTAINERS_RYUK_DISABLED=true` on Linux (this VM), Ryuk on elsewhere. Both need a Docker daemon. It says outright that
+Builds the server filter once (Release) and runs the unit and integration suites, with Ryuk on
+unless the environment sets `TESTCONTAINERS_RYUK_DISABLED=true` (this VM should; see below).
+Both need a Docker daemon. It says outright that
 `CardiTrack.E2ETests` is empty and `CardiTrack.Mobile` has no test project — do not report
 those as green.
 
@@ -65,9 +66,9 @@ Docker 29 must use `fuse-overlayfs` with the containerd snapshotter disabled and
 `sudo usermod -aG docker "$USER"` and open a new terminal (never `chmod 666` the socket — that
 hands every process on the VM root through Docker). `scripts/agent/services-up.sh` does the
 install, the daemon configuration and the group membership when Docker is absent. Run tests
-with `TESTCONTAINERS_RYUK_DISABLED=true` (matches CI) — the reaper container cannot run in this
-VM. On a workstation leave Ryuk on: without it, a run that is killed part-way leaves its
-Postgres containers running.
+with `TESTCONTAINERS_RYUK_DISABLED=true` (matches CI) — this VM is thrown away, so nothing a
+killed run leaks outlives it. Nowhere else sets it: on a workstation or in the dev container,
+Ryuk is what removes a killed run's Postgres containers from Docker Desktop.
 
 Apply EF migrations once the db is up (command in README). MedGemma/Ollama and the AI
 pipeline are optional (`docker compose --profile full ...`) and not needed for the core stack.
