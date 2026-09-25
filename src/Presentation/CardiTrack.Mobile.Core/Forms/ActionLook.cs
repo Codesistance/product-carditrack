@@ -63,7 +63,8 @@ public static class ActionLooks
             "connect" => new ActionLook(ActionTone.Blue, "icon_btn_connect.svg"),
             "add" => new ActionLook(ActionTone.Blue, "icon_btn_plus.svg"),
             "edit" => new ActionLook(ActionTone.Blue, "icon_btn_edit.svg"),
-            "ok" or "done" or "close" or "confirm" or "acknowledge" => new ActionLook(ActionTone.Blue, "icon_check_white.svg"),
+            "close" or "resolve" => new ActionLook(ActionTone.Blue, "icon_btn_resolve.svg"),
+            "ok" or "done" or "confirm" or "acknowledge" => new ActionLook(ActionTone.Blue, "icon_check_white.svg"),
             _ => new ActionLook(ActionTone.Blue, null),
         };
     }

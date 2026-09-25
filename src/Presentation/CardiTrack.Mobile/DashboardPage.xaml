@@ -266,11 +266,8 @@
                                      rules and its "no number yet" offer live in the control so the
                                      alert detail screen (M1-11) can present the same four actions
                                      rather than a second set worded differently — see
-                                     Controls/QuickActionRow.xaml. The negative margin cancels that
-                                     control's shadow gutter, so the tiles keep the card's 16-point
-                                     rhythm while their shadows stay whole. -->
-                                <controls:QuickActionRow x:Name="QuickActions"
-                                                         Margin="-10,-10,-10,-13"/>
+                                     Controls/QuickActionRow.xaml. -->
+                                <controls:QuickActionRow x:Name="QuickActions"/>
 
                                 <!-- Poor-sleep nudge (issue #188): points at the real Sleep alert
                                      StatisticalAlertWorker already raises (AlertType.Sleep) rather

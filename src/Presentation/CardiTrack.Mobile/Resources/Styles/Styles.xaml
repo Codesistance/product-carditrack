@@ -577,15 +577,10 @@
         <Setter Property="StrokeShape">
             <RoundRectangle CornerRadius="9"/>
         </Setter>
-        <Setter Property="Shadow">
-            <!-- A small offset, not none. A zero-offset shadow sits directly behind the tile and
-                 only its blur escapes the edges, which on Android amounts to nothing you can see:
-                 the row read as painted-on rather than pressable. Two points down and a wide, faint
-                 blur keeps it a glow rather than a hard drop, while giving the eye the edge it
-                 needs to read the tile as raised. At 0.30 over 10 the four tiles each carried a
-                 visible dark rim and the row read as cut out of the card behind it. -->
-            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.16" Radius="14" Offset="0,2"/>
-        </Setter>
+        <!-- No shadow: the tiles are raised by their fill instead — QuickActionTintBrush and
+             QuickActionTintRedBrush, the action buttons' light-top gradient in the tiles' own
+             tints (2026-09-25). The shadow read as a glow at best and a dark rim at worst, and on
+             Android it needed a gutter round the whole row to escape clipping. -->
     </Style>
 
     <!-- The corner of every standard card — the two styles below, and the cards that build their

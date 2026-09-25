@@ -60,8 +60,7 @@ public partial class QuickActionRow : ContentView
     /// Icon-only, 36-square tiles packed to the right, for a screen where the four actions sit
     /// inside a card rather than as a row of their own — Alert Details' member card. The tiles
     /// keep their tints, so SOS is still the red one and a dimmed tile still reads as
-    /// unavailable; the words move into each tile's accessible name, and the shadow goes, because
-    /// it is drawn for a raised tile on the page and inside a card it is a second elevation.
+    /// unavailable, and the words move into each tile's accessible name.
     /// </summary>
     public bool Compact
     {
@@ -79,9 +78,6 @@ public partial class QuickActionRow : ContentView
             Tiles.ColumnDefinitions.Add(new ColumnDefinition(compact ? GridLength.Auto : GridLength.Star));
         Tiles.ColumnSpacing = compact ? 8 : 10;
         Tiles.HorizontalOptions = compact ? LayoutOptions.End : LayoutOptions.Fill;
-        // The full-size row insets itself by its tiles' shadow (see the XAML); without a shadow
-        // there is nothing to leave room for.
-        Tiles.Margin = compact ? new Thickness(0) : new Thickness(10, 10, 10, 13);
 
         foreach (var (tile, icon, label) in new (Border, Image, Label)[]
                  {
@@ -98,7 +94,6 @@ public partial class QuickActionRow : ContentView
             {
                 tile.WidthRequest = tile.HeightRequest = Tile;
                 tile.Padding = new Thickness(0);
-                tile.Shadow = null!;
             }
             else
             {
@@ -106,7 +101,6 @@ public partial class QuickActionRow : ContentView
                 tile.ClearValue(WidthRequestProperty);
                 tile.ClearValue(HeightRequestProperty);
                 tile.ClearValue(Border.PaddingProperty);
-                tile.ClearValue(ShadowProperty);
             }
 
             if (tile.Content is VerticalStackLayout stack)

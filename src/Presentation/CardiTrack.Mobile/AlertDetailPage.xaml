@@ -92,31 +92,51 @@
                              this card's top-right corner, in the severity's own colour, in a
                              column of its own so the avatar and the name/type stack keep their
                              places and alignment exactly as before. -->
-                        <Border Style="{StaticResource ElevatedCard}">
-                            <VerticalStackLayout Spacing="10">
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                    <controls:MemberAvatar x:Name="Avatar" BoxWidth="52"/>
-                                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                        <Label x:Name="MemberNameLabel"
-                                               Style="{StaticResource Body1SemiBoldDark}"/>
-                                        <Label x:Name="MemberTypeLabel"
-                                               Style="{StaticResource Body2}"/>
-                                    </VerticalStackLayout>
-                                    <Label x:Name="SeverityBadge"
-                                           Grid.Column="2"
-                                           HorizontalOptions="End"
-                                           VerticalOptions="Start"
-                                           FontFamily="QuicksandSemiBold"
-                                           FontSize="12"/>
-                                </Grid>
+                        <!-- The severity rail the Alerts list card and the dashboard alert rows
+                             wear (AlertListCard): the colour underneath, the white card inset 4
+                             from its left edge so the colour rounds into the corners. Coloured in
+                             code with the banner (ApplySeverity), so the person and the alert
+                             about them read in one colour down the screen. -->
+                        <Border x:Name="MemberSeverityRail"
+                                StrokeThickness="0"
+                                Padding="4,0,0,0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
+                            </Border.StrokeShape>
+                            <Border.Shadow>
+                                <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
+                            </Border.Shadow>
+                            <Border BackgroundColor="{StaticResource White}"
+                                    StrokeThickness="0"
+                                    Padding="14,14,13,17">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
+                                </Border.StrokeShape>
+                                <VerticalStackLayout Spacing="10">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                        <controls:MemberAvatar x:Name="Avatar" BoxWidth="52"/>
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                            <Label x:Name="MemberNameLabel"
+                                                   Style="{StaticResource Body1SemiBoldDark}"/>
+                                            <Label x:Name="MemberTypeLabel"
+                                                   Style="{StaticResource Body2}"/>
+                                        </VerticalStackLayout>
+                                        <Label x:Name="SeverityBadge"
+                                               Grid.Column="2"
+                                               HorizontalOptions="End"
+                                               VerticalOptions="Start"
+                                               FontFamily="QuicksandSemiBold"
+                                               FontSize="12"/>
+                                    </Grid>
 
-                                <!-- The four ways to reach this person, inside their card and under a
-                                     hairline: icon-only and packed to the right, where they sat as a
-                                     full row of labelled tiles further down the page. Same control as
-                                     the Dashboard's (Compact) — tints, dimming and taps unchanged. -->
-                                <BoxView Style="{StaticResource DividerLine}"/>
-                                <controls:QuickActionRow x:Name="QuickActions" Compact="True"/>
-                            </VerticalStackLayout>
+                                    <!-- The four ways to reach this person, inside their card and under a
+                                         hairline: icon-only and packed to the right, where they sat as a
+                                         full row of labelled tiles further down the page. Same control as
+                                         the Dashboard's (Compact) — tints, dimming and taps unchanged. -->
+                                    <BoxView Style="{StaticResource DividerLine}"/>
+                                    <controls:QuickActionRow x:Name="QuickActions" Compact="True"/>
+                                </VerticalStackLayout>
+                            </Border>
                         </Border>
 
                         <!-- No padding on the banner itself: the handled strip runs edge to edge
@@ -492,7 +512,7 @@
                             <Button x:Name="CloseButton"
                                     Text="Close"
                                     Style="{StaticResource ActionButtonBlue}"
-                                    ImageSource="icon_check_white.svg"
+                                    ImageSource="icon_btn_resolve.svg"
                                     Clicked="OnCloseClicked"/>
                             <Button x:Name="UndoAcknowledgeButton"
                                     Text="Undo"

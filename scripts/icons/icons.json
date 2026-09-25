@@ -910,6 +910,13 @@
    "name": "undo",
    "group": "onAmber",
    "size": 24
+  },
+  {
+   "file": "icon_btn_resolve.svg",
+   "source": "iconpark",
+   "name": "check-one",
+   "group": "white",
+   "size": 24
   }
  ]
 }

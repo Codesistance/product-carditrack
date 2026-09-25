@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**105 icons**, **35 distinct colours**, **3 referenced nowhere**.
+**106 icons**, **35 distinct colours**, **3 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -23,7 +23,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 
 | Colour | Icons | Also known as |
 | --- | --- | --- |
-| `#FFFFFF` | 35 | White |
+| `#FFFFFF` | 36 | White |
 | `#153D66` | 24 | icons.json brand outer stroke |
 | `#3175B9` | 19 | icons.json brand and activity fill, steel blue |
 | `#939DAA` | 14 | MutedText |
@@ -175,6 +175,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_btn_edit.svg` | `#FFFFFF` | ActionLook |
 | `icon_btn_later.svg` | `#FFFFFF` | ActionLook, NoDevicePopupPage |
 | `icon_btn_plus.svg` | `#FFFFFF` | ActionLook |
+| `icon_btn_resolve.svg` | `#FFFFFF` | ActionLook, AlertDetailPage |
 | `icon_btn_save.svg` | `#FFFFFF` | ActionLook, ContactEditPopupPage, MedicalNotesEditPopupPage, QuestionCard |
 | `icon_btn_undo.svg` | `#5A3300` | ActionLook, AlertDetailPage |
 | `icon_calendar.svg` | `#939DAA` | DateField, DeviceCard |

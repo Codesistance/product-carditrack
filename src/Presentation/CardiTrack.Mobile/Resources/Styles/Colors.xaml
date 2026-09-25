@@ -143,6 +143,22 @@
          and should not be dragged along by a dashboard decision. -->
     <Color x:Key="QuickActionTintRed">#F9D1D1</Color>
 
+    <!-- The quick-action tiles' fills as the action buttons' gradient — a lighter first sliver for
+         the lit top edge, the tint through the middle, a little deeper at the foot — so the tiles
+         read as raised without the shadow they used to cast. -->
+    <LinearGradientBrush x:Key="QuickActionTintBrush" StartPoint="0.5,0" EndPoint="0.5,1">
+        <GradientStop Color="#E4F1FC" Offset="0.0" />
+        <GradientStop Color="#D6EAFA" Offset="0.08" />
+        <GradientStop Color="#C8E2F7" Offset="0.55" />
+        <GradientStop Color="#B7D6F0" Offset="1.0" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="QuickActionTintRedBrush" StartPoint="0.5,0" EndPoint="0.5,1">
+        <GradientStop Color="#FDE8E8" Offset="0.0" />
+        <GradientStop Color="#FBDCDC" Offset="0.08" />
+        <GradientStop Color="#F9D1D1" Offset="0.55" />
+        <GradientStop Color="#F1BFBF" Offset="1.0" />
+    </LinearGradientBrush>
+
     <Color x:Key="AlertTileRed">#24E53E3E</Color>
     <Color x:Key="AlertTileOrange">#24ED7B2F</Color>
     <Color x:Key="AlertTileYellow">#24F0A92E</Color>
