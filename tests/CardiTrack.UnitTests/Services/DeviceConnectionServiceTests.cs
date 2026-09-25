@@ -1976,6 +1976,64 @@ public class DeviceConnectionServiceTests
         Assert.NotNull(suspended.SuspendedAt);
     }
 
+    // Copilot review round 7 on #1290: grant cleanup is reached by every failure after the
+    // exchange, and never throws itself.
+
+    [Fact]
+    public async Task Disconnect_StillSucceeds_WhenTheProviderTimesOutRevoking()
+    {
+        // The removal has committed and the tokens are gone; reporting failure now would be untrue,
+        // and a retry would have nothing left to revoke with.
+        var removed = SeedAccount("ACCOUNT_A", isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([removed]);
+        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>())
+            .Returns<Task<bool>>(_ => throw new TaskCanceledException());
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, removed.Id);
+
+        Assert.False(removed.IsActive);
+        await _unitOfWork.Received(1).CommitTransactionAsync();
+    }
+
+    [Fact]
+    public async Task CompleteConnection_RefusedReconnect_ReportsTheRefusal_EvenWhenTheCleanupTimesOut()
+    {
+        var existing = SeedAccount("ACCOUNT_A", status: ConnectionStatus.TokenExpired);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns();
+        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>())
+            .Returns<Task<bool>>(_ => throw new TaskCanceledException());
+
+        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(() =>
+            ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id)));
+
+        Assert.Equal(DeviceConnectionException.DifferentAccount, ex.Code);
+    }
+
+    [Fact]
+    public async Task CompleteConnection_CancelledDuringTheIdentityLookup_RollsBackThroughTheCleanupPath()
+    {
+        _accountIdentity.TryResolveAsync(Arg.Any<DeviceType>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task<string?>>(_ => throw new OperationCanceledException());
+        GrantReturns();
+
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
+            {
+                Code = "code",
+                State = initiation.State,
+                CodeVerifier = initiation.CodeVerifier,
+            }));
+
+        // Reached the cleanup path; with the account unknown it is not revoked, since an unknown
+        // account may be one a live connection reads through.
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
+    }
+
     [Fact]
     public async Task CompleteConnection_Add_DoesNotMatch_OnOneIdentifierWhenTheOtherConflicts()
     {

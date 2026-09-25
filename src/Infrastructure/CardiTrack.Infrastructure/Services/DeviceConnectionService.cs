@@ -472,22 +472,24 @@ public class DeviceConnectionService : IDeviceConnectionService
             ? JsonSerializer.Serialize(config.Scopes)
             : JsonSerializer.Serialize(tokens.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
-        // Which account the grant is for, asked of the provider before any of our own writes, so
-        // the transaction below still spans nothing but the database.
-        var account = new GrantAccount(
-            await _accountIdentity.TryResolveAsync(deviceType, tokens.AccessToken, ct),
-            tokens.ProviderUserId);
-
-        // The exchange is done and the transaction opens here, so it spans only our own writes. It
-        // holds the member's device lock, so a second grant completing at the same moment reads
-        // what this one stored — the account match and the primary flag both depend on it.
+        // From here on the provider has issued a grant, so every way out that does not store it goes
+        // through the cleanup in the catch below — the identity lookup and the transaction's
+        // opening included. Rolling back with no transaction open is a no-op.
+        var account = new GrantAccount(HealthUserId: null, tokens.ProviderUserId);
         DeviceConnection connection;
         StoredGrant outcome;
         try
         {
-            // Inside the try: a transaction that cannot even be opened is a failure after the
-            // exchange like any other, and must reach the cleanup below. Rolling back with none
-            // open is a no-op.
+            // Which account the grant is for, asked of the provider before the transaction opens,
+            // so the transaction spans nothing but the database.
+            account = account with
+            {
+                HealthUserId = await _accountIdentity.TryResolveAsync(deviceType, tokens.AccessToken, ct),
+            };
+
+            // The transaction holds the member's device lock, so a second grant completing at the
+            // same moment reads what this one stored — the account match and the primary flag
+            // both depend on it.
             await _unitOfWork.BeginTransactionAsync();
             await _unitOfWork.DeviceConnections.LockMemberDevicesAsync(payload.CardiMemberId, ct);
             var existing = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(payload.CardiMemberId)).ToList();
@@ -784,10 +786,11 @@ public class DeviceConnectionService : IDeviceConnectionService
                 RefreshToken = tokens.RefreshToken is null ? null : _encryption.Encrypt(tokens.RefreshToken),
             }, ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
-            // Best effort: the caller is already being told why the grant was refused, and a failure
-            // here must not replace that with something less useful.
+            // Best effort, and never thrown: the caller is already being told why the grant was
+            // refused, and a failure here — a provider timeout included, which surfaces as a
+            // cancellation even on a token of our own — must not replace that.
             _logger.LogWarning(ex,
                 "Could not end an unstored {DeviceType} grant for CardiMember {CardiMemberId}.",
                 deviceType, payload.CardiMemberId);
@@ -796,11 +799,25 @@ public class DeviceConnectionService : IDeviceConnectionService
 
     private async Task RevokeUnlessSharedAsync(DeviceConnection retired, CancellationToken ct)
     {
-        var memberConnections = await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(retired.CardiMemberId);
-        if (await GrantMayBeSharedAsync(retired, memberConnections))
-            return;
+        // Never thrown to the caller. Every use runs after the change it cleans up after has
+        // committed, and that change is the caregiver's answer: a remove or a replacement that
+        // committed must not come back as a failure because the provider timed out — a retry would
+        // find no token left to revoke with, and the caller would be told something untrue.
+        try
+        {
+            var memberConnections = await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(retired.CardiMemberId);
+            if (await GrantMayBeSharedAsync(retired, memberConnections))
+                return;
 
-        await _grantRevoker.TryRevokeAsync(retired, ct);
+            await _grantRevoker.TryRevokeAsync(retired, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Could not end the {DeviceType} grant of DeviceConnection {DeviceConnectionId}; "
+                + "its tokens are already discarded here.",
+                retired.DeviceType, retired.Id);
+        }
     }
 
     /// <summary>

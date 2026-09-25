@@ -46,7 +46,10 @@ public class DeviceAccountIdentityResolver : IDeviceAccountIdentityResolver
         {
             return await client.GetHealthUserIdAsync(accessToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // Only the caller's own cancellation escapes. An HTTP timeout also surfaces as a cancellation
+        // (TaskCanceledException), but it is a provider that did not answer — an unknown account,
+        // like any other failure here — and letting it escape would abandon a grant already issued.
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             // Warning, not Error: the grant itself succeeded and is stored. What is lost is only the
             // ability to recognise it as an account the member already has, and the first sync
