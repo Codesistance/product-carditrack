@@ -232,7 +232,8 @@
                         <!-- Figma M1-09 D: the watch-with-a-cross, a title that names the state,
                              one line naming the member, and the filled primary button — connecting
                              a device is the next step for this member, not an optional aside, so it
-                             does not wear the outline style of one. -->
+                             does not wear the outline style of one. Hidden until the member card's
+                             no-device button (beside Alerts) is tapped — see OnNoDeviceTapped. -->
                         <Border x:Name="NoDeviceCard"
                                 IsVisible="False"
                                 Style="{StaticResource ElevatedCard}"

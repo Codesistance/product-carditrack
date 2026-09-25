@@ -114,6 +114,7 @@ public partial class DashboardPage : ContentPage
         HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
         HeroCard.DaybookTapped += OnDaybookTapped;
         HeroCard.AlertsTapped += OnHeroAlertsTapped;
+        HeroCard.NoDeviceTapped += OnNoDeviceTapped;
         HeroCard.QaTapped += OnHeroQaTapped;
         HeroCard.AdviseTapped += OnHeroAdviseTapped;
         HeroCard.WeatherTapped += async (_, weather) => await _popups.ShowWeatherAsync(weather);
@@ -661,8 +662,13 @@ public partial class DashboardPage : ContentPage
             PausedBannerLabel.Text = $"Monitoring is paused until {until} — we're not collecting data or raising alerts.";
         }
 
-        // No device (M1-09d)
-        NoDeviceCard.IsVisible = !data.Device.HasActiveConnection;
+        // No device (M1-09d). Said by the struck-through watch beside Alerts on the member card; the
+        // full card opens from that button (OnNoDeviceTapped) rather than sitting over the
+        // dashboard on every visit. Kept open across reloads for the member it was opened for,
+        // and closed for anybody else, so a periodic refresh never snaps it shut mid-read.
+        var noDevice = !data.Device.HasActiveConnection;
+        HeroCard.SetNoDevice(noDevice);
+        NoDeviceCard.IsVisible = noDevice && _noDeviceCardOpenFor == data.CardiMemberId;
         NoDeviceLabel.Text = $"Connect {firstName}'s device so CardiTrack can start watching over them";
 
         // Data-pipeline freshness (deterministic — see MemberInsightsCalculator). Suppressed
@@ -985,6 +991,32 @@ public partial class DashboardPage : ContentPage
             route += $"&memberName={Uri.EscapeDataString(name)}";
 
         await Shell.Current.GoToTabAsync(route);
+    }
+
+    /// <summary>The member the no-device card was opened for, or null while it is closed.</summary>
+    private Guid? _noDeviceCardOpenFor;
+
+    /// <summary>
+    /// The member card's no-device button: opens the no-device card, or closes it on a second
+    /// tap. A quick fade in, the same timing the stale banner uses, so the card is seen arriving
+    /// rather than the screen jumping under the caregiver's thumb.
+    /// </summary>
+    private void OnNoDeviceTapped(object? sender, EventArgs e)
+    {
+        if (_lastData is not { } data)
+            return;
+
+        if (NoDeviceCard.IsVisible)
+        {
+            _noDeviceCardOpenFor = null;
+            NoDeviceCard.IsVisible = false;
+            return;
+        }
+
+        _noDeviceCardOpenFor = data.CardiMemberId;
+        NoDeviceCard.Opacity = 0;
+        NoDeviceCard.IsVisible = true;
+        _ = NoDeviceCard.FadeToAsync(1, 180, Easing.CubicOut);
     }
 
     private async void OnViewAllAlertsTapped(object? sender, TappedEventArgs e) =>

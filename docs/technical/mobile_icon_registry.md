@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**96 icons**, **34 distinct colours**, **3 referenced nowhere**.
+**97 icons**, **34 distinct colours**, **3 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -28,7 +28,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#3175B9` | 19 | icons.json brand and activity fill, steel blue |
 | `#939DAA` | 14 | MutedText |
 | `#1884DC` | 11 | Primary |
-| `#C42F2F` | 10 | DangerRed |
+| `#C42F2F` | 11 | DangerRed |
 | `#174E86` | 7 | PrimaryDark |
 | `#36C09B` | 7 | StatusGreen |
 | `#727272` | 7 | Body / Body2 ink |
@@ -176,6 +176,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_check_white.svg` | `#FFFFFF` | AlertDetailPage, ChoiceSheetPage |
 | `icon_clipboard.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, InviteWaitPage |
 | `icon_clipboard_ink.svg` | `#D9DCE1` `#727272` | CardiMemberDetailPage |
+| `icon_device_off.svg` | `#C42F2F` | StatusHeroCard |
 | `icon_edit.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage, MedicalInformationPage |
 | `icon_expand.svg` | `#153D66` | MetricTrendCard |
 | `icon_export_white.svg` | `#FFFFFF` | ExportAction |

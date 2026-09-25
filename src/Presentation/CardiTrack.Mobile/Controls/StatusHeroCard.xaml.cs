@@ -253,6 +253,15 @@ public partial class StatusHeroCard : ContentView
     private void OnAlertsTapped(object? sender, TappedEventArgs e) =>
         AlertsTapped?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>Raised by the no-device button beside Alerts; the page shows or hides its card.</summary>
+    public event EventHandler? NoDeviceTapped;
+
+    /// <summary>Shows the no-device button while this member has no active device connection.</summary>
+    public void SetNoDevice(bool noDevice) => NoDeviceButton.IsVisible = noDevice;
+
+    private void OnNoDeviceTapped(object? sender, TappedEventArgs e) =>
+        NoDeviceTapped?.Invoke(this, EventArgs.Empty);
+
     private void OnQaTapped(object? sender, TappedEventArgs e)
     {
         if (_pendingQuestionId is { } questionId)

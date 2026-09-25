@@ -577,6 +577,14 @@
    "size": 24
   },
   {
+   "file": "icon_device_off.svg",
+   "source": "material",
+   "name": "watch_off",
+   "fill": "#C42F2F",
+   "token": "DangerRed",
+   "size": 24
+  },
+  {
    "file": "icon_metric_sleep.svg",
    "source": "material",
    "name": "bed",
