@@ -93,21 +93,30 @@
                              column of its own so the avatar and the name/type stack keep their
                              places and alignment exactly as before. -->
                         <Border Style="{StaticResource ElevatedCard}">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                <controls:MemberAvatar x:Name="Avatar" BoxWidth="52"/>
-                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                    <Label x:Name="MemberNameLabel"
-                                           Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="MemberTypeLabel"
-                                           Style="{StaticResource Body2}"/>
-                                </VerticalStackLayout>
-                                <Label x:Name="SeverityBadge"
-                                       Grid.Column="2"
-                                       HorizontalOptions="End"
-                                       VerticalOptions="Start"
-                                       FontFamily="QuicksandSemiBold"
-                                       FontSize="12"/>
-                            </Grid>
+                            <VerticalStackLayout Spacing="10">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                    <controls:MemberAvatar x:Name="Avatar" BoxWidth="52"/>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                        <Label x:Name="MemberNameLabel"
+                                               Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <Label x:Name="MemberTypeLabel"
+                                               Style="{StaticResource Body2}"/>
+                                    </VerticalStackLayout>
+                                    <Label x:Name="SeverityBadge"
+                                           Grid.Column="2"
+                                           HorizontalOptions="End"
+                                           VerticalOptions="Start"
+                                           FontFamily="QuicksandSemiBold"
+                                           FontSize="12"/>
+                                </Grid>
+
+                                <!-- The four ways to reach this person, inside their card and under a
+                                     hairline: icon-only and packed to the right, where they sat as a
+                                     full row of labelled tiles further down the page. Same control as
+                                     the Dashboard's (Compact) — tints, dimming and taps unchanged. -->
+                                <BoxView Style="{StaticResource DividerLine}"/>
+                                <controls:QuickActionRow x:Name="QuickActions" Compact="True"/>
+                            </VerticalStackLayout>
                         </Border>
 
                         <!-- No padding on the banner itself: the handled strip runs edge to edge
@@ -393,13 +402,6 @@
                                        LineBreakMode="WordWrap"/>
                             </VerticalStackLayout>
                         </Border>
-
-                        <!-- The same four actions the Dashboard's CardiMember card offers, and the
-                             same control — this screen used to carry its own pair of full-width
-                             Call/Message buttons, worded differently and with their own
-                             availability rules. -->
-                        <!-- 2 points of separation, less the control's own shadow gutter. -->
-                        <controls:QuickActionRow x:Name="QuickActions" Margin="-10,-8,-10,-13"/>
 
                         <Label Text="More Options"
                                Style="{StaticResource DashboardSectionTitle}"
