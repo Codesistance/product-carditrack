@@ -904,18 +904,18 @@ public partial class MemberChatPage : ContentView
 
         // The reply is a chain of model calls and legitimately takes a while — an empty slot
         // for that long reads as a swallowed message. The pending panel says it's being worked
-        // on: the bot mark starts breathing immediately, and the waiting copy the cycler fetches
-        // fills in beside it when it lands.
-        PendingTextLabel.Text = string.Empty;
+        // on: the bot mark starts breathing immediately, and each step the server reports
+        // replaces the line beside it as that step starts, so the wait says what is actually
+        // happening. Progress<T> posts each report back to this (UI) thread.
+        PendingTextLabel.Text = SendingLine;
         PendingPanel.IsVisible = true;
         ScrollToLatest();
-        var waitingCts = new CancellationTokenSource();
-        _ = CycleWaitingLinesAsync(message, waitingCts.Token);
+        var steps = new Progress<MemberChatStep>(step => PendingTextLabel.Text = step.Text);
 
         try
         {
-            var response = await _api.SendMemberChatMessageAsync(
-                _memberId, new MemberChatMessageRequest { Message = message });
+            var response = await _api.StreamMemberChatMessageAsync(
+                _memberId, new MemberChatMessageRequest { Message = message }, steps);
             // The first send of a window is what creates the session, so this is where the
             // thread learns which conversation it is — the export action needs it named.
             _currentSessionId = response.SessionId;
@@ -937,11 +937,6 @@ public partial class MemberChatPage : ContentView
         finally
         {
             ScrollToLatest();
-
-            // Cancel before Dispose so the cycler's in-flight await throws out of its loop
-            // rather than racing a disposed token source.
-            waitingCts.Cancel();
-            waitingCts.Dispose();
             PendingPanel.IsVisible = false;
             _isSending = false;
             SendButton.IsEnabled = true;
@@ -949,56 +944,9 @@ public partial class MemberChatPage : ContentView
         }
     }
 
-    /// <summary>Rotation just past two full breaths of <see cref="PendingBotIndicator"/>'s pulse,
-    /// so each line stays long enough to read but the wait never looks stuck on one.</summary>
-    private const int WaitingLineRotationMs = 3600;
-
-    /// <summary>Shown when the waiting-sentence fetch fails — the wait still narrates itself
-    /// rather than sitting silent next to the animation.</summary>
-    private static readonly string[] FallbackWaitingLines =
-    [
-        "Looking at the readings…",
-        "Checking what stands out…",
-        "Putting the answer together…",
-    ];
-
-    /// <summary>
-    /// Fetches the three LLM-written waiting lines for this question and rotates them through the
-    /// pending panel until the send resolves and cancels this. Fire-and-forget from
-    /// <see cref="SendAsync"/>: the lines are decoration, so every failure here downgrades to the
-    /// canned set — and a fetch that loses the race to the reply itself simply stops.
-    /// </summary>
-    private async Task CycleWaitingLinesAsync(string message, CancellationToken ct)
-    {
-        IReadOnlyList<string> lines;
-        try
-        {
-            var waiting = await _api.GetMemberChatWaitingSentencesAsync(
-                _memberId, new MemberChatMessageRequest { Message = message }, ct);
-            lines = waiting.Sentences.Count > 0 ? waiting.Sentences : FallbackWaitingLines;
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-        catch (Exception)
-        {
-            lines = FallbackWaitingLines;
-        }
-
-        for (var i = 0; !ct.IsCancellationRequested; i = (i + 1) % lines.Count)
-        {
-            PendingTextLabel.Text = lines[i];
-            try
-            {
-                await Task.Delay(WaitingLineRotationMs, ct);
-            }
-            catch (TaskCanceledException)
-            {
-                return;
-            }
-        }
-    }
+    /// <summary>What the pending bubble says between the tap and the server's first step — the
+    /// few seconds the pre-check takes, before the stream has anything to report.</summary>
+    private const string SendingLine = "Reading your question…";
 
     private void SetState(bool loading = false, bool loaded = false, bool error = false)
     {

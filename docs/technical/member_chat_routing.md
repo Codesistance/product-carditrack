@@ -535,6 +535,33 @@ It runs on the replies that claim to answer: `status`, `analysis`, `inference`, 
 
 **Recording only, for now.** Nothing acts on the verdict yet, and the reply is the same either way. The miss rate by workflow and by cause (`@chat.answer_check:(partial OR no)` grouped by `@chat.answer_gap`) decides whether a retry is worth what it costs. The planned next step retries `notAddressed` once with the gap named, and answers `notInData` with a plain statement of what is not on file.
 
+### Streaming the send (added 2026-09-25)
+
+A send can take minutes, most of it in the clinical read. Until now the app filled the wait with three lines a separate Rewrite-slot call wrote from the question (`waiting-sentences`), which described checking that might not be happening. The app now sends through `POST …/members/{id}/messages/stream` and shows what is actually happening.
+
+The endpoint returns `text/event-stream`:
+
+| Event | When | Data |
+|---|---|---|
+| `step` | as each stage starts | `{ step, text }`: `understanding` (the pre-check passed), `planning`, `reading` (the clinical read), `rereading` (inference's second read), `writing`, `checking` (the answer check) |
+| `answer` | after the turn is saved | the same `MemberChatMessageResponse` the JSON endpoint returns |
+| `done` | last | `{}` |
+| `error` | instead of `answer`, if the send fails after the stream started | `{ status, message }`: the status and message the JSON endpoint would have answered with |
+
+A comment line (`: keep-alive`) goes out every 15 s while nothing else does, so a silent clinical read does not look like a dead connection to a proxy or a mobile network.
+
+**Statuses are kept.** Nothing is written until the first event, and the first `step` is reported only after the malicious pre-check has passed. So the failures that have their own status (403, 400 for validation or refusal, 404 for access) still arrive as ordinary JSON errors, exactly as from the JSON endpoint. Only failures later in the pipeline (a saturated model host, the send budget running out) can arrive as an `error` event on a 200. Paths answered in code (a journal yes or no, a message with no question, a settings confirmation) report no steps; their `answer` opens the stream.
+
+**The step text is code, not model output**, and lives on the server (`MemberChatStep`), so the copy can change without an app release. No step carries the question, the member or any reading.
+
+**The pipeline never waits on the reader.** Steps go through a channel: the service reports synchronously, and the controller writes to the network on its own. The send runs under the same `MemberChat:SendBudgetSeconds` budget as the JSON endpoint, and the controller shares its failure mapping with it, so the two cannot disagree.
+
+**Hanging up.** A caller that disconnects cancels the send, which rolls back as it always has. A write that fails on a dead connection without a cancellation lets the send finish and save, so the reply is in the history the next time the app loads it. The app treats an `answer` without a following `done` as the answer, since the turn is saved before the `answer` goes out.
+
+**A send still running when its conversation is ended or reopened (decided 2026-09-25: kept as is).** Within one open chat sheet the app prevents this: "new conversation", the history list and "continue" are all disabled while a reply is on its way. The remaining case is a caregiver who closes the sheet mid-send, reopens it and ends or switches the conversation before the first send finishes, or does so from a second device. The send then saves its question and reply into the conversation it was asked in, which by then is in the history list rather than on screen. Nothing is lost, and the reply sits beside the question it answers. A journal offer that reply made cannot be confirmed from an ended conversation and lapses unapplied, which is the safe direction for a destructive offer. The alternative considered was to mark a conversation "send in flight" in the database and refuse end and reopen with a 409 until the reply lands, letting a reopened sheet show "still answering". It was not taken: it needs a schema change and a staleness rule for sends that die mid-flight, to prevent an outcome that loses nothing.
+
+**Kept for older builds.** `POST …/messages` and `POST …/waiting-sentences` stay: an app built before streaming still calls both. The new app calls neither.
+
 ## 8. Failure posture
 
 **Uncertainty asks; failure descends.**

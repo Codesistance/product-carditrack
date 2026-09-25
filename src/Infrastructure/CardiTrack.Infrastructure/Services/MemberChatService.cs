@@ -502,8 +502,13 @@ public class MemberChatService : IMemberChatService
         _answerChecker = answerChecker;
     }
 
+    public Task<MemberChatMessageResponse> SendMessageAsync(
+        Guid userId, Guid cardiMemberId, string message, CancellationToken ct = default) =>
+        SendMessageAsync(userId, cardiMemberId, message, progress: null, ct);
+
     public async Task<MemberChatMessageResponse> SendMessageAsync(
-        Guid userId, Guid cardiMemberId, string message, CancellationToken ct = default)
+        Guid userId, Guid cardiMemberId, string message, IProgress<MemberChatStep>? progress,
+        CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
 
@@ -547,7 +552,7 @@ public class MemberChatService : IMemberChatService
             }
             else
             {
-                result = await RouteAndAnswerAsync(flattened, session, userId, cardiMemberId, member, utcNow, ct);
+                result = await RouteAndAnswerAsync(flattened, session, userId, cardiMemberId, member, utcNow, progress, ct);
             }
 
             MemberChatTelemetry.TagWorkflow(result.Workflow);
@@ -618,6 +623,7 @@ public class MemberChatService : IMemberChatService
         Guid cardiMemberId,
         CardiMember? member,
         DateTime utcNow,
+        IProgress<MemberChatStep>? progress,
         CancellationToken ct)
     {
         var history = await BuildHistoryBlockAsync(session.Id, member?.Name, ct);
@@ -672,6 +678,11 @@ public class MemberChatService : IMemberChatService
                 + "alerts, or recent activity instead.");
         }
 
+        // The first step a stream reports, and deliberately not before this point: until the
+        // pre-check has passed, a send can still end as its own 400, and a stream that had
+        // already started could only report that as an event on a 200.
+        progress?.Report(MemberChatStep.Understanding);
+
         // The routing call — every message goes through it; the malicious verdict above already
         // ran, so the pre-check stays a standalone hard stop ahead of it on every path.
         ChatRouteDecision? route = null;
@@ -706,7 +717,7 @@ public class MemberChatService : IMemberChatService
         var result = route is not null
             ? await DispatchRoutedAsync(
                 route, forModel, triage.Usage, triage.Result.IsAboutThisMoment,
-                userId, cardiMemberId, member, session, history, utcNow, ct)
+                userId, cardiMemberId, member, session, history, utcNow, progress, ct)
             : triage.Result switch
             {
                 { IsAboutThisMoment: true } =>
@@ -715,7 +726,7 @@ public class MemberChatService : IMemberChatService
                     await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
                 { IsCasualOrSocial: true } or { IsOffTopic: true } =>
                     await SteerAsync(forModel, triage.Usage, triage.Result.IsCasualOrSocial, MemberVoice.For(member), ct),
-                _ => await AnalyseAsync(forModel, triage.Usage, cardiMemberId, member, history, utcNow, ct),
+                _ => await AnalyseAsync(forModel, triage.Usage, cardiMemberId, member, history, utcNow, progress, ct),
             };
 
         if (routeCall is { } billedRoute)
@@ -725,7 +736,7 @@ public class MemberChatService : IMemberChatService
             result = result with { Calls = InsertAfterTriage(result.Calls, billedRoute) };
         }
 
-        return await CheckAnswerAsync(result, forModel, history, member?.Name, ct);
+        return await CheckAnswerAsync(result, forModel, history, member?.Name, progress, ct);
     }
 
     /// <summary>
@@ -748,10 +759,12 @@ public class MemberChatService : IMemberChatService
     /// </remarks>
     private async Task<MemberChatWorkflowResult> CheckAnswerAsync(
         MemberChatWorkflowResult result, string forModel, ChatHistory history, string? memberName,
-        CancellationToken ct)
+        IProgress<MemberChatStep>? progress, CancellationToken ct)
     {
         if (_answerChecker is null || !AnswersTheQuestion(result.Workflow))
             return result;
+
+        progress?.Report(MemberChatStep.Checking);
 
         try
         {
@@ -822,10 +835,12 @@ public class MemberChatService : IMemberChatService
         CardiMember? member,
         ChatHistory history,
         DateTime utcNow,
+        IProgress<MemberChatStep>? progress,
         CancellationToken ct)
     {
         // The planner sees only what this workflow's catalogue entry allows — the registry slice
         // and the parse gate are the same list, so prompt and validator cannot drift.
+        progress?.Report(MemberChatStep.Planning);
         var plan = await _planner.PlanAsync(
             flattened, history.Full, ChatWorkflowCatalogue.Find(MemberChatWorkflow.Analysis)!.AllowedDatasets, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
@@ -840,9 +855,11 @@ public class MemberChatService : IMemberChatService
         var clinicalOnly = ClinicalOnlyData.Wrap(
             $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(flattened, clinicalOnly, history.QuestionsOnly);
+        progress?.Report(MemberChatStep.Reading);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
 
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
+        progress?.Report(MemberChatStep.Writing);
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var voice = MemberVoice.For(member);
@@ -879,9 +896,11 @@ public class MemberChatService : IMemberChatService
         CardiMember? member,
         ChatHistory history,
         DateTime utcNow,
+        IProgress<MemberChatStep>? progress,
         CancellationToken ct)
     {
         var allowed = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Inference)!.AllowedDatasets;
+        progress?.Report(MemberChatStep.Planning);
         var plan = await _planner.PlanAsync(flattened, history.Full, allowed, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
@@ -902,9 +921,11 @@ public class MemberChatService : IMemberChatService
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
             flattened, clinicalOnly, history.QuestionsOnly, InferenceClinicalInstructions);
+        progress?.Report(MemberChatStep.Reading);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<InferenceClinicalAiResponse>(clinicalPrompt, ct);
 
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
+        progress?.Report(MemberChatStep.Writing);
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var voice = MemberVoice.For(member);
@@ -930,6 +951,7 @@ public class MemberChatService : IMemberChatService
         {
             var reaskPrompt = BuildClinicalPrompt(
                 flattened, clinicalOnly, history.QuestionsOnly, InferenceClinicalInstructions + InferenceReaskAddendum);
+            progress?.Report(MemberChatStep.Rereading);
             var reasked = await _medicalAi.GenerateStructuredWithUsageAsync<InferenceClinicalAiResponse>(reaskPrompt, ct);
             var reaskRewrite = await _rewriteAi.GenerateWithUsageAsync(
                 BuildRewritePrompt(flattened, new DeidentifiedFindings(reasked.Result.Analysis)), ct);
@@ -1002,9 +1024,11 @@ public class MemberChatService : IMemberChatService
         CardiMember? member,
         ChatHistory history,
         DateTime utcNow,
+        IProgress<MemberChatStep>? progress,
         CancellationToken ct)
     {
         var allowed = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Investigation)!.AllowedDatasets;
+        progress?.Report(MemberChatStep.Planning);
         var plan = await _planner.PlanAsync(flattened, history.Full, allowed, ct);
         var anchor = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
@@ -1028,9 +1052,11 @@ public class MemberChatService : IMemberChatService
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
             flattened, clinicalOnly, history.QuestionsOnly, InvestigationClinicalInstructions);
+        progress?.Report(MemberChatStep.Reading);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
 
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
+        progress?.Report(MemberChatStep.Writing);
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var voice = MemberVoice.For(member);
@@ -1072,6 +1098,7 @@ public class MemberChatService : IMemberChatService
         MemberChatSession session,
         ChatHistory history,
         DateTime utcNow,
+        IProgress<MemberChatStep>? progress,
         CancellationToken ct)
     {
         // Descend on failure and on repeated ambiguity alike: analysis is the rung that serves
@@ -1160,9 +1187,9 @@ public class MemberChatService : IMemberChatService
             MemberChatWorkflow.SteerOffTopic =>
                 await SteerAsync(flattened, triageUsage, casual: false, MemberVoice.For(member), ct),
             MemberChatWorkflow.Inference =>
-                await InferAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
+                await InferAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, progress, ct),
             MemberChatWorkflow.Investigation =>
-                await InvestigateAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
+                await InvestigateAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, progress, ct),
             // The one rung that changes what the app holds. Its handler resolves the ask on the
             // Rewrite slot, reads or offers, and holds a destructive offer on the session for the
             // next turn — see JournalChatActions.
@@ -1175,8 +1202,8 @@ public class MemberChatService : IMemberChatService
             // Named so a catalogue entry cannot hide behind the default. Unparsed, unimplemented
             // and failed-clarify still land here via `_`.
             MemberChatWorkflow.Analysis =>
-                await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
-            _ => await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
+                await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, progress, ct),
+            _ => await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, progress, ct),
         };
     }
 
