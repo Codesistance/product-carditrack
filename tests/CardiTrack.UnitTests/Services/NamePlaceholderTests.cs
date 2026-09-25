@@ -101,6 +101,19 @@ public class NamePlaceholderTests
             $"{NamePlaceholder.Token} slept well. {NamePlaceholder.Token} walked. {NamePlaceholder.Token} rested.",
             NamePlaceholder.Redact("Mary Ann Smith slept well. Mary Ann walked. Mary rested.", "Mary Ann Smith"));
 
+    /// <summary>
+    /// The API trims names but does not collapse the space inside them, and a caregiver can type
+    /// "Mary  Ann". Neither the stored spacing nor the text's may decide whether a word escapes.
+    /// </summary>
+    [Theory]
+    [InlineData("Mary  Ann Smith")]
+    [InlineData("Mary Ann\tSmith")]
+    [InlineData("Mary Ann Smith")]
+    public void Redact_MatchesAcrossAnyRunOfWhitespace(string storedFullName) =>
+        Assert.Equal(
+            $"{NamePlaceholder.Token} slept. {NamePlaceholder.Token} walked. {NamePlaceholder.Token} rested.",
+            NamePlaceholder.Redact("Mary Ann  Smith slept. Mary\tAnn walked. Mary  Ann rested.", storedFullName));
+
     [Fact]
     public void Redact_DoesNotMatchInsideALongerWord() =>
         Assert.Equal("Marginal changes only.", NamePlaceholder.Redact("Marginal changes only.", "Mar"));

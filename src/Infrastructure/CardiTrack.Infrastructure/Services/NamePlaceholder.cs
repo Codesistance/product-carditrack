@@ -162,23 +162,22 @@ internal static partial class NamePlaceholder
         if (string.IsNullOrEmpty(text) || string.IsNullOrWhiteSpace(name))
             return text;
 
-        var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var forms = new List<string>();
+        // Words, not characters: the gap between two words matches any run of whitespace, so a
+        // name stored or written with a double space or a tab ("Mary  Ann") is still matched whole.
+        // Rebuilding the forms with single spaces would miss it and leave all but the first word.
+        var words = name.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var redacted = text;
         for (var count = words.Length; count >= 1; count--)
         {
-            var form = string.Join(' ', words, 0, count);
             // A single-letter first name is not worth matching: the word boundary would fire on
             // every stray initial in the text and say nothing about who the member is. The full
             // name is always matched, however short.
-            if (count < words.Length && form.Length <= 1)
+            if (count < words.Length && count == 1 && words[0].Length <= 1)
                 continue;
-            if (!forms.Contains(form, StringComparer.OrdinalIgnoreCase))
-                forms.Add(form);
-        }
 
-        var redacted = text;
-        foreach (var form in forms.OrderByDescending(f => f.Length))
-            redacted = Regex.Replace(redacted, $@"\b{Regex.Escape(form)}\b", Token, RegexOptions.IgnoreCase);
+            var pattern = string.Join(@"\s+", words.Take(count).Select(Regex.Escape));
+            redacted = Regex.Replace(redacted, $@"\b{pattern}\b", Token, RegexOptions.IgnoreCase);
+        }
 
         return redacted;
     }

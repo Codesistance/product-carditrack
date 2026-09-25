@@ -81,6 +81,22 @@ public class CardiMemberNameValidatorTests
     }
 
     /// <summary>
+    /// A blank first name that was sent is a blank first name — refused — not an invitation to
+    /// take one from the legacy field instead.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ASentButBlankFirstName_IsRefused_EvenWithALegacyNameBesideIt(string first)
+    {
+        var create = _create.Validate(Create(first, legacy: "Mary Ann Smith"));
+        var update = _update.Validate(Update(first, legacy: "Mary Ann Smith"));
+
+        Assert.Contains(create.Errors, e => e.PropertyName == nameof(CreateCardiMemberRequest.FirstName));
+        Assert.Contains(update.Errors, e => e.PropertyName == nameof(UpdateCardiMemberRequest.FirstName));
+    }
+
+    /// <summary>
     /// A current client sends all three — the parts, plus the joined name for an API from before
     /// the split. The parts win; the two are never mixed.
     /// </summary>
