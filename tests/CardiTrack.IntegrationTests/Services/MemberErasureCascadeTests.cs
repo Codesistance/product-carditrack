@@ -278,6 +278,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "MemberAiHolds",
             "GenerationLeases",
             "DeviceHistoryRepulls",
+            "PendingGrantRevocations",
             "ExportConsents",
             "Reports",
             "DeviceConnections",
@@ -347,7 +348,45 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         await EraseAsync(memberId);
 
         await _grantRevoker.Received(1).TryRevokeAsync(
-            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId), Arg.Any<CancellationToken>());
+            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId && c.RefreshToken != SeededQueuedToken),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The token of the grant the standard seed queues for revocation.</summary>
+    private const string SeededQueuedToken = "enc(seeded_queued_refresh)";
+
+    /// <summary>
+    /// A grant already queued for the Worker — a device removed moments before the erasure — holds
+    /// the only remaining copy of its token, and the queue is deleted with the member. So it is
+    /// ended here like the live ones, not left for a Worker pass that would find the row gone.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_EndsItsQueuedGrants_AndDeletesTheQueue()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+        var queuedConnectionId = Guid.NewGuid();
+        using (var seed = _services.CreateScope())
+        {
+            var db = seed.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            db.PendingGrantRevocations.Add(new PendingGrantRevocation
+            {
+                CardiMemberId = memberId,
+                DeviceConnectionId = queuedConnectionId,
+                DeviceType = DeviceType.Fitbit,
+                Token = "enc(queued_refresh)",
+                NextAttemptAt = DateTime.UtcNow.AddMinutes(5),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await EraseAsync(memberId);
+
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.Id == queuedConnectionId && c.RefreshToken == "enc(queued_refresh)"),
+            Arg.Any<CancellationToken>());
+        using var scope = _services.CreateScope();
+        var check = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await check.PendingGrantRevocations.CountAsync(r => r.CardiMemberId == memberId));
     }
 
     /// <summary>
@@ -361,8 +400,9 @@ public class MemberErasureCascadeTests : IAsyncLifetime
     public async Task AGrantThatCouldNotBeRevoked_IsNamedInTheReport()
     {
         var (_, _, memberId) = await SeedMemberWithDataAsync();
+        // The live connection's grant fails; the seeded queued one is ended.
         _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>())
-            .Returns(false);
+            .Returns(ci => ci.Arg<DeviceConnection>().RefreshToken == SeededQueuedToken);
 
         var report = await EraseAsync(memberId);
 
@@ -652,6 +692,14 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             RequestedByUserId = user.Id,
             FromDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
             ToDate = DateOnly.FromDateTime(DateTime.UtcNow),
+        });
+        db.PendingGrantRevocations.Add(new PendingGrantRevocation
+        {
+            CardiMemberId = member.Id,
+            DeviceConnectionId = Guid.NewGuid(),
+            DeviceType = DeviceType.Fitbit,
+            Token = SeededQueuedToken,
+            NextAttemptAt = DateTime.UtcNow.AddMinutes(5),
         });
         db.MetricAlarmStates.Add(new MetricAlarmState
         {

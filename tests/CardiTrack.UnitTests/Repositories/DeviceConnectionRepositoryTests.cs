@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.UnitTests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -472,6 +473,38 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
 
         await secondUow.CommitTransactionAsync();
         await firstUow.CommitTransactionAsync();
+    }
+
+    // ── PendingGrantRevocations ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task PendingGrantRevocations_GetDueAsync_ReturnsOnlyDueEntries_OldestFirst()
+    {
+        using var scope = fixture.CreateScope();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var memberId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        PendingGrantRevocation Entry(DateTime due) => new()
+        {
+            CardiMemberId = memberId,
+            DeviceConnectionId = Guid.NewGuid(),
+            DeviceType = DeviceType.Fitbit,
+            Token = "enc_refresh",
+            NextAttemptAt = due,
+        };
+        var later = Entry(now.AddMinutes(-1));
+        var earlier = Entry(now.AddMinutes(-10));
+        var notYet = Entry(now.AddMinutes(10));
+        await uow.PendingGrantRevocations.AddRangeAsync([later, earlier, notYet]);
+        await uow.SaveChangesAsync();
+
+        var due = (await uow.PendingGrantRevocations.GetDueAsync(now, max: 1000))
+            .Where(r => r.CardiMemberId == memberId)
+            .ToList();
+
+        Assert.Equal([earlier.Id, later.Id], due.Select(r => r.Id));
+        Assert.Equal(3, (await uow.PendingGrantRevocations.GetByCardiMemberIdAsync(memberId)).Count);
     }
 
     // ── UpdateTokenAsync ─────────────────────────────────────────────────────────

@@ -30,7 +30,6 @@ public class DeviceConnectionServiceTests
     private readonly IEncryptionService _encryption = Substitute.For<IEncryptionService>();
     private readonly IOAuthCodeExchangeService _codeExchange = Substitute.For<IOAuthCodeExchangeService>();
     private readonly IOAuthTokenRefreshService _tokenRefresh = Substitute.For<IOAuthTokenRefreshService>();
-    private readonly IOAuthGrantRevoker _grantRevoker = Substitute.For<IOAuthGrantRevoker>();
     private readonly IDeviceAccountIdentityResolver _accountIdentity = Substitute.For<IDeviceAccountIdentityResolver>();
     private readonly IDistributedCache _cache =
         new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
@@ -97,7 +96,6 @@ public class DeviceConnectionServiceTests
             new CardiMemberAccessService(_unitOfWork),
             new NoOpNotificationGapResolver(),
             Options.Create(new List<DeviceProviderSettings> { fitbit }),
-            _grantRevoker,
             _accountIdentity);
     }
 
@@ -471,7 +469,10 @@ public class DeviceConnectionServiceTests
         Assert.Equal(DeviceConnectionException.DifferentAccount, ex.Code);
         Assert.True(ex.IsConflict);
         Assert.Equal("enc(old_refresh)", existing.RefreshToken);
-        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        // Nothing of the refused grant is committed; only its queued revocation is saved,
+        // after the rollback.
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
     }
 
     [Fact]
@@ -1006,50 +1007,6 @@ public class DeviceConnectionServiceTests
         Assert.Empty(device.Scopes);
     }
 
-    /// <summary>
-    /// The provider is told before the token is forgotten. Order is the whole point: after the
-    /// nulling there is nothing left to revoke with, and the grant would stay live at Google —
-    /// CardiTrack still listed among the apps that can read this person's health data — while the
-    /// app showed the device as disconnected.
-    /// </summary>
-    [Fact]
-    public async Task Disconnect_RevokesTheGrant_WithTheTokenItHeld()
-    {
-        // Revoked after the commit, from a copy taken before the tokens were discarded — so the
-        // provider still gets the refresh token that ends the grant.
-        var connection = SeedConnection(isPrimary: true);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
-
-        await CreateSut().DisconnectAsync(_userId, _memberId, connection.Id);
-
-        await _grantRevoker.Received(1).TryRevokeAsync(
-            Arg.Is<DeviceConnection>(c => c.Id == connection.Id && c.RefreshToken == "enc(refresh)"),
-            Arg.Any<CancellationToken>());
-        Assert.Null(connection.RefreshToken);
-        Received.InOrder(() =>
-        {
-            _unitOfWork.CommitTransactionAsync();
-            _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>());
-        });
-    }
-
-    /// <summary>
-    /// Disconnecting is the caregiver's decision and it is irreversible here whatever Google says,
-    /// so a provider that will not answer cannot fail the request they made.
-    /// </summary>
-    [Fact]
-    public async Task Disconnect_StillCompletes_WhenTheGrantCannotBeRevoked()
-    {
-        var connection = SeedConnection(isPrimary: true);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
-        _grantRevoker.TryRevokeAsync(connection, Arg.Any<CancellationToken>()).Returns(false);
-
-        await CreateSut().DisconnectAsync(_userId, _memberId, connection.Id);
-
-        Assert.False(connection.IsActive);
-        Assert.Null(connection.RefreshToken);
-    }
-
     [Fact]
     public async Task Disconnect_SoftDeletesAndDiscardsTokens()
     {
@@ -1338,35 +1295,6 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
-    public async Task CompleteConnection_Replace_StoresTheNewDevice_RetiresTheOld_AndHandsOverPrimary()
-    {
-        var old = SeedAccount("ACCOUNT_A", isPrimary: true);
-        old.RefreshToken = "enc(old_refresh)";
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old]);
-        GrantIsForAccount("ACCOUNT_B");
-        GrantReturns(access: "new_access", refresh: "new_refresh");
-        DeviceConnection? added = null;
-        await _unitOfWork.DeviceConnections.AddAsync(Arg.Do<DeviceConnection>(c => added = c));
-
-        var device = await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id));
-
-        Assert.NotNull(added);
-        Assert.True(added!.IsPrimary);
-        Assert.Equal("ACCOUNT_B", added.HealthUserId);
-        Assert.False(old.IsActive);
-        Assert.False(old.IsPrimary);
-        Assert.Equal(ConnectionStatus.Disconnected, old.ConnectionStatus);
-        Assert.Null(old.RefreshToken);
-        Assert.Equal(old.Id, device.ReplacedDeviceId);
-        // Both writes in the one save, so a failure cannot leave the member with neither device.
-        await _unitOfWork.Received(1).SaveChangesAsync();
-        // Revoked from a copy taken before the tokens were discarded, and only after the save.
-        await _grantRevoker.Received(1).TryRevokeAsync(
-            Arg.Is<DeviceConnection>(c => c.Id == old.Id && c.RefreshToken == "enc(old_refresh)"),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task CompleteConnection_Replace_KeepsTheOldDevice_WhenTheExchangeFails()
     {
         var old = SeedAccount("ACCOUNT_A", isPrimary: true);
@@ -1384,23 +1312,6 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
-    public async Task CompleteConnection_Replace_OnTheReplacedDevicesOwnAccount_JustReconnectsIt()
-    {
-        var old = SeedAccount("ACCOUNT_A", isPrimary: true, status: ConnectionStatus.TokenExpired);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old]);
-        GrantIsForAccount("ACCOUNT_A");
-        GrantReturns(access: "new_access");
-
-        var device = await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id));
-
-        await _unitOfWork.DeviceConnections.DidNotReceive().AddAsync(Arg.Any<DeviceConnection>());
-        Assert.True(old.IsActive);
-        Assert.Equal(ConnectionStatus.Connected, old.ConnectionStatus);
-        Assert.Null(device.ReplacedDeviceId);
-        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
-    }
-
-    [Fact]
     public async Task CompleteConnection_Replace_RefusesAnAccountAnotherOfTheMembersDevicesHolds()
     {
         var old = SeedAccount("ACCOUNT_A", isPrimary: true);
@@ -1414,39 +1325,10 @@ public class DeviceConnectionServiceTests
 
         Assert.Equal(DeviceConnectionException.AccountAlreadyConnected, ex.Code);
         Assert.True(old.IsActive);
-        await _unitOfWork.DidNotReceive().SaveChangesAsync();
-    }
-
-    [Fact]
-    public async Task CompleteConnection_Replace_LeavesTheOldGrant_WhenTheNewAccountIsUnknown()
-    {
-        // Revoking a Google refresh token ends the whole grant, so if the new grant might be on the
-        // same account, revoking the old one could take the connection just stored down with it.
-        var old = SeedAccount("ACCOUNT_A", isPrimary: true);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old]);
-        GrantIsForAccount(null);
-        GrantReturns();
-
-        await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id));
-
-        Assert.False(old.IsActive);
-        Assert.Null(old.RefreshToken);
-        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
-    }
-
-    [Fact]
-    public async Task CompleteConnection_Replace_LeavesTheOldGrant_WhenAnotherConnectionSharesIt()
-    {
-        var old = SeedAccount("ACCOUNT_A", isPrimary: true);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old]);
-        _unitOfWork.DeviceConnections.AnyOtherActiveWithHealthUserIdAsync(old.Id, "ACCOUNT_A").Returns(true);
-        GrantIsForAccount("ACCOUNT_B");
-        GrantReturns();
-
-        await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id));
-
-        Assert.False(old.IsActive);
-        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
+        // Nothing of the refused grant is committed; only its queued revocation is saved,
+        // after the rollback.
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
     }
 
     [Fact]
@@ -1493,20 +1375,6 @@ public class DeviceConnectionServiceTests
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSut().EnsureCanReplaceAsync(_userId, _memberId, old.Id));
-    }
-
-    [Fact]
-    public async Task Disconnect_KeepsTheGrant_WhenAnotherConnectionReadsThroughTheSameAccount()
-    {
-        var connection = SeedAccount("ACCOUNT_A", isPrimary: true);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
-        _unitOfWork.DeviceConnections.AnyOtherActiveWithHealthUserIdAsync(connection.Id, "ACCOUNT_A").Returns(true);
-
-        await CreateSut().DisconnectAsync(_userId, _memberId, connection.Id);
-
-        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
-        Assert.False(connection.IsActive);
-        Assert.Null(connection.RefreshToken);
     }
 
     [Fact]
@@ -1668,57 +1536,6 @@ public class DeviceConnectionServiceTests
         Assert.Null(device.NextSyncAt);
     }
 
-    // Copilot review on #1290: an identity is best-effort, so a sibling whose account was never
-    // captured may share the grant — and revocation is grant-wide.
-
-    [Theory]
-    [InlineData("ACCOUNT_A", null)]
-    [InlineData(null, "ACCOUNT_B")]
-    [InlineData(null, null)]
-    public async Task Disconnect_KeepsTheGrant_WhenASiblingOnTheSameApiMightShareIt(
-        string? removedAccount, string? siblingAccount)
-    {
-        var removed = SeedConnection(isPrimary: true);
-        removed.HealthUserId = removedAccount;
-        var sibling = SeedConnection(deviceType: DeviceType.GooglePixelWatch);
-        sibling.HealthUserId = siblingAccount;
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([removed, sibling]);
-
-        await CreateSut().DisconnectAsync(_userId, _memberId, removed.Id);
-
-        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
-        Assert.False(removed.IsActive);
-        Assert.Null(removed.RefreshToken);
-    }
-
-    [Fact]
-    public async Task Disconnect_RevokesTheGrant_WhenTheSiblingIsKnownToBeAnotherAccount()
-    {
-        var removed = SeedAccount("ACCOUNT_A", isPrimary: true);
-        var sibling = SeedAccount("ACCOUNT_B");
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([removed, sibling]);
-
-        await CreateSut().DisconnectAsync(_userId, _memberId, removed.Id);
-
-        await _grantRevoker.Received(1).TryRevokeAsync(
-            Arg.Is<DeviceConnection>(c => c.Id == removed.Id), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task CompleteConnection_Replace_LeavesTheOldGrant_WhenASiblingsAccountIsUnknown()
-    {
-        var old = SeedAccount("ACCOUNT_A", isPrimary: true);
-        var sibling = SeedConnection();
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old, sibling]);
-        GrantIsForAccount("ACCOUNT_B");
-        GrantReturns();
-
-        await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id));
-
-        Assert.False(old.IsActive);
-        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
-    }
-
     // Copilot review on #1290: the rules over a member's devices (one primary, one connection per
     // account, never the last collecting device suspended) are each a read of the whole set then a
     // write, so every change takes the member's device lock before it reads.
@@ -1777,27 +1594,7 @@ public class DeviceConnectionServiceTests
             _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId);
             _unitOfWork.SaveChangesAsync();
             _unitOfWork.CommitTransactionAsync();
-            // A removal re-reads the member's devices after the commit, to re-check the grant is
-            // not shared immediately before revoking it.
-            if (change == "disconnect")
-                _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId);
         });
-    }
-
-    [Fact]
-    public async Task Disconnect_ReChecksTheGrant_BeforeRevoking_AndKeepsItIfNowShared()
-    {
-        // The decision is taken under the member's lock, the call made after the commit; a grant
-        // for the same account stored in between (on another member) must stop the revocation.
-        var removed = SeedAccount("ACCOUNT_A", isPrimary: true);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([removed]);
-        _unitOfWork.DeviceConnections.AnyOtherActiveWithHealthUserIdAsync(removed.Id, "ACCOUNT_A")
-            .Returns(false, true);
-
-        await CreateSut().DisconnectAsync(_userId, _memberId, removed.Id);
-
-        await _unitOfWork.DeviceConnections.Received(2).AnyOtherActiveWithHealthUserIdAsync(removed.Id, "ACCOUNT_A");
-        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
     }
 
     [Fact]
@@ -1851,116 +1648,6 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
-    public async Task CompleteConnection_RefusedReconnect_RevokesTheGrantItCouldNotStore()
-    {
-        var existing = SeedAccount("ACCOUNT_A", status: ConnectionStatus.TokenExpired);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
-        GrantIsForAccount("ACCOUNT_B");
-        GrantReturns(access: "b_access", refresh: "b_refresh");
-
-        await Assert.ThrowsAsync<DeviceConnectionException>(() =>
-            ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id)));
-
-        await _grantRevoker.Received(1).TryRevokeAsync(
-            Arg.Is<DeviceConnection>(c => c.HealthUserId == "ACCOUNT_B" && c.RefreshToken == "enc(b_refresh)"),
-            Arg.Any<CancellationToken>());
-        await _unitOfWork.Received(1).RollbackTransactionAsync();
-        _unitOfWork.Received(1).ClearTracking();
-    }
-
-    [Fact]
-    public async Task CompleteConnection_RefusedReplace_KeepsTheGrant_OfTheSiblingThatHoldsTheAccount()
-    {
-        // The account is already connected on another device: the grant is that device's own,
-        // re-issued, and revoking it would cut the sibling off.
-        var old = SeedAccount("ACCOUNT_A", isPrimary: true);
-        var sibling = SeedAccount("ACCOUNT_B");
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old, sibling]);
-        GrantIsForAccount("ACCOUNT_B");
-        GrantReturns();
-
-        await Assert.ThrowsAsync<DeviceConnectionException>(() =>
-            ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id)));
-
-        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
-    }
-
-    [Fact]
-    public async Task CompleteConnection_CancelledAfterTheExchange_StillRevokesTheUnstoredGrant()
-    {
-        GrantIsForAccount("ACCOUNT_B");
-        GrantReturns(access: "b_access", refresh: "b_refresh");
-        _unitOfWork.DeviceConnections
-            .LockMemberDevicesAsync(_memberId, Arg.Any<CancellationToken>())
-            .Returns<Task>(_ => throw new OperationCanceledException());
-
-        var sut = CreateSut();
-        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
-            {
-                Code = "code",
-                State = initiation.State,
-                CodeVerifier = initiation.CodeVerifier,
-            }));
-
-        await _grantRevoker.Received(1).TryRevokeAsync(
-            Arg.Is<DeviceConnection>(c => c.RefreshToken == "enc(b_refresh)"), CancellationToken.None);
-    }
-
-    // Copilot review round 6 on #1290.
-
-    [Fact]
-    public async Task CompleteConnection_WhenTheTransactionCannotOpen_StillRevokesTheUnstoredGrant()
-    {
-        GrantIsForAccount("ACCOUNT_B");
-        GrantReturns(access: "b_access", refresh: "b_refresh");
-        _unitOfWork.BeginTransactionAsync().Returns<Task>(_ => throw new InvalidOperationException("db down"));
-
-        var sut = CreateSut();
-        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
-            {
-                Code = "code",
-                State = initiation.State,
-                CodeVerifier = initiation.CodeVerifier,
-            }));
-
-        await _grantRevoker.Received(1).TryRevokeAsync(
-            Arg.Is<DeviceConnection>(c => c.RefreshToken == "enc(b_refresh)"), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task PostCommitRevocations_DoNotRunOnTheRequestsToken()
-    {
-        // The tokens are gone from the database by then; a caller disconnecting must not leave the
-        // grant live with nothing left to end it.
-        using var request = new CancellationTokenSource();
-        var removed = SeedAccount("ACCOUNT_A", isPrimary: true);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([removed]);
-
-        await CreateSut().DisconnectAsync(_userId, _memberId, removed.Id, request.Token);
-
-        await _grantRevoker.Received(1).TryRevokeAsync(
-            Arg.Is<DeviceConnection>(c => c.Id == removed.Id), CancellationToken.None);
-    }
-
-    [Fact]
-    public async Task CompleteConnection_Replace_RevokesTheOldGrant_OffTheRequestsToken()
-    {
-        var old = SeedAccount("ACCOUNT_A", isPrimary: true);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old]);
-        GrantIsForAccount("ACCOUNT_B");
-        GrantReturns();
-
-        await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id));
-
-        await _grantRevoker.Received(1).TryRevokeAsync(
-            Arg.Is<DeviceConnection>(c => c.Id == old.Id), CancellationToken.None);
-    }
-
-    [Fact]
     public async Task Disconnect_OfTheLastCollectingDevice_LeavesASuspendedSiblingAsPrimary()
     {
         // Suspension only needs another device collecting at the time; that one can be removed
@@ -1974,64 +1661,6 @@ public class DeviceConnectionServiceTests
 
         Assert.True(suspended.IsPrimary);
         Assert.NotNull(suspended.SuspendedAt);
-    }
-
-    // Copilot review round 7 on #1290: grant cleanup is reached by every failure after the
-    // exchange, and never throws itself.
-
-    [Fact]
-    public async Task Disconnect_StillSucceeds_WhenTheProviderTimesOutRevoking()
-    {
-        // The removal has committed and the tokens are gone; reporting failure now would be untrue,
-        // and a retry would have nothing left to revoke with.
-        var removed = SeedAccount("ACCOUNT_A", isPrimary: true);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([removed]);
-        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>())
-            .Returns<Task<bool>>(_ => throw new TaskCanceledException());
-
-        await CreateSut().DisconnectAsync(_userId, _memberId, removed.Id);
-
-        Assert.False(removed.IsActive);
-        await _unitOfWork.Received(1).CommitTransactionAsync();
-    }
-
-    [Fact]
-    public async Task CompleteConnection_RefusedReconnect_ReportsTheRefusal_EvenWhenTheCleanupTimesOut()
-    {
-        var existing = SeedAccount("ACCOUNT_A", status: ConnectionStatus.TokenExpired);
-        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
-        GrantIsForAccount("ACCOUNT_B");
-        GrantReturns();
-        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>())
-            .Returns<Task<bool>>(_ => throw new TaskCanceledException());
-
-        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(() =>
-            ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id)));
-
-        Assert.Equal(DeviceConnectionException.DifferentAccount, ex.Code);
-    }
-
-    [Fact]
-    public async Task CompleteConnection_CancelledDuringTheIdentityLookup_RollsBackThroughTheCleanupPath()
-    {
-        _accountIdentity.TryResolveAsync(Arg.Any<DeviceType>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns<Task<string?>>(_ => throw new OperationCanceledException());
-        GrantReturns();
-
-        var sut = CreateSut();
-        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
-            {
-                Code = "code",
-                State = initiation.State,
-                CodeVerifier = initiation.CodeVerifier,
-            }));
-
-        // Reached the cleanup path; with the account unknown it is not revoked, since an unknown
-        // account may be one a live connection reads through.
-        await _unitOfWork.Received(1).RollbackTransactionAsync();
-        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
     }
 
     [Fact]
@@ -2063,5 +1692,185 @@ public class DeviceConnectionServiceTests
 
         await _unitOfWork.Received(1).RollbackTransactionAsync();
         await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+    }
+
+    // Revocation is queued, never made in the request: the entry is written in the same save that
+    // discards the tokens, and the Worker ends the grant (see GrantRevocationServiceTests for the
+    // shared-grant check it makes first).
+
+    private Task QueuedRevocation(Func<PendingGrantRevocation, bool> match) =>
+        _unitOfWork.PendingGrantRevocations.Received(1).AddAsync(Arg.Is<PendingGrantRevocation>(r => match(r)));
+
+    private Task NothingQueued() =>
+        _unitOfWork.PendingGrantRevocations.DidNotReceiveWithAnyArgs().AddAsync(default!);
+
+    [Fact]
+    public async Task Disconnect_QueuesTheGrant_WithTheTokenItHeld_InTheSameSave()
+    {
+        var connection = SeedAccount("ACCOUNT_A", isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, connection.Id);
+
+        await QueuedRevocation(r =>
+            r.DeviceConnectionId == connection.Id
+            && r.Token == "enc(refresh)"
+            && r.HealthUserId == "ACCOUNT_A"
+            && r.CardiMemberId == _memberId
+            && r.DeviceType == DeviceType.Fitbit);
+        Assert.Null(connection.RefreshToken);
+        Received.InOrder(() =>
+        {
+            _unitOfWork.PendingGrantRevocations.AddAsync(Arg.Any<PendingGrantRevocation>());
+            _unitOfWork.SaveChangesAsync();
+            _unitOfWork.CommitTransactionAsync();
+        });
+    }
+
+    [Fact]
+    public async Task Disconnect_QueuesNothing_ForAConnectionHoldingNoToken()
+    {
+        var connection = SeedConnection(isPrimary: true);
+        connection.AccessToken = null;
+        connection.RefreshToken = null;
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, connection.Id);
+
+        await NothingQueued();
+    }
+
+    [Fact]
+    public async Task CompleteConnection_Replace_StoresTheNewDevice_RetiresTheOld_AndQueuesItsGrant()
+    {
+        var old = SeedAccount("ACCOUNT_A", isPrimary: true);
+        old.RefreshToken = "enc(old_refresh)";
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old]);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns(access: "new_access", refresh: "new_refresh");
+        DeviceConnection? added = null;
+        await _unitOfWork.DeviceConnections.AddAsync(Arg.Do<DeviceConnection>(c => added = c));
+
+        var device = await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id));
+
+        Assert.NotNull(added);
+        Assert.True(added!.IsPrimary);
+        Assert.Equal("ACCOUNT_B", added.HealthUserId);
+        Assert.False(old.IsActive);
+        Assert.False(old.IsPrimary);
+        Assert.Equal(ConnectionStatus.Disconnected, old.ConnectionStatus);
+        Assert.Null(old.RefreshToken);
+        Assert.Equal(old.Id, device.ReplacedDeviceId);
+        // The new device, the old one's removal and its queued revocation all land in the one save.
+        await _unitOfWork.Received(1).SaveChangesAsync();
+        await QueuedRevocation(r => r.DeviceConnectionId == old.Id && r.Token == "enc(old_refresh)");
+    }
+
+    [Fact]
+    public async Task CompleteConnection_Replace_OnTheReplacedDevicesOwnAccount_JustReconnectsIt_AndQueuesNothing()
+    {
+        var old = SeedAccount("ACCOUNT_A", isPrimary: true, status: ConnectionStatus.TokenExpired);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old]);
+        GrantIsForAccount("ACCOUNT_A");
+        GrantReturns(access: "new_access");
+
+        var device = await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id));
+
+        await _unitOfWork.DeviceConnections.DidNotReceive().AddAsync(Arg.Any<DeviceConnection>());
+        Assert.True(old.IsActive);
+        Assert.Equal(ConnectionStatus.Connected, old.ConnectionStatus);
+        Assert.Null(device.ReplacedDeviceId);
+        await NothingQueued();
+    }
+
+    [Fact]
+    public async Task CompleteConnection_RefusedReconnect_QueuesTheGrantItCouldNotStore()
+    {
+        var existing = SeedAccount("ACCOUNT_A", status: ConnectionStatus.TokenExpired);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns(access: "b_access", refresh: "b_refresh");
+
+        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(() =>
+            ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id)));
+
+        Assert.Equal(DeviceConnectionException.DifferentAccount, ex.Code);
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        // The rolled-back writes must not ride along with the queued entry.
+        _unitOfWork.Received(1).ClearTracking();
+        await QueuedRevocation(r =>
+            r.HealthUserId == "ACCOUNT_B" && r.Token == "enc(b_refresh)" && r.DeviceConnectionId != existing.Id);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task CompleteConnection_RefusedGrant_ForAnAccountThatCannotBeRead_QueuesNothing()
+    {
+        // An unknown account may be one a live connection on another member reads through, and
+        // revocation is grant-wide.
+        _unitOfWork.DeviceConnections.LockMemberDevicesAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new InvalidOperationException("db down"));
+        GrantIsForAccount(null);
+        GrantReturns();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ConnectAsync(CreateSut(), FitbitRequest()));
+
+        await NothingQueued();
+    }
+
+    [Fact]
+    public async Task CompleteConnection_CancelledAfterTheExchange_StillQueuesTheUnstoredGrant()
+    {
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns(access: "b_access", refresh: "b_refresh");
+        _unitOfWork.DeviceConnections.LockMemberDevicesAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new OperationCanceledException());
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => ConnectAsync(CreateSut(), FitbitRequest()));
+
+        await QueuedRevocation(r => r.Token == "enc(b_refresh)");
+    }
+
+    [Fact]
+    public async Task CompleteConnection_WhenTheTransactionCannotOpen_StillQueuesTheUnstoredGrant()
+    {
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns(access: "b_access", refresh: "b_refresh");
+        _unitOfWork.BeginTransactionAsync().Returns<Task>(_ => throw new InvalidOperationException("db down"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ConnectAsync(CreateSut(), FitbitRequest()));
+
+        await QueuedRevocation(r => r.Token == "enc(b_refresh)");
+    }
+
+    [Fact]
+    public async Task CompleteConnection_RefusedReconnect_ReportsTheRefusal_EvenWhenQueuingFails()
+    {
+        var existing = SeedAccount("ACCOUNT_A", status: ConnectionStatus.TokenExpired);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns();
+        _unitOfWork.PendingGrantRevocations.AddAsync(Arg.Any<PendingGrantRevocation>())
+            .Returns<Task>(_ => throw new InvalidOperationException("db down"));
+
+        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(() =>
+            ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id)));
+
+        Assert.Equal(DeviceConnectionException.DifferentAccount, ex.Code);
+    }
+
+    [Fact]
+    public async Task CompleteConnection_CancelledDuringTheIdentityLookup_RollsBack_AndQueuesNothing()
+    {
+        // Reaches the cleanup path; with the account unknown nothing is queued, since an unknown
+        // account may be one a live connection reads through.
+        _accountIdentity.TryResolveAsync(Arg.Any<DeviceType>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task<string?>>(_ => throw new OperationCanceledException());
+        GrantReturns();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => ConnectAsync(CreateSut(), FitbitRequest()));
+
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        await NothingQueued();
     }
 }

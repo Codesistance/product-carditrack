@@ -58,11 +58,10 @@ public class CardiMemberServiceTests
         });
     }
 
-    private readonly IOAuthGrantRevoker _grantRevoker = Substitute.For<IOAuthGrantRevoker>();
 
     private CardiMemberService CreateSut() => new(
         _unitOfWork, _access, _encryption, new NoOpNotificationGapResolver(), _photoProcessor,
-        _photoStorage, _grantRevoker);
+        _photoStorage);
 
     private static CreateCardiMemberRequest BuildRequest() => new()
     {
@@ -498,7 +497,7 @@ public class CardiMemberServiceTests
 
     private CardiMemberService CreateSutAt(DateTimeOffset utcNow) => new(
         _unitOfWork, _access, _encryption, new NoOpNotificationGapResolver(), _photoProcessor,
-        _photoStorage, _grantRevoker, new FakeTimeProvider(utcNow));
+        _photoStorage, new FakeTimeProvider(utcNow));
 
     private void AnchorToCaregiverZone(CardiMember member, string timeZoneId)
     {
@@ -1334,7 +1333,7 @@ public class CardiMemberServiceTests
     /// cleared, or the grant outlives the membership it was given for.
     /// </summary>
     [Fact]
-    public async Task Remove_RevokesEachDeviceGrant_WhileTheTokenIsStillThere()
+    public async Task Remove_QueuesEachDeviceGrantForRevocation_WhileTheTokenIsStillThere()
     {
         var member = SeedMember();
         var connection = new DeviceConnection
@@ -1344,21 +1343,17 @@ public class CardiMemberServiceTests
             DeviceType = DeviceType.Fitbit,
             IsActive = true,
             RefreshToken = "enc(refresh)",
+            HealthUserId = "ACCOUNT_A",
         };
         _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(member.Id).Returns([connection]);
 
-        string? refreshTokenAtRevocation = null;
-        _grantRevoker.TryRevokeAsync(connection, Arg.Any<CancellationToken>())
-            .Returns(_ =>
-            {
-                refreshTokenAtRevocation = connection.RefreshToken;
-                return true;
-            });
-
         await CreateSut().RemoveAsync(_userId, member.Id);
 
-        await _grantRevoker.Received(1).TryRevokeAsync(connection, Arg.Any<CancellationToken>());
-        Assert.Equal("enc(refresh)", refreshTokenAtRevocation);
+        await _unitOfWork.PendingGrantRevocations.Received(1).AddAsync(Arg.Is<PendingGrantRevocation>(r =>
+            r.DeviceConnectionId == connection.Id
+            && r.Token == "enc(refresh)"
+            && r.HealthUserId == "ACCOUNT_A"
+            && r.CardiMemberId == member.Id));
         Assert.Null(connection.RefreshToken);
     }
 

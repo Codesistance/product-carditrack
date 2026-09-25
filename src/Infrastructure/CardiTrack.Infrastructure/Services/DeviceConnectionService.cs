@@ -52,7 +52,6 @@ public class DeviceConnectionService : IDeviceConnectionService
     private readonly ICardiMemberAccessService _access;
     private readonly INotificationGapResolver _gapResolver;
     private readonly List<DeviceProviderSettings> _providerConfigs;
-    private readonly IOAuthGrantRevoker _grantRevoker;
     private readonly IDeviceAccountIdentityResolver _accountIdentity;
     private readonly ILogger<DeviceConnectionService> _logger;
 
@@ -65,11 +64,9 @@ public class DeviceConnectionService : IDeviceConnectionService
         ICardiMemberAccessService access,
         INotificationGapResolver gapResolver,
         IOptions<List<DeviceProviderSettings>> providerConfigs,
-        IOAuthGrantRevoker grantRevoker,
         IDeviceAccountIdentityResolver accountIdentity,
         ILogger<DeviceConnectionService>? logger = null)
     {
-        _grantRevoker = grantRevoker;
         _accountIdentity = accountIdentity;
         _logger = logger ?? NullLogger<DeviceConnectionService>.Instance;
         _unitOfWork = unitOfWork;
@@ -546,6 +543,10 @@ public class DeviceConnectionService : IDeviceConnectionService
 
             if (outcome.Replaced is { } replaced)
             {
+                // Queued in this same transaction, before Retire discards the tokens: the old grant
+                // is ended by the Worker once this commits, and only if no live connection — the
+                // one just stored included — reads through its account by then.
+                await QueueRevocationAsync(replaced, now);
                 Retire(replaced, now);
                 _unitOfWork.DeviceConnections.Update(replaced);
             }
@@ -569,19 +570,11 @@ public class DeviceConnectionService : IDeviceConnectionService
             // The code has been exchanged, so a grant is live at the provider that nothing here will
             // ever hold a token for — a reconnect refused as another account, a replacement onto an
             // account already connected, an invitation withdrawn while the wearer was consenting, or
-            // the request cancelled part-way. Ended now, or it stays among the apps with access to
-            // that account's health data. Not on the request's token: a cancelled request is one of
-            // the cases, and the cleanup must still run.
-            await RevokeUnstoredGrantAsync(payload, deviceType, tokens, account, CancellationToken.None);
+            // the request cancelled part-way. Queued for the Worker to end, or it stays among the
+            // apps with access to that account's health data.
+            await QueueUnstoredGrantAsync(payload, deviceType, tokens, account);
             throw;
         }
-
-        // After the commit, and from a copy taken before Retire discarded the tokens: the provider
-        // call stays outside the transaction, and the old grant is only ended once the new one is
-        // certainly stored. Not on the request's token: the tokens are already gone from here, so
-        // a caller disconnecting now would leave the grant live with nothing left to end it.
-        if (outcome.RevokeAfterStore is { } revoke)
-            await RevokeUnlessSharedAsync(revoke, CancellationToken.None);
 
         // A fresh connection closes the device gaps immediately — the caregiver should not land
         // back on a dashboard still telling them to reconnect.
@@ -631,14 +624,14 @@ public class DeviceConnectionService : IDeviceConnectionService
                         + "To connect it instead, change the device.");
                 }
 
-                return new StoredGrant(target, Replaced: null, AlreadyConnected: false, RevokeAfterStore: null);
+                return new StoredGrant(target, Replaced: null, AlreadyConnected: false);
             }
 
             case ConnectIntent.Replace:
             {
                 var target = RequireTarget();
                 if (SameAccount(target))
-                    return new StoredGrant(target, Replaced: null, AlreadyConnected: false, RevokeAfterStore: null);
+                    return new StoredGrant(target, Replaced: null, AlreadyConnected: false);
 
                 if (existing.Any(c => c.Id != target.Id && SameAccount(c)))
                 {
@@ -647,65 +640,15 @@ public class DeviceConnectionService : IDeviceConnectionService
                         "That account is already connected to another of this person's devices.");
                 }
 
-                return new StoredGrant(
-                    Connection: null,
-                    Replaced: target,
-                    AlreadyConnected: false,
-                    RevokeAfterStore: await MayRevokeOnReplaceAsync(target, account, existing) ? TokensOf(target) : null);
+                return new StoredGrant(Connection: null, Replaced: target, AlreadyConnected: false);
             }
 
             default:
             {
                 var sameAccount = existing.FirstOrDefault(SameAccount);
-                return new StoredGrant(sameAccount, Replaced: null, AlreadyConnected: sameAccount is not null, RevokeAfterStore: null);
+                return new StoredGrant(sameAccount, Replaced: null, AlreadyConnected: sameAccount is not null);
             }
         }
-    }
-
-    /// <summary>
-    /// Whether the replaced connection's grant can be ended at the provider without harming
-    /// anything still in use.
-    /// </summary>
-    /// <remarks>
-    /// Revoking a Google refresh token ends the whole grant for that account and client, so it is
-    /// only safe when the new grant is <em>known</em> to be on another account — otherwise the
-    /// revocation could take the connection just stored down with it — and when nothing else may
-    /// share the old grant (<see cref="GrantMayBeSharedAsync"/>). When in doubt the grant is left
-    /// at the provider: the old tokens are still discarded here, so nothing more is read with it.
-    /// </remarks>
-    private async Task<bool> MayRevokeOnReplaceAsync(
-        DeviceConnection replaced, GrantAccount account, List<DeviceConnection> memberConnections) =>
-        account.HealthUserId is not null
-        && replaced.HealthUserId is { } replacedAccount
-        && !string.Equals(replacedAccount, account.HealthUserId, StringComparison.Ordinal)
-        && !await GrantMayBeSharedAsync(replaced, memberConnections);
-
-    /// <summary>
-    /// Whether another live connection may read through <paramref name="connection"/>'s provider
-    /// grant, so that revoking the grant would cut it off too.
-    /// </summary>
-    /// <remarks>
-    /// Revocation is grant-wide, so this errs towards "shared": a sibling on the same member and
-    /// API is taken to share the grant unless both accounts are known and differ — an identity is
-    /// best-effort, and a connection whose identity was never captured may well be on the same
-    /// account. Beyond the member, only a known match counts; an uncaptured identity there is at
-    /// most minutes old, since the connect flow and the first sync both capture it.
-    /// </remarks>
-    private async Task<bool> GrantMayBeSharedAsync(
-        DeviceConnection connection, IEnumerable<DeviceConnection> memberConnections)
-    {
-        var unprovenSibling = memberConnections.Any(c =>
-            c.Id != connection.Id
-            && c.IsActive
-            && c.ConnectionStatus != ConnectionStatus.Disconnected
-            && SameApi(c.DeviceType, connection.DeviceType)
-            && (connection.HealthUserId is null
-                || c.HealthUserId is null
-                || string.Equals(c.HealthUserId, connection.HealthUserId, StringComparison.Ordinal)));
-
-        return unprovenSibling
-            || (connection.HealthUserId is { } account
-                && await _unitOfWork.DeviceConnections.AnyOtherActiveWithHealthUserIdAsync(connection.Id, account));
     }
 
     /// <summary>
@@ -733,90 +676,71 @@ public class DeviceConnectionService : IDeviceConnectionService
     }
 
     /// <summary>
-    /// A detached copy carrying what the revoker and the shared-grant check read, taken before the
-    /// tokens are discarded.
-    /// </summary>
-    private static DeviceConnection TokensOf(DeviceConnection connection) => new()
-    {
-        Id = connection.Id,
-        CardiMemberId = connection.CardiMemberId,
-        DeviceType = connection.DeviceType,
-        HealthUserId = connection.HealthUserId,
-        AccessToken = connection.AccessToken,
-        RefreshToken = connection.RefreshToken,
-    };
-
-    /// <summary>
-    /// Ends a retired connection's grant at the provider, re-checking first that nothing now shares
-    /// it.
+    /// Queues <paramref name="connection"/>'s grant to be ended at the provider, in the caller's
+    /// transaction and before its tokens are discarded, so the intent is stored exactly when the
+    /// tokens stop being.
     /// </summary>
     /// <remarks>
-    /// The decision to revoke was taken under the member's lock, but the call happens after the
-    /// commit, and a grant for the same account may have been stored in between — on another
-    /// member, whose lock this does not hold. Re-reading immediately before the call closes that
-    /// case. What no database check can close is a grant whose code exchange with the provider
-    /// already happened but whose row is not yet stored: revocation is ordered against the
-    /// provider's token issuance, which precedes our knowing the account at all. That connection
-    /// would fail its next sync and read <c>token_expired</c> — the caregiver is asked to reconnect,
-    /// nothing is read under the wrong member.
+    /// Queued rather than revoked here: a provider timeout, a cancelled request or a crash after the
+    /// commit would otherwise leave the grant live with no token left anywhere to end it. The
+    /// Worker also re-checks, immediately before the call, that no live connection reads through
+    /// the same account — revocation ends the grant for the whole account — and drops the entry
+    /// if one does (see <see cref="DeviceGrantSharing"/>).
     /// </remarks>
-    private async Task RevokeUnstoredGrantAsync(
-        OAuthStatePayload payload, DeviceType deviceType, OAuthTokenResult tokens, GrantAccount account,
-        CancellationToken ct)
+    private async Task QueueRevocationAsync(DeviceConnection connection, DateTime now)
+    {
+        if ((connection.RefreshToken ?? connection.AccessToken) is not { } token)
+            return;
+
+        await _unitOfWork.PendingGrantRevocations.AddAsync(new PendingGrantRevocation
+        {
+            CardiMemberId = connection.CardiMemberId,
+            DeviceConnectionId = connection.Id,
+            DeviceType = connection.DeviceType,
+            HealthUserId = connection.HealthUserId,
+            Token = token,
+            NextAttemptAt = now,
+        });
+    }
+
+    /// <summary>
+    /// Queues a grant that was exchanged but will never be stored, after the transaction that
+    /// would have stored it has rolled back.
+    /// </summary>
+    private async Task QueueUnstoredGrantAsync(
+        OAuthStatePayload payload, DeviceType deviceType, OAuthTokenResult tokens, GrantAccount account)
     {
         // Only a grant whose account is known: an unknown one may be an account a live connection
-        // reads through, and revocation is grant-wide. RevokeUnlessSharedAsync then keeps it when a
-        // connection does — a replacement refused because a sibling holds the account is that
-        // sibling's own grant, re-issued, not an orphan.
+        // on another member reads through, and revocation is grant-wide. The Worker keeps a known
+        // one too when a connection does — a replacement refused because a sibling holds the
+        // account is that sibling's own grant, re-issued, not an orphan.
         if (account.HealthUserId is null)
             return;
 
         try
         {
-            // The rolled-back writes are still tracked; the shared-grant check must read the
-            // database, not the abandoned changes.
+            // The rolled-back writes are still tracked, and must not ride along with this one.
             _unitOfWork.ClearTracking();
-            await RevokeUnlessSharedAsync(new DeviceConnection
+            await _unitOfWork.PendingGrantRevocations.AddAsync(new PendingGrantRevocation
             {
-                Id = Guid.NewGuid(),
                 CardiMemberId = payload.CardiMemberId,
+                DeviceConnectionId = Guid.NewGuid(),
                 DeviceType = deviceType,
                 HealthUserId = account.HealthUserId,
-                AccessToken = _encryption.Encrypt(tokens.AccessToken),
-                RefreshToken = tokens.RefreshToken is null ? null : _encryption.Encrypt(tokens.RefreshToken),
-            }, ct);
+                Token = _encryption.Encrypt(tokens.RefreshToken ?? tokens.AccessToken),
+                NextAttemptAt = DateTime.UtcNow,
+            });
+            await _unitOfWork.SaveChangesAsync();
         }
         catch (Exception ex)
         {
             // Best effort, and never thrown: the caller is already being told why the grant was
-            // refused, and a failure here — a provider timeout included, which surfaces as a
-            // cancellation even on a token of our own — must not replace that.
+            // refused, and a failure here — the database the rollback came from, most likely — must
+            // not replace that.
             _logger.LogWarning(ex,
-                "Could not end an unstored {DeviceType} grant for CardiMember {CardiMemberId}.",
+                "Could not queue the revocation of an unstored {DeviceType} grant for CardiMember "
+                + "{CardiMemberId}; it may stay live at the provider.",
                 deviceType, payload.CardiMemberId);
-        }
-    }
-
-    private async Task RevokeUnlessSharedAsync(DeviceConnection retired, CancellationToken ct)
-    {
-        // Never thrown to the caller. Every use runs after the change it cleans up after has
-        // committed, and that change is the caregiver's answer: a remove or a replacement that
-        // committed must not come back as a failure because the provider timed out — a retry would
-        // find no token left to revoke with, and the caller would be told something untrue.
-        try
-        {
-            var memberConnections = await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(retired.CardiMemberId);
-            if (await GrantMayBeSharedAsync(retired, memberConnections))
-                return;
-
-            await _grantRevoker.TryRevokeAsync(retired, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "Could not end the {DeviceType} grant of DeviceConnection {DeviceConnectionId}; "
-                + "its tokens are already discarded here.",
-                retired.DeviceType, retired.Id);
         }
     }
 
@@ -840,19 +764,17 @@ public class DeviceConnectionService : IDeviceConnectionService
     {
         await EnsureManageAccessAsync(requestingUserId, cardiMemberId, ct);
 
-        var revoke = await ChangeMemberDevicesAsync(cardiMemberId, async connections =>
+        await ChangeMemberDevicesAsync(cardiMemberId, async connections =>
         {
             var connection = RequireConnection(connections, deviceId);
 
             // The grant is ended at the provider as well as forgotten here — otherwise it stays
             // live at Google, CardiTrack still listed among the apps with access to this person's
-            // health data, while the app shows the device as disconnected. So the tokens are copied
-            // out before Retire discards them. Except where the grant may be shared: revoking a
-            // Google refresh token ends it for the whole account, cutting off every other
-            // connection reading through it.
-            var revokeCopy = await GrantMayBeSharedAsync(connection, connections) ? null : TokensOf(connection);
-
+            // health data, while the app shows the device as disconnected. Queued in this
+            // transaction, before Retire discards the tokens; the Worker ends it unless a live
+            // connection reads through the same account by then.
             var now = DateTime.UtcNow;
+            await QueueRevocationAsync(connection, now);
             Retire(connection, now);
             _unitOfWork.DeviceConnections.Update(connection);
 
@@ -862,14 +784,8 @@ public class DeviceConnectionService : IDeviceConnectionService
                 PromotePrimary(connections, excludingId: deviceId, now);
 
             await _unitOfWork.SaveChangesAsync();
-            return revokeCopy;
+            return true;
         }, ct);
-
-        // After the commit, so no provider round trip is made while the transaction holds the lock.
-        // Best effort by design: a provider outage must not stop a caregiver disconnecting a device.
-        // Not on the request's token, for the same reason as a replacement's: the tokens are gone.
-        if (revoke is not null)
-            await RevokeUnlessSharedAsync(revoke, CancellationToken.None);
 
         // Removing the last device is itself a gap worth raising, so re-evaluate rather than
         // assuming a disconnect only ever closes things.
@@ -1211,8 +1127,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// Whether two brands sync through the same configured <see cref="HealthApi"/>. False when
     /// either is unmapped — an unmapped brand shares an API with nothing, itself included.
     /// </summary>
-    private bool SameApi(DeviceType left, DeviceType right) =>
-        _providerConfigs.ApiFor(left) is { } api && api == _providerConfigs.ApiFor(right);
+    private bool SameApi(DeviceType left, DeviceType right) => _providerConfigs.SameApi(left, right);
 
     /// <summary>The provider-side account id stashed on a connection, if one was ever recorded.</summary>
     private static string? ReadProviderUserId(string? metadata) =>
@@ -1321,12 +1236,10 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// <param name="Connection">The existing connection it updates; null to store a new one.</param>
     /// <param name="Replaced">The connection to retire in the same save, for a replacement.</param>
     /// <param name="AlreadyConnected">An add that turned out to be an account already connected.</param>
-    /// <param name="RevokeAfterStore">A token-bearing copy of the replaced connection, when its grant can safely be ended.</param>
     private sealed record StoredGrant(
         DeviceConnection? Connection,
         DeviceConnection? Replaced,
-        bool AlreadyConnected,
-        DeviceConnection? RevokeAfterStore);
+        bool AlreadyConnected);
 
     /// <summary>
     /// The provider account a grant came back on, as far as it is known: the health-user id from the

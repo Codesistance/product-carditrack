@@ -69,6 +69,25 @@ public class MemberErasureService : IMemberErasureService
                 unrevoked.Add(connection.Id);
         }
 
+        // Grants already queued for the Worker — a device removed or replaced moments ago — carry
+        // the only remaining copy of their token, and the queue is about to be deleted with the
+        // member. Ended here for the same reason as the live ones above, not left to a Worker pass
+        // that would find the rows gone.
+        foreach (var pending in await _db.PendingGrantRevocations
+                     .Where(r => r.CardiMemberId == cardiMemberId)
+                     .ToListAsync(ct))
+        {
+            var queued = new DeviceConnection
+            {
+                Id = pending.DeviceConnectionId,
+                CardiMemberId = pending.CardiMemberId,
+                DeviceType = pending.DeviceType,
+                RefreshToken = pending.Token,
+            };
+            if (!await _grantRevoker.TryRevokeAsync(queued, ct))
+                unrevoked.Add(pending.DeviceConnectionId);
+        }
+
         if (unrevoked.Count > 0)
         {
             _logger.LogWarning(
@@ -173,6 +192,7 @@ public class MemberErasureService : IMemberErasureService
             await Step("MemberAiHolds", _db.MemberAiHolds.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("GenerationLeases", _db.GenerationLeases.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("DeviceHistoryRepulls", _db.DeviceHistoryRepulls.Where(x => x.CardiMemberId == cardiMemberId));
+            await Step("PendingGrantRevocations", _db.PendingGrantRevocations.Where(x => x.CardiMemberId == cardiMemberId));
 
             // Array columns, not foreign keys: a consent or a report naming this member among
             // others still described their health data, so the row goes with them.

@@ -96,6 +96,7 @@ builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineReposito
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<IExportConsentRepository, ExportConsentRepository>();
 builder.Services.AddScoped<ICardiMemberCreationKeyRepository, CardiMemberCreationKeyRepository>();
+builder.Services.AddScoped<IPendingGrantRevocationRepository, PendingGrantRevocationRepository>();
 builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
 builder.Services.AddScoped<IMemberAdviseObservationRepository, MemberAdviseObservationRepository>();
 builder.Services.AddScoped<IMemberInsightRepository, MemberInsightRepository>();

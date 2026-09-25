@@ -20,7 +20,6 @@ public class CardiMemberService : ICardiMemberService
     private readonly INotificationGapResolver _gapResolver;
     private readonly IProfilePhotoProcessor _photoProcessor;
     private readonly IProfilePhotoStorage _photoStorage;
-    private readonly IOAuthGrantRevoker _grantRevoker;
     private readonly TimeProvider _timeProvider;
 
     /// <param name="timeProvider">
@@ -35,11 +34,9 @@ public class CardiMemberService : ICardiMemberService
         INotificationGapResolver gapResolver,
         IProfilePhotoProcessor photoProcessor,
         IProfilePhotoStorage photoStorage,
-        IOAuthGrantRevoker grantRevoker,
         TimeProvider? timeProvider = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _grantRevoker = grantRevoker;
         _unitOfWork = unitOfWork;
         _access = access;
         _encryption = encryption;
@@ -531,12 +528,25 @@ public class CardiMemberService : ICardiMemberService
         }
 
         // Devices must stop syncing, and their tokens should not outlive the member — at the
-        // provider as well as here. Revoked before the token is cleared, or the grant stays live
-        // at Google for a member who has been removed from the app.
+        // provider as well as here. Each grant is queued for the Worker to end, in this same save and
+        // before the token is cleared, so a provider timeout cannot leave it live at Google for a
+        // member who has been removed from the app. The Worker keeps one that another member's
+        // live connection reads through: revocation ends the grant for the whole account.
         foreach (var connection in await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId))
         {
             if (!connection.IsActive) continue;
-            await _grantRevoker.TryRevokeAsync(connection, ct);
+            if ((connection.RefreshToken ?? connection.AccessToken) is { } token)
+            {
+                await _unitOfWork.PendingGrantRevocations.AddAsync(new PendingGrantRevocation
+                {
+                    CardiMemberId = connection.CardiMemberId,
+                    DeviceConnectionId = connection.Id,
+                    DeviceType = connection.DeviceType,
+                    HealthUserId = connection.HealthUserId,
+                    Token = token,
+                    NextAttemptAt = now,
+                });
+            }
             connection.IsActive = false;
             connection.ConnectionStatus = ConnectionStatus.Disconnected;
             connection.AccessToken = null;
