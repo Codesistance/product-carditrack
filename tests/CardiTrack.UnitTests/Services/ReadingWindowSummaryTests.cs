@@ -185,6 +185,39 @@ public class ReadingWindowSummaryTests
     }
 
     /// <summary>
+    /// A window that was read and came back empty is said, dated, as a section of its own — left
+    /// out, the prompt carried no readings section at all, and a read with nothing in front of it
+    /// called a member who had never synced "settled and steady" (2026-09-25).
+    /// </summary>
+    [Fact]
+    public void ThePrompt_SaysAnEmptyWindowHadNoReadings_AndIsNoBasisForSettled()
+    {
+        var data = new FetchedMemberData
+        {
+            RecentActivity = [],
+            RecentActivityWindow = Week,
+        };
+
+        var prompt = MemberChatService.FormatFetchedData(data, Today, ageYears: 82, askedMetrics: null);
+
+        Assert.Contains("--- Recent readings: none reached us from Sep 19 to Sep 25 ---", prompt, StringComparison.Ordinal);
+        Assert.Contains("nothing here can be called settled or steady", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("answer from the member context", prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>And with nothing fetched at all, the read is told there is nothing to go on —
+    /// not, as it used to be, to answer from the member context, which holds no readings.</summary>
+    [Fact]
+    public void ThePrompt_WithNothingFetched_SaysThereIsNothingToGoOn()
+    {
+        var prompt = MemberChatService.FormatFetchedData(
+            new FetchedMemberData { RecentActivity = [] }, Today, ageYears: 82, askedMetrics: null);
+
+        Assert.Contains("there is nothing here to go on", prompt, StringComparison.Ordinal);
+        Assert.Contains("do not call anything settled or steady", prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Breathing asleep is graded against the member alone: WHO's 12–20 is a waking rate at rest,
     /// and <see cref="HealthReferenceRanges.NoOvernightBreathingBand"/> forbids printing it beside an
     /// overnight figure.

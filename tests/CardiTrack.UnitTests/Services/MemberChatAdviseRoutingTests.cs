@@ -242,6 +242,9 @@ public class MemberChatAdviseRoutingTests
     {
         Triage(askingForAdvice: false);
         Route(MemberChatWorkflow.Analysis);
+        // A member with a reading this week: one with none is answered before the planner.
+        _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([new ActivityLog { Date = DateOnly.FromDateTime(DateTime.UtcNow), Steps = 4200 }]);
         _planner.PlanAsync(
                 Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
                 Arg.Any<CancellationToken>())

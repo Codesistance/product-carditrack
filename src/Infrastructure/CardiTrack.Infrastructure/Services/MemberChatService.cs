@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
@@ -1065,6 +1066,9 @@ public class MemberChatService : IMemberChatService
         CancellationToken ct,
         ICollection<AiCallRecord>? spent = null)
     {
+        if (await NoReadingsResultAsync(MemberChatWorkflow.Analysis, triageUsage, cardiMemberId, member, utcNow, ct) is { } noReadings)
+            return noReadings;
+
         // The planner sees only what this workflow's catalogue entry allows — the registry slice
         // and the parse gate are the same list, so prompt and validator cannot drift.
         progress?.Step(MemberChatStep.Planning);
@@ -1146,6 +1150,11 @@ public class MemberChatService : IMemberChatService
         CancellationToken ct,
         ICollection<AiCallRecord>? spent = null)
     {
+        // Before the planner and before the hero: a verdict over no readings at all is a verdict
+        // about nothing, whatever tier the dashboard resolves.
+        if (await NoReadingsResultAsync(MemberChatWorkflow.Inference, triageUsage, cardiMemberId, member, utcNow, ct) is { } noReadings)
+            return noReadings;
+
         var allowed = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Inference)!.AllowedDatasets;
         progress?.Step(MemberChatStep.Planning);
         var plan = await _planner.PlanAsync(flattened, history.Full, allowed, ct);
@@ -1301,6 +1310,11 @@ public class MemberChatService : IMemberChatService
         CancellationToken ct,
         ICollection<AiCallRecord>? spent = null)
     {
+        // The one reading rung with no coverage gate of its own: a change needs readings to have
+        // changed, and with none there is nothing for co-occurrence to find.
+        if (await NoReadingsResultAsync(MemberChatWorkflow.Investigation, triageUsage, cardiMemberId, member, utcNow, ct) is { } noReadings)
+            return noReadings;
+
         var allowed = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Investigation)!.AllowedDatasets;
         progress?.Step(MemberChatStep.Planning);
         var plan = await _planner.PlanAsync(flattened, history.Full, allowed, ct);
@@ -1741,6 +1755,83 @@ public class MemberChatService : IMemberChatService
     }
 
     /// <summary>
+    /// Whether no daily reading reached us in the last
+    /// <see cref="MemberChatReplies.NoReadingsWindowDays"/> days, counted on the member's own
+    /// calendar as well as UTC's.
+    /// </summary>
+    /// <remarks>
+    /// Rows are dated on the member's anchor clock (ingestion and the dashboard both read it), and
+    /// the whitelist's windows are UTC days. East of Greenwich the local day runs ahead, so a new
+    /// member's first sync — dated today, local — sits past the UTC window's end for hours (up to
+    /// ten in Sydney), and a UTC-only read would tell the family nothing had arrived while the
+    /// dashboard showed it. So the window runs from a week before the earlier of the two todays to
+    /// the later one: this answers "has anything arrived at all", and a day of overlap can only
+    /// find a reading, never invent one. Read directly rather than through the whitelist, whose
+    /// clamp exists for model-planned windows; this one is fixed in code.
+    /// </remarks>
+    private async Task<bool> HasNoRecentReadingsAsync(Guid cardiMemberId, DateTime utcNow, CancellationToken ct)
+    {
+        var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var utcToday = DateOnly.FromDateTime(utcNow);
+        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, zone));
+        var from = (localToday < utcToday ? localToday : utcToday).AddDays(-(MemberChatReplies.NoReadingsWindowDays - 1));
+        var to = localToday > utcToday ? localToday : utcToday;
+
+        return !(await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(cardiMemberId, from, to)).Any();
+    }
+
+    /// <summary>
+    /// Whether this member has nothing a reading question could be answered from: no recent
+    /// reading (<see cref="HasNoRecentReadingsAsync"/>) and no open alert.
+    /// </summary>
+    /// <remarks>
+    /// An open alert keeps the member answerable — it is a finding the family is already looking
+    /// at, and a reading rung has something real to say about it even with no day on file.
+    /// </remarks>
+    private async Task<bool> HasNoReadingsAsync(Guid cardiMemberId, DateTime utcNow, CancellationToken ct) =>
+        await HasNoRecentReadingsAsync(cardiMemberId, utcNow, ct)
+        && (await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId)).Count == 0;
+
+    /// <summary>
+    /// The reading rungs' answer for a member with nothing to read, or null when there is
+    /// something and the rung should run. Checked before the planner, so no planner or clinical
+    /// call is made for a member the dashboard says has sent nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "Anything I should keep an eye on?" about a member whose watch had never synced came back
+    /// "Everything looks settled and steady… nothing to worry about" (2026-09-25). A verdict
+    /// question names no reading, so the coverage gate (<see cref="TooFewReadingsToAnswer"/>)
+    /// had nothing to measure, and the clinical read was handed no readings and a Green tier that
+    /// only meant nothing had been graded. Checked here, once for all three reading rungs, rather
+    /// than left to a prompt rule: the same lesson <see cref="AnswerLiveStatusAsync"/> records —
+    /// a model given nothing assembles comfort out of it, and a sentence written here cannot.
+    /// </para>
+    /// <para>
+    /// Only the triage call is billed, as on every code-answered path: it ran, and it routed here.
+    /// </para>
+    /// </remarks>
+    private async Task<MemberChatWorkflowResult?> NoReadingsResultAsync(
+        MemberChatWorkflow workflow, AiUsage triageUsage, Guid cardiMemberId, CardiMember? member,
+        DateTime utcNow, CancellationToken ct)
+    {
+        if (!await HasNoReadingsAsync(cardiMemberId, utcNow, ct))
+            return null;
+
+        // The dashboard's own LastSyncedAt: the member's stamp, else its active connections'.
+        var everSynced = member?.LastSyncDate is not null
+            || (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(cardiMemberId))
+                .Any(c => c.LastSyncDate is not null);
+
+        return new MemberChatWorkflowResult
+        {
+            Workflow = workflow,
+            Reply = MemberChatReplies.NoReadingsYetReply(NamePlaceholder.FirstNameOf(member), everSynced),
+            Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
+        };
+    }
+
+    /// <summary>
     /// The other half of the status rung: how the person is, rather than what they are doing this
     /// instant.
     /// </summary>
@@ -1881,6 +1972,24 @@ public class MemberChatService : IMemberChatService
         var tier = StatusDisplayTier.Resolve(highestAlert, latestAssessment, latestDigest, utcNow);
         var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
 
+        // Green is also what the resolver says when it has nothing to go on, and the dashboard
+        // does not show that as settled: still learning the 30-day baseline, or no reading in the
+        // month, it shows "unknown". Read on the same terms as DashboardService — the established
+        // baseline, the member-local month — and graded by the same function, so chat is never
+        // calmer than a hero that has not graded this member yet. Only below Yellow: a raised
+        // tier already says something, and "unknown" never outranks it.
+        var isUnknown = false;
+        if (tier < AlertSeverity.Yellow)
+        {
+            var isLearning = await _unitOfWork.PatternBaselines
+                .GetLatestByCardiMemberAsync(cardiMemberId, BaselineProgress.PeriodDays) is null;
+            var hasReadings = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
+                    cardiMemberId, localToday.AddDays(-(BaselineProgress.PeriodDays - 1)), localToday))
+                .Any();
+            isUnknown = MemberInsightsCalculator.ComputeHealthStatus(unresolvedAlerts, isLearning, hasReadings)
+                == MemberInsightsCalculator.UnknownStatus;
+        }
+
         // What the tier rests on, as the verdicts they are: the resolver's three inputs, each
         // named with its own severity so the read can weigh them rather than only see a colour.
         // Two of the three were never in the planner's vocabulary, which is how a verdict could
@@ -1900,11 +2009,14 @@ public class MemberChatService : IMemberChatService
                       + MedicalPromptBlocks.Flatten(MedicalPromptBlocks.CutTo(digest.Headline ?? digest.Text, 300)));
         }
 
-        return new DashboardStatus(tier, line, basis);
+        return new DashboardStatus(tier, line, basis, isUnknown);
     }
 
-    /// <summary>The hero as the family sees it: its tier, the line beneath, and what the tier rests on.</summary>
-    private sealed record DashboardStatus(AlertSeverity Tier, MemberStatusLine? Line, IReadOnlyList<string> Basis);
+    /// <summary>The hero as the family sees it: its tier, the line beneath, and what the tier rests
+    /// on. <paramref name="IsUnknown"/> when the dashboard has not graded the member yet — a Green
+    /// tier that means nothing has been judged, not that all is well.</summary>
+    private sealed record DashboardStatus(
+        AlertSeverity Tier, MemberStatusLine? Line, IReadOnlyList<string> Basis, bool IsUnknown);
 
     /// <summary>
     /// The dashboard status as a prompt section for the inference read — the tier named and
@@ -1917,6 +2029,9 @@ public class MemberChatService : IMemberChatService
     /// </remarks>
     private static string FormatDashboardStatus(DashboardStatus status)
     {
+        // Unknown is not a colour on the scale: the dashboard has not graded this member, and
+        // "settled" in its place is the claim that told a family all was well about a member who
+        // had sent nothing (2026-09-25).
         var gloss = status.Tier switch
         {
             AlertSeverity.Red => "needs attention now",
@@ -1924,9 +2039,13 @@ public class MemberChatService : IMemberChatService
             AlertSeverity.Yellow => "worth a check-in today",
             _ => "settled — nothing pressing",
         };
+        var tierLine = status.IsUnknown
+            ? "  Tier: Unknown (not enough readings yet — the dashboard has not graded this member, "
+              + "so this is no basis for calling anything settled or steady)"
+            : $"  Tier: {status.Tier} ({gloss}); the colour the family is already looking at for this member";
 
         var rendered = "--- Current status (dashboard) ---\n"
-            + $"  Tier: {status.Tier} ({gloss}); the colour the family is already looking at for this member\n"
+            + $"{tierLine}\n"
             + $"  Line: {(status.Line is { } line ? line.Message.Trim() : "none current")}";
         if (status.Basis.Count > 0)
             rendered += "\n  Rests on:\n" + string.Join("\n", status.Basis.Select(b => $"  - {b}"));
@@ -2104,8 +2223,9 @@ public class MemberChatService : IMemberChatService
     /// <summary>
     /// Deterministic, not generated: the chips teach the vocabulary of what the assistant can
     /// answer, and a fixed set does that better than a model's variations — instantly, for free,
-    /// and with nothing new sent anywhere. The one data-driven chip is the alert question, which
-    /// only appears when there is an unresolved alert to ask about.
+    /// and with nothing new sent anywhere. The one data-driven chip is the first: the alert
+    /// question when there is an unresolved alert to ask about, else "has anything come through
+    /// yet?" when no reading has arrived in a week, else the general watch-out question.
     /// </summary>
     public async Task<MemberChatSuggestionsResponse> GetSuggestionsAsync(
         Guid userId, Guid cardiMemberId, CancellationToken ct = default)
@@ -2124,9 +2244,21 @@ public class MemberChatService : IMemberChatService
         // offer when there is already a specific alert to ask about. The last two teach the
         // rungs that act rather than read — the journal and the alert settings — which no
         // reading question would ever lead a caregiver to discover.
+        //
+        // With nothing to read, the watch-out question is one chat can only answer "nothing to go
+        // on", and a chip is a promise of an answer: it offered a member who had never synced
+        // exactly that question, and the reply that came back called her settled (2026-09-25).
+        // The swap asks what the family actually wants to know then, and the status rung answers
+        // it in code from the same week-wide read.
+        var firstChip = hasUnresolvedAlert
+            ? "What's behind the current alert?"
+            : await HasNoRecentReadingsAsync(cardiMemberId, DateTime.UtcNow, ct)
+                ? "Has anything come through yet?"
+                : "Anything I should keep an eye on?";
+
         var suggestions = new List<string>
         {
-            hasUnresolvedAlert ? "What's behind the current alert?" : "Anything I should keep an eye on?",
+            firstChip,
             "How are they doing today?",
             "How did they sleep last night?",
             "How active have they been this week?",
@@ -2509,6 +2641,17 @@ public class MemberChatService : IMemberChatService
                         data.RecentActivity, data.RecentActivity.Count, today))
                 + (missing is null ? string.Empty : $"\n{missing}"));
         }
+        else if (data.RecentActivityWindow is { } emptyWindow)
+        {
+            // A window that was read and came back empty is a finding, not an absence of one.
+            // Left unsaid, the prompt carried no readings section at all, and a read with nothing
+            // in front of it answered a verdict question "settled and steady" (2026-09-25).
+            var from = emptyWindow.From.ToString("MMM d", CultureInfo.InvariantCulture);
+            var to = emptyWindow.To.ToString("MMM d", CultureInfo.InvariantCulture);
+            sections.Add(
+                $"[INPUT DATA]\n--- Recent readings: none reached us from {from} to {to} ---\n"
+                + "No day in this window has any reading, so nothing here can be called settled or steady.");
+        }
 
         // The window's arithmetic, done here: handed only the rows, the clinical read averaged a
         // week of 4h 18m–7h nights to 2h 22m (2026-09-25). See ChatWindowSummaryBlock. Outside the
@@ -2570,9 +2713,13 @@ public class MemberChatService : IMemberChatService
             sections.Add($"--- Recent heart-rate assessments ---\n{string.Join("\n", assessmentLines)}");
         }
 
+        // The member context above carries no readings of its own, so with nothing here the read
+        // has nothing at all to judge by — and "answer from the context above", which this used to
+        // say, was an invitation to judge anyway.
         return sections.Count > 0
             ? string.Join("\n\n", sections)
-            : "No additional data was fetched for this question — answer from the member context above only.";
+            : "No readings are in front of you for this question, and the member context above holds none. "
+              + "Say plainly that there is nothing here to go on; do not call anything settled or steady.";
     }
 
     /// <summary>

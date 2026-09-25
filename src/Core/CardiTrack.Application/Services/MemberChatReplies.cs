@@ -306,6 +306,55 @@ public static partial class MemberChatReplies
         return string.Join("\n\n", paragraphs);
     }
 
+    /// <summary>
+    /// How many days back a member counts as having sent readings recently, for
+    /// <see cref="NoReadingsYetReply"/>: the chat's own widest window (the whitelist's one-week
+    /// activity ceiling), so the question is whether any window chat could fetch holds anything.
+    /// </summary>
+    public const int NoReadingsWindowDays = 7;
+
+    /// <summary>
+    /// The answer to a reading question about a member with nothing to read: no daily reading in
+    /// the last <see cref="NoReadingsWindowDays"/> days and no open alert. Said in code, before
+    /// any planner or clinical read runs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A member whose watch had never synced was asked about with the suggested "Anything I should
+    /// keep an eye on?" and the reply was that everything looked settled and she was resting well
+    /// (2026-09-25), while the dashboard above said nothing had come through yet. A general
+    /// verdict question names no reading, so the coverage gate (<see cref="TooFewReadingsReply"/>)
+    /// had nothing to judge; the clinical read was handed no readings at all and a Green tier
+    /// that only meant nothing had been graded, and it filled the silence with reassurance.
+    /// </para>
+    /// <para>
+    /// Two shapes, because they are different news. A member who has never synced is being set
+    /// up; one who has synced before and sent nothing for a week has gone quiet. Neither says why
+    /// — a watch left off and a phone that never synced look the same from here, the reason
+    /// <c>MedicalPromptBlocks.DataGapRule</c> gives.
+    /// </para>
+    /// </remarks>
+    /// <param name="everSynced">Whether any sync has ever been recorded for the member — the
+    /// dashboard's own <c>LastSyncedAt</c>, the member's stamp or else its active connections'.</param>
+    public static string NoReadingsYetReply(string? firstName, bool everSynced)
+    {
+        var named = !string.IsNullOrWhiteSpace(firstName);
+
+        if (!everSynced)
+        {
+            var opening = named
+                ? $"{firstName} hasn't sent any readings through yet"
+                : "No readings have come through yet";
+            return $"{opening}, so there's nothing for me to go on — I can't say whether anything needs "
+                + "keeping an eye on. Once their watch has synced, ask me again and I'll take a look.";
+        }
+
+        var from = named ? $"from {firstName} " : string.Empty;
+        return $"No readings have reached us {from}in the last {NoReadingsWindowDays} days, so I can't say "
+            + "whether anything needs keeping an eye on. Once new readings come through, ask me again "
+            + "and I'll take a look.";
+    }
+
     private static string TooFewReadingsParagraph(ReadingWindowSummary summary, DateOnly from, DateOnly today)
     {
         var overnight = ReadingWindowSummaries.IsOvernight(summary.Metric);
