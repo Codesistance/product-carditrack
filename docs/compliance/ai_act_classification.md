@@ -205,7 +205,7 @@ Survey of the user-facing surfaces on 2026-09-23:
 
 | Surface | Disclosure at the point of use | Where |
 |---|---|---|
-| Member chat sheet | **None.** Empty state says "Ask anything about their readings"; the reply bubble carries a bot mark but no words | `src/Presentation/CardiTrack.Mobile/MemberChatPage.xaml` |
+| Member chat sheet | **Present (2026-09-25).** A fixed line under the sheet header, on screen in every mode: "Answers are written by CardiTrack's AI assistant, not a clinician." Was: none — the empty state said "Ask anything about their readings" and the reply bubble carried a bot mark but no words | `src/Presentation/CardiTrack.Mobile/MemberChatPage.xaml` (`AiDisclosureLabel`) |
 | Advise card ("Something to try") | Partial. Fixed footnote "just a suggestion, never medical advice — worth mentioning to their doctor" — safety framing, but not that it is AI-written | `CardiMemberDetailPage.xaml.cs` |
 | Family summary card | **None** found | `CardiMemberDetailPage.xaml` |
 | Alert detail (headline, message, A5 narrative card) | **None** — and since 2026-09-19 the headline and message are model-written for every R1 alert | `AlertDetailPage.xaml` |

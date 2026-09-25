@@ -20,6 +20,19 @@ public interface IMemberChatService
     Task<MemberChatMessageResponse> SendMessageAsync(
         Guid userId, Guid cardiMemberId, string message, CancellationToken ct = default);
 
+    /// <summary>
+    /// <see cref="SendMessageAsync(Guid, Guid, string, CancellationToken)"/>, reporting each step
+    /// of the pipeline to <paramref name="progress"/> as it starts — what the streaming endpoint
+    /// relays to the app. Steps are reported only after the malicious pre-check has passed, so
+    /// every failure that has its own HTTP status (access, empty message, refusal) happens before
+    /// the first report. Paths answered without a model — a journal yes or no, a message with no
+    /// question, a settings confirmation — report nothing. Reports are synchronous and must not
+    /// block: the pipeline does not wait for a slow reader.
+    /// </summary>
+    Task<MemberChatMessageResponse> SendMessageAsync(
+        Guid userId, Guid cardiMemberId, string message, IProgress<MemberChatStep>? progress,
+        CancellationToken ct = default);
+
     /// <summary>The caregiver's active session for this member and its turns, or null if none
     /// exists — what a relaunched app resumes from.</summary>
     Task<MemberChatHistoryResponse?> GetCurrentSessionAsync(

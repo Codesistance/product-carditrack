@@ -1,4 +1,7 @@
+using System.Text.Json;
+using System.Threading.Channels;
 using CardiTrack.API.Infrastructure.Auditing;
+using CardiTrack.API.Infrastructure.Streaming;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
@@ -24,23 +27,29 @@ public class MemberChatController : BaseApiController
     private readonly IMemberChatService _chat;
     private readonly IValidator<MemberChatMessageRequest> _messageValidator;
     private readonly TimeSpan _sendBudget;
+    private readonly JsonSerializerOptions _json;
 
     public MemberChatController(
         IUserContext userContext,
         ILogger<MemberChatController> logger,
         IMemberChatService chat,
         IValidator<MemberChatMessageRequest> messageValidator,
-        IOptions<MemberChatOptions> options)
+        IOptions<MemberChatOptions> options,
+        IOptions<JsonOptions>? jsonOptions = null)
         : base(userContext, logger)
     {
         _chat = chat;
         _messageValidator = messageValidator;
         _sendBudget = TimeSpan.FromSeconds(options.Value.SendBudgetSeconds);
+        // The stream's events are serialised with the options MVC uses for every JSON response,
+        // so an answer event reads exactly like the JSON endpoint's data.
+        _json = jsonOptions?.Value.JsonSerializerOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web);
     }
 
     /// <summary>
     /// Sends one message, auto-creating or continuing the caregiver's active session for this
-    /// member — there is no separate "start session" call.
+    /// member — there is no separate "start session" call. The whole reply in one response; the
+    /// streaming twin is <see cref="StreamMessage"/>. Kept for app builds that predate it.
     /// </summary>
     [HttpPost("members/{cardiMemberId:guid}/messages")]
     [ProducesResponseType(typeof(ApiResponse<MemberChatMessageResponse>), StatusCodes.Status200OK)]
@@ -70,63 +79,236 @@ public class MemberChatController : BaseApiController
         try
         {
             var result = await _chat.SendMessageAsync(UserContext.UserId, cardiMemberId, request.Message, budget.Token);
-
-            // A send that applied an alert-settings change is a write to what is watching the
-            // member, and the audit trail files it as that rather than as one more chat read.
-            if (result.ChangedAlertSettings)
-                HttpContext.Items[AuditHealthDataAccessAttribute.ActionItemKey] = "ChangeAlertSettingsViaChat";
-
-            // Likewise a send that deleted or replaced a CardiJournal book: derived health data was
-            // written, and the trail must be able to tell that from a show or a list.
-            if (result.ChangedJournal)
-                HttpContext.Items[AuditHealthDataAccessAttribute.ActionItemKey] = "ChangeJournalViaChat";
-
+            NameAuditAction(result);
             return Success(result);
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (MapSendFailure(ex, cardiMemberId, budget, ct) is { } failure)
         {
-            // The validator is the usual gate for an empty message; this also covers the
-            // malicious/off-topic check's rejection, which has nothing else to map to.
-            return Error(ex.Message, StatusCodes.Status400BadRequest);
+            return Error(failure.Message, failure.StatusCode);
         }
-        catch (KeyNotFoundException ex)
+    }
+
+    /// <summary>
+    /// <see cref="SendMessage"/> as a stream of server-sent events: a <c>step</c> event as each
+    /// stage of the pipeline starts, then one <c>answer</c> carrying the saved reply (the same
+    /// <see cref="MemberChatMessageResponse"/> the JSON endpoint returns), then <c>done</c>. A
+    /// failure after the stream has started ends it with one <c>error</c> event carrying the
+    /// status and message the JSON endpoint would have answered with.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nothing is written until the first event, and the service reports its first step only once
+    /// the malicious pre-check has passed — so the failures that have their own status (403, 400
+    /// for validation or refusal, 404 for access) still arrive as ordinary JSON error responses,
+    /// exactly as from <see cref="SendMessage"/>. Only failures later in the pipeline (a model
+    /// host that is saturated, the send budget running out) can arrive as an <c>error</c> event.
+    /// </para>
+    /// <para>
+    /// The pipeline and the writer are decoupled through a channel: the service reports steps
+    /// synchronously and never waits on the network, and a slow reader can only delay its own
+    /// events. A comment line goes out every <see cref="HeartbeatInterval"/> while nothing else
+    /// does, so a proxy or a mobile network does not close a connection that sits silent through
+    /// a long clinical read.
+    /// </para>
+    /// </remarks>
+    [HttpPost("members/{cardiMemberId:guid}/messages/stream")]
+    [Produces("text/event-stream")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> StreamMessage(
+        Guid cardiMemberId, [FromBody] MemberChatMessageRequest request, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
-            return Error(ex.Message, StatusCodes.Status404NotFound);
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
-        catch (HttpRequestException ex)
+
+        var validation = await _messageValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(_sendBudget);
+
+        var steps = Channel.CreateUnbounded<MemberChatStep>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+        var progress = new ChannelProgress(steps.Writer);
+
+        var send = SendThenCompleteAsync(cardiMemberId, request.Message, progress, steps.Writer, budget.Token);
+        var events = new ServerSentEventWriter(Response, _json);
+
+        try
         {
-            // Everything HTTP inside this pipeline is a call to an in-estate model host, so any
-            // HttpRequestException here means the assistant couldn't answer: saturation
-            // (MedGemmaClient's retries exhausted on 429/503, StatusCode set), an unreachable
-            // service (DNS/connection, StatusCode null), or a reply that couldn't be parsed.
-            // None are a fault in this request — 500 would page someone for a queue; 503 tells
-            // the app, honestly, to ask again shortly. MedGemmaClient's exception messages are
-            // payload-free by design, so the exception itself is safe to log.
-            Logger.LogWarning(ex,
-                "Member chat send failed against the AI host for CardiMember {CardiMemberId} (upstream status {StatusCode})",
-                cardiMemberId, ex.StatusCode);
-            return Error(
-                "The assistant is busy catching up right now — give it a minute and ask again.",
-                StatusCodes.Status503ServiceUnavailable);
+            while (await WaitForStepAsync(steps.Reader, ct))
+            {
+                while (steps.Reader.TryRead(out var step))
+                    await events.WriteAsync("step", step, ct);
+            }
         }
-        catch (TimeoutException ex)
+        catch
         {
-            Logger.LogWarning(ex,
-                "Member chat send timed out against the AI host for CardiMember {CardiMemberId}",
-                cardiMemberId);
-            return Error(
-                "The assistant is busy catching up right now — give it a minute and ask again.",
-                StatusCodes.Status503ServiceUnavailable);
+            // The stream broke before the send settled: the caller hung up (the budget token is
+            // linked to theirs, so the send is already being cancelled and rolls back) or a write
+            // failed on a dead connection (the send carries on and saves, so the reply is in the
+            // history when the app next loads it). Either way, wait for the send so the request
+            // scope it runs in is not disposed under it, then let the failure surface.
+            await send.ContinueWith(_ => { }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+            throw;
         }
-        catch (OperationCanceledException ex) when (budget.IsCancellationRequested && !ct.IsCancellationRequested)
+
+        // The heartbeat loop above ends when the writer completes — the send has settled.
+        MemberChatMessageResponse result;
+        try
         {
-            Logger.LogWarning(ex,
-                "Member chat send for CardiMember {CardiMemberId} ran past its {BudgetSeconds}s budget",
-                cardiMemberId, _sendBudget.TotalSeconds);
-            return Error(
-                "The assistant is busy catching up right now — give it a minute and ask again.",
-                StatusCodes.Status503ServiceUnavailable);
+            result = await send;
         }
+        catch (Exception ex) when (MapSendFailure(ex, cardiMemberId, budget, ct) is { } failure)
+        {
+            if (!events.Started)
+                return Error(failure.Message, failure.StatusCode);
+
+            await events.WriteAsync("error", new StreamError { Status = failure.StatusCode, Message = failure.Message }, ct);
+            return new EmptyResult();
+        }
+        catch when (events.Started)
+        {
+            // An unexpected fault after the 200 went out. The exception middleware still logs it,
+            // but can no longer write its 500 body; this is that body, as the stream's last event,
+            // so the app shows the same message rather than a reply that was cut off.
+            await events.WriteAsync("error", new StreamError
+            {
+                Status = StatusCodes.Status500InternalServerError,
+                Message = "Something went wrong on our end. Please try again in a moment.",
+            }, ct);
+            throw;
+        }
+
+        NameAuditAction(result);
+        await events.WriteAsync("answer", result, ct);
+        await events.WriteAsync("done", new { }, ct);
+        return new EmptyResult();
+
+        // Waits for the next step, writing a heartbeat for every interval that passes without
+        // one — but only once the stream has started: before the first step there is nothing to
+        // keep alive, and a heartbeat would commit the 200 a pre-check failure still needs to
+        // be able to replace.
+        async Task<bool> WaitForStepAsync(ChannelReader<MemberChatStep> reader, CancellationToken token)
+        {
+            // One wait for the whole call, however many heartbeats pass: a single-reader channel
+            // holds one waiter, and a fresh wait per heartbeat would stack them.
+            var ready = reader.WaitToReadAsync(token).AsTask();
+            while (true)
+            {
+                var finished = await Task.WhenAny(ready, Task.Delay(HeartbeatInterval, token));
+                if (finished == ready)
+                    return await ready;
+                token.ThrowIfCancellationRequested();
+                if (events.Started)
+                    await events.WriteHeartbeatAsync(token);
+            }
+        }
+    }
+
+    /// <summary>How long a stream may sit without a byte before a comment line keeps it open.
+    /// Well inside the idle limits of common proxies and carrier NAT (30–60 s).</summary>
+    internal static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(15);
+
+    private async Task<MemberChatMessageResponse> SendThenCompleteAsync(
+        Guid cardiMemberId, string message, IProgress<MemberChatStep> progress,
+        ChannelWriter<MemberChatStep> writer, CancellationToken ct)
+    {
+        try
+        {
+            return await _chat.SendMessageAsync(UserContext.UserId, cardiMemberId, message, progress, ct);
+        }
+        finally
+        {
+            writer.TryComplete();
+        }
+    }
+
+    /// <summary>A send that applied an alert-settings change, or changed a CardiJournal book, is a
+    /// write to the member's record, and the audit trail files it as that rather than as one more
+    /// chat read.</summary>
+    private void NameAuditAction(MemberChatMessageResponse result)
+    {
+        if (result.ChangedAlertSettings)
+            HttpContext.Items[AuditHealthDataAccessAttribute.ActionItemKey] = "ChangeAlertSettingsViaChat";
+
+        if (result.ChangedJournal)
+            HttpContext.Items[AuditHealthDataAccessAttribute.ActionItemKey] = "ChangeJournalViaChat";
+    }
+
+    /// <summary>
+    /// The status and message a failed send answers with, shared by both send endpoints so the
+    /// JSON reply and the stream's <c>error</c> event cannot disagree. Null for anything else,
+    /// which then propagates to the exception middleware as before — including the caller's own
+    /// cancellation, which is theirs to see, not a server-side timeout to excuse.
+    /// </summary>
+    private SendFailure? MapSendFailure(
+        Exception ex, Guid cardiMemberId, CancellationTokenSource budget, CancellationToken ct)
+    {
+        switch (ex)
+        {
+            case ArgumentException:
+                // The validator is the usual gate for an empty message; this also covers the
+                // malicious/off-topic check's rejection, which has nothing else to map to.
+                return new SendFailure(StatusCodes.Status400BadRequest, ex.Message);
+
+            case KeyNotFoundException:
+                return new SendFailure(StatusCodes.Status404NotFound, ex.Message);
+
+            case HttpRequestException http:
+                // Everything HTTP inside this pipeline is a call to an in-estate model host, so any
+                // HttpRequestException here means the assistant couldn't answer: saturation
+                // (MedGemmaClient's retries exhausted on 429/503, StatusCode set), an unreachable
+                // service (DNS/connection, StatusCode null), or a reply that couldn't be parsed.
+                // None are a fault in this request — 500 would page someone for a queue; 503 tells
+                // the app, honestly, to ask again shortly. MedGemmaClient's exception messages are
+                // payload-free by design, so the exception itself is safe to log.
+                Logger.LogWarning(ex,
+                    "Member chat send failed against the AI host for CardiMember {CardiMemberId} (upstream status {StatusCode})",
+                    cardiMemberId, http.StatusCode);
+                return Busy();
+
+            case TimeoutException:
+                Logger.LogWarning(ex,
+                    "Member chat send timed out against the AI host for CardiMember {CardiMemberId}",
+                    cardiMemberId);
+                return Busy();
+
+            case OperationCanceledException when budget.IsCancellationRequested && !ct.IsCancellationRequested:
+                Logger.LogWarning(ex,
+                    "Member chat send for CardiMember {CardiMemberId} ran past its {BudgetSeconds}s budget",
+                    cardiMemberId, _sendBudget.TotalSeconds);
+                return Busy();
+
+            default:
+                return null;
+        }
+
+        static SendFailure Busy() => new(
+            StatusCodes.Status503ServiceUnavailable,
+            "The assistant is busy catching up right now — give it a minute and ask again.");
+    }
+
+    private sealed record SendFailure(int StatusCode, string Message);
+
+    /// <summary>The <c>error</c> event's payload.</summary>
+    private sealed class StreamError
+    {
+        public required int Status { get; init; }
+        public required string Message { get; init; }
+    }
+
+    /// <summary>Reports straight into the channel: never blocks the pipeline, and a report after
+    /// the send has settled is dropped rather than thrown.</summary>
+    private sealed class ChannelProgress(ChannelWriter<MemberChatStep> writer) : IProgress<MemberChatStep>
+    {
+        public void Report(MemberChatStep value) => writer.TryWrite(value);
     }
 
     /// <summary>

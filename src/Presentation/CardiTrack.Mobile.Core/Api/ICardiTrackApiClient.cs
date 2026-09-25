@@ -303,6 +303,16 @@ public interface ICardiTrackApiClient
     Task<MemberChatMessageResponse> SendMemberChatMessageAsync(
         Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// <see cref="SendMemberChatMessageAsync"/> as a stream: each stage of the pipeline is
+    /// reported to <paramref name="onStep"/> as it starts, so the pending bubble can say what is
+    /// actually happening, and the saved reply is the result. Fails with the same
+    /// <see cref="ApiException"/> statuses and messages as the plain send.
+    /// </summary>
+    Task<MemberChatMessageResponse> StreamMemberChatMessageAsync(
+        Guid cardiMemberId, MemberChatMessageRequest request, IProgress<MemberChatStep>? onStep,
+        CancellationToken ct = default);
+
     /// <summary>The caregiver's active chat session and its turns for this member, or null if
     /// none exists — what a relaunched app resumes from.</summary>
     Task<MemberChatHistoryResponse?> GetCurrentMemberChatSessionAsync(
@@ -335,13 +345,6 @@ public interface ICardiTrackApiClient
     /// exist are skipped server-side, and <c>DeletedCount</c> says how many actually went.</summary>
     Task<MemberChatDeleteSessionsResponse> DeleteMemberChatSessionsAsync(
         Guid cardiMemberId, IReadOnlyList<Guid> sessionIds, CancellationToken ct = default);
-
-    /// <summary>Short lines to cycle in the pending reply bubble while the send for the same
-    /// message is in flight — fired alongside <see cref="SendMemberChatMessageAsync"/>, never
-    /// instead of it. The caller falls back to its own canned lines if this fails or loses the
-    /// race to the reply.</summary>
-    Task<MemberChatWaitingResponse> GetMemberChatWaitingSentencesAsync(
-        Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default);
 
     /// <summary>Question chips for the chat's empty state — deterministic server copy, no model
     /// call, instant. The caller treats a failure as "no chips" rather than an error.</summary>

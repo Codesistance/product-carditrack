@@ -91,6 +91,19 @@
                            TextColor="{StaticResource White}"
                            Opacity="0.85"
                            LineBreakMode="TailTruncation"/>
+                    <!-- EU AI Act Art. 50(1): a caregiver talking to this sheet is interacting with
+                         an AI system and must be told so (#1244). Fixed copy in the page, never
+                         model output, and in the header so it stays on screen in every mode —
+                         thread, history list and a reopened conversation alike. Worded as the
+                         PDF report and transcript export already put it. -->
+                    <Label x:Name="AiDisclosureLabel"
+                           Text="Answers are written by CardiTrack's AI assistant, not a clinician."
+                           FontFamily="Quicksand"
+                           FontSize="11"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.7"
+                           LineBreakMode="WordWrap"
+                           MaxLines="2"/>
                 </VerticalStackLayout>
 
                 <!-- Past conversations. A toggle as much as a door: from the thread it opens the

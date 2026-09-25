@@ -385,6 +385,112 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return sent;
     }
 
+    /// <summary>
+    /// The send as a stream: each <c>step</c> event is handed to <paramref name="onStep"/> as it
+    /// arrives, and the <c>answer</c> event is the result. Failures read the same as
+    /// <see cref="SendMemberChatMessageAsync"/>'s — an error status before the stream starts, or an
+    /// <c>error</c> event after, both become an <see cref="ApiException"/> carrying the server's
+    /// status and message.
+    /// </summary>
+    /// <remarks>
+    /// The whole exchange runs under <see cref="MemberChatSendTimeout"/>, not just the wait for
+    /// headers: the handler's per-request timeout ends when the headers arrive, and so does
+    /// <see cref="HttpClient.Timeout"/> for a response read as it streams.
+    /// </remarks>
+    public async Task<MemberChatMessageResponse> StreamMemberChatMessageAsync(
+        Guid cardiMemberId, MemberChatMessageRequest request, IProgress<MemberChatStep>? onStep,
+        CancellationToken ct = default)
+    {
+        var path = $"api/v1/member-chat/members/{cardiMemberId}/messages/stream";
+        using var whole = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        whole.CancelAfter(MemberChatSendTimeout);
+
+        using var message = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            // JsonContent re-serializes on each read, so the auth handler's 401 retry can re-send.
+            Content = JsonContent.Create(request, mediaType: null, Json),
+        };
+        message.Options.Set(TimeoutHandler.TimeoutOption, MemberChatSendTimeout);
+        message.Headers.Accept.ParseAdd("text/event-stream");
+
+        MemberChatMessageResponse? answer = null;
+        try
+        {
+            using var response = await _http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, whole.Token);
+            if (!response.IsSuccessStatusCode)
+                throw await MapErrorAsync("POST", path, response, ct);
+
+            await using var body = await response.Content.ReadAsStreamAsync(whole.Token);
+            await foreach (var sse in ServerSentEventReader.ReadAsync(body, whole.Token))
+            {
+                switch (sse.Name)
+                {
+                    case "step":
+                        if (onStep is not null && JsonUtility.TryDeserialize<MemberChatStep>(sse.Data, out var step, out _))
+                            onStep.Report(step!);
+                        break;
+                    case "answer":
+                        answer = JsonSerializer.Deserialize<MemberChatMessageResponse>(sse.Data, Json);
+                        break;
+                    case "error":
+                        throw StreamError(path, sse.Data);
+                    case "done":
+                        break;
+                }
+
+                if (sse.Name == "done")
+                    break;
+            }
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && whole.IsCancellationRequested)
+        {
+            // Our own budget ran out mid-stream — the far side was too slow, not the caller
+            // giving up, and NetworkError words the two differently.
+            throw NetworkError("POST", path, new TimeoutException("The streamed reply did not finish in time.", ex), ct);
+        }
+        catch (Exception ex) when (ex is not ApiException && (IsTransport(ex) || ex is IOException))
+        {
+            throw NetworkError("POST", path, ex, ct);
+        }
+
+        // An answer that arrived before the connection dropped is still the answer: done is only
+        // the terminator, and the reply is already saved server-side.
+        if (answer is null)
+        {
+            _logger.LogError("API POST {Path} stream ended without an answer", path);
+            throw new ApiException(HttpStatusCode.ServiceUnavailable,
+                "The reply was cut off on its way here. Pull down to refresh the conversation.");
+        }
+
+        await EvictAsync(MemberChatKeys(cardiMemberId));
+        return answer;
+    }
+
+    private ApiException StreamError(string path, string data)
+    {
+        var status = HttpStatusCode.ServiceUnavailable;
+        var text = "The assistant couldn't answer that just now — try again in a moment.";
+        if (JsonUtility.TryDeserialize<StreamErrorEvent>(data, out var error, out _))
+        {
+            if (error!.Status is >= 400 and <= 599)
+                status = (HttpStatusCode)error.Status;
+            if (!string.IsNullOrWhiteSpace(error.Message))
+                text = error.Message;
+        }
+
+        _logger.Log((int)status >= 500 ? LogLevel.Error : LogLevel.Warning,
+            "API POST {Path} stream ended with {StatusCode}: {ServerMessage}", path, (int)status, text);
+        return new ApiException(status, text);
+    }
+
+    /// <summary>The stream's <c>error</c> event: the status and message the JSON endpoint would
+    /// have answered with.</summary>
+    private sealed class StreamErrorEvent
+    {
+        public int Status { get; init; }
+        public string? Message { get; init; }
+    }
+
     public async Task<MemberChatHistoryResponse?> GetCurrentMemberChatSessionAsync(
         Guid cardiMemberId, CancellationToken ct = default)
     {
@@ -450,11 +556,6 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         ApiPaths.CurrentMemberChatSession(cardiMemberId),
         ApiPaths.MemberChatSessions(cardiMemberId),
     ];
-
-    public Task<MemberChatWaitingResponse> GetMemberChatWaitingSentencesAsync(
-        Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default) =>
-        SendAsync<MemberChatMessageRequest, MemberChatWaitingResponse>(
-            HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/waiting-sentences", request, ct);
 
     public Task<MemberChatSuggestionsResponse> GetMemberChatSuggestionsAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>
