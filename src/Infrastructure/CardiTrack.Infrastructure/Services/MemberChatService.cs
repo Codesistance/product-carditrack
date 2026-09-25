@@ -2023,7 +2023,7 @@ public class MemberChatService : IMemberChatService
             return FallbackWaitingSentences;
         var forModel = NamePlaceholder.Redact(flattened, member.FullName) ?? flattened;
 
-        return await GenerateWaitingLinesAsync(forModel, member.FirstName, ct)
+        return await GenerateWaitingLinesAsync(forModel, NamePlaceholder.FirstNameOf(member), ct)
             ?? FallbackWaitingSentences;
     }
 

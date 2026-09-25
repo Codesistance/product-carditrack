@@ -105,6 +105,42 @@ public class NamePlaceholderTests
     /// The API trims names but does not collapse the space inside them, and a caregiver can type
     /// "Mary  Ann". Neither the stored spacing nor the text's may decide whether a word escapes.
     /// </summary>
+    /// <summary>
+    /// <see cref="NamePlaceholder.Redact"/> deliberately skips a lone initial (see
+    /// <see cref="Redact_SkipsASingleLetterFirstName"/>), so a one-letter first name must never be
+    /// what chat resolution writes into replies and history on its own: it resolves to the full
+    /// name, which is redacted whole on the way back to the model.
+    /// </summary>
+    [Fact]
+    public void ASingleLetterFirstName_NeverReachesTheModelThroughChatHistory()
+    {
+        var member = new CardiTrack.Domain.Entities.CardiMember { FirstName = "A", LastName = "Smith" };
+
+        var resolvedName = NamePlaceholder.FirstNameOf(member);
+        var storedReply = NamePlaceholder.Resolve(
+            $"{NamePlaceholder.Token} slept well and {NamePlaceholder.Token} walked more.", resolvedName);
+        var historyForModel = NamePlaceholder.Redact(storedReply, member.FullName);
+
+        Assert.Equal("A Smith", resolvedName);
+        Assert.Equal(
+            $"{NamePlaceholder.Token} slept well and {NamePlaceholder.Token} walked more.", historyForModel);
+        Assert.DoesNotContain("Smith", historyForModel);
+        Assert.DoesNotMatch(@"\bA\b", historyForModel);
+    }
+
+    [Theory]
+    [InlineData("Arthur", "Doe", "Arthur")]
+    [InlineData("Mary Ann", "Smith", "Mary Ann")]
+    [InlineData("A", null, "A")]
+    [InlineData("  ", "Doe", null)]
+    public void FirstNameOf_IsTheStoredFirstName_ExceptALoneInitialBesideASurname(
+        string first, string? last, string? expected)
+    {
+        var member = new CardiTrack.Domain.Entities.CardiMember { FirstName = first, LastName = last };
+
+        Assert.Equal(expected, NamePlaceholder.FirstNameOf(member));
+    }
+
     [Theory]
     [InlineData("Mary  Ann Smith")]
     [InlineData("Mary Ann\tSmith")]

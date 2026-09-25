@@ -51,12 +51,28 @@ internal static partial class NamePlaceholder
     internal const string Token = "CardiTrackCardiMember";
 
     /// <summary>
-    /// A member's stored first name — what a family member would actually say aloud — or null
-    /// when there is no member or no name, so generated copy falls back to its own wording
-    /// ("them") rather than interpolating an empty string.
+    /// The name generated copy calls a member by — their stored first name, what a family member
+    /// would actually say aloud — or null when there is no member or no name, so the copy falls
+    /// back to its own wording ("them") rather than interpolating an empty string.
     /// </summary>
-    internal static string? FirstNameOf(CardiMember? member) =>
-        string.IsNullOrWhiteSpace(member?.FirstName) ? null : member.FirstName.Trim();
+    /// <remarks>
+    /// A one-letter first name with a surname resolves to the full name instead. Whatever this
+    /// returns is written into chat replies and history, and history goes back to a model through
+    /// <see cref="Redact"/> — which deliberately skips a lone initial (matching one would tokenise
+    /// every stray "A" or "I"). Copy carrying "A" alone would therefore carry it out unredacted;
+    /// "A Smith" is always redacted whole. A one-letter name with no surname is its own full name,
+    /// and <see cref="Redact"/> always matches the full name, so it needs no special case.
+    /// </remarks>
+    internal static string? FirstNameOf(CardiMember? member)
+    {
+        if (string.IsNullOrWhiteSpace(member?.FirstName))
+            return null;
+
+        var first = member.FirstName.Trim();
+        return first.Length == 1 && !string.IsNullOrWhiteSpace(member.LastName)
+            ? member.FullName.Trim()
+            : first;
+    }
 
     /// <summary>
     /// The first word of a single full name. For names still held as one string — caregivers'

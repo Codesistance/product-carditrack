@@ -157,7 +157,7 @@ public class ChatThemeService : IChatThemeService
             session.Id, generation.Usage.ModelName, generation.Usage.InputTokens,
             generation.Usage.OutputTokens, generation.Usage.DurationMs);
 
-        return Sanitize(generation.Result.Theme, member.FirstName);
+        return Sanitize(generation.Result.Theme, NamePlaceholder.FirstNameOf(member));
     }
 
     /// <summary>

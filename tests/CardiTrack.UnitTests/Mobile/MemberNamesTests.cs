@@ -73,6 +73,37 @@ public class MemberNamesTests
     }
 
     [Theory]
+    [InlineData("Margaret", "Doe", "Margaret Doe")]
+    [InlineData("Arthur", null, "Arthur")]
+    [InlineData("A", null, "A.")]
+    [InlineData(" A ", "  ", "A.")]
+    [InlineData("A", "Smith", "A Smith")]
+    public void LegacyName_FitsTheOldApisTwoToHundredRule(string first, string? last, string expected)
+    {
+        Assert.Equal(expected, MemberNameRules.LegacyName(first, last));
+    }
+
+    [Fact]
+    public void LegacyName_CutsAnOverlongJoinedNameToTheOldLimit()
+    {
+        var first = new string('a', MemberNameRules.MaxLength);
+        var last = new string('b', MemberNameRules.MaxLength);
+
+        var legacy = MemberNameRules.LegacyName(first, last);
+
+        Assert.Equal(MemberNameRules.LegacyMaxLength, legacy.Length);
+        Assert.Equal(first, legacy);
+    }
+
+    [Fact]
+    public void LegacyName_NeverEndsInTheSpaceACutLandsOn()
+    {
+        var legacy = MemberNameRules.LegacyName(new string('a', 99), "Smith");
+
+        Assert.Equal(new string('a', 99), legacy);
+    }
+
+    [Theory]
     [InlineData(null, null)]
     [InlineData("   ", null)]
     [InlineData(" Doe ", "Doe")]

@@ -1,7 +1,6 @@
 using System.Globalization;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
-using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
@@ -394,7 +393,7 @@ public partial class EditCardiMemberPage : ContentPage
                 LastName = MemberNameRules.LastNameOrNull(LastNameEntry.Text),
                 // Restated whole for an API from before the first/last split, which reads only
                 // this; a current API ignores it whenever FirstName is sent.
-                Name = PersonName.Join(FirstNameEntry.Text!.Trim(), MemberNameRules.LastNameOrNull(LastNameEntry.Text)),
+                Name = MemberNameRules.LegacyName(FirstNameEntry.Text!, LastNameEntry.Text),
                 // Validate refused a missing date a moment ago.
                 DateOfBirth = DateOnly.FromDateTime(DobPicker.Date!.Value),
                 Gender = SelectedSex(),

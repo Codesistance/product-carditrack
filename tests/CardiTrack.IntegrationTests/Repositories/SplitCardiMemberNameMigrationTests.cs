@@ -16,7 +16,7 @@ namespace CardiTrack.IntegrationTests.Repositories;
 /// </summary>
 public class SplitCardiMemberNameMigrationTests : IAsyncLifetime
 {
-    private const string MigrationBefore = "20260925104710_AddActivityLogNightStatus";
+    private const string MigrationBefore = "20260925150145_AddPendingGrantRevocations";
     private const string MigrationUnderTest = "20260925171252_SplitCardiMemberName";
 
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
