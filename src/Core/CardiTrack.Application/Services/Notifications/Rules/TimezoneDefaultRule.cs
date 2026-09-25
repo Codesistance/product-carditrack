@@ -17,10 +17,12 @@ namespace CardiTrack.Application.Services.Notifications.Rules;
 /// evaluated against UTC for a caregiver in Los Angeles it fires at 3am local.
 /// </para>
 /// </remarks>
-public sealed class TimezoneDefaultRule : INudgeRule
+public sealed class TimezoneDefaultRule : ISetupStepRule
 {
     public const string Code = "TIMEZONE_DEFAULT";
     public const string DefaultTimeZoneId = "UTC";
+
+    private const string DeepLink = "carditrack://settings/profile#timezone";
 
     public string RuleCode => Code;
     public int Version => 1;
@@ -39,11 +41,21 @@ public sealed class TimezoneDefaultRule : INudgeRule
         if (context.Member is not null)
             return NudgeVerdict.NoGap;
 
-        if (!string.Equals(context.User.TimeZoneId, DefaultTimeZoneId, StringComparison.OrdinalIgnoreCase))
+        if (!CheckSetup(context).IsNotDone)
             return NudgeVerdict.NoGap;
 
         return NudgeVerdict.Gap(
-            deepLink: "carditrack://settings/profile#timezone",
+            deepLink: DeepLink,
             discriminator: context.User.Id.ToString("N"));
     }
+
+    /// <summary>
+    /// Applies in every context, member or not. The nudge is asked once of the person, but the
+    /// clock it fixes is the one every member's "today" is read in, so it is a step on each of
+    /// their checklists — the same answer everywhere, closed once for all of them.
+    /// </summary>
+    public SetupCheck CheckSetup(NudgeContext context) =>
+        SetupCheck.Of(
+            !string.Equals(context.User.TimeZoneId, DefaultTimeZoneId, StringComparison.OrdinalIgnoreCase),
+            DeepLink);
 }

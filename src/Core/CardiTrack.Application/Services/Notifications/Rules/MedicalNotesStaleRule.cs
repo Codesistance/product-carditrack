@@ -20,7 +20,7 @@ namespace CardiTrack.Application.Services.Notifications.Rules;
 /// there is no hour of any day at which this needs to interrupt someone.
 /// </para>
 /// </remarks>
-public sealed class MedicalNotesStaleRule : INudgeRule
+public sealed class MedicalNotesStaleRule : ISetupStepRule
 {
     public const string Code = "MEDICAL_NOTES_STALE";
 
@@ -44,28 +44,15 @@ public sealed class MedicalNotesStaleRule : INudgeRule
 
     public NudgeVerdict Evaluate(NudgeContext context)
     {
-        var member = context.Member;
-
-        // Nothing on file is the empty rule's gap, not this one. The two are mutually exclusive by
-        // construction, so a family is never asked to write the background down and to confirm it
-        // in the same breath.
-        if (member is null || !member.HasMedicalNotes)
+        if (!CheckSetup(context).IsNotDone)
             return NudgeVerdict.NoGap;
+
+        // CheckSetup only answers NotDone for a member context with notes on file.
+        var member = context.Member!;
 
         // Same gate the empty rule applies. Until there is a baseline, nothing is reading the
         // notes yet, so asking a caregiver to re-verify them buys the member nothing.
         if (!member.HasEstablishedBaseline)
-            return NudgeVerdict.NoGap;
-
-        // Notes that predate the review date are the ones most likely to be out of date, so they
-        // are asked about rather than exempted — but from when the member joined, not from the
-        // deploy that added the column. Anchoring on "now" would have every existing family go
-        // quiet for another six months, which is the opposite of what this rule is for, and
-        // backfilling the column instead would have been the database claiming a review that
-        // never happened.
-        var anchor = member.MedicalNotesReviewedAtUtc ?? member.CreatedDate;
-        var age = context.UtcNow - anchor;
-        if (age < ReviewInterval)
             return NudgeVerdict.NoGap;
 
         // Never confirmed at all is a different sentence from "confirmed, but a while ago" — we
@@ -81,13 +68,42 @@ public sealed class MedicalNotesStaleRule : INudgeRule
 
         // Months rather than days: "confirmed 209 days ago" invites arithmetic, and the rule does
         // not fire precisely enough for the extra resolution to mean anything.
-        var months = (int)(age.TotalDays / 30);
+        var months = (int)(AgeOf(member, context.UtcNow).TotalDays / 30);
 
         return NudgeVerdict.Gap(
             deepLink: DeepLinkFor(member.Id),
             discriminator: member.Id.ToString("N"),
             templateData: new Dictionary<string, object> { ["months"] = months });
     }
+
+    /// <summary>
+    /// Done while the notes on file were confirmed — or, never confirmed, the member joined —
+    /// within <see cref="ReviewInterval"/>. Not applicable with nothing on file: that is the
+    /// empty rule's step, and the two are mutually exclusive by construction.
+    /// </summary>
+    public SetupCheck CheckSetup(NudgeContext context)
+    {
+        var member = context.Member;
+
+        // Nothing on file is the empty rule's gap, not this one. The two are mutually exclusive by
+        // construction, so a family is never asked to write the background down and to confirm it
+        // in the same breath.
+        if (member is null || !member.HasMedicalNotes)
+            return SetupCheck.NotApplicable;
+
+        return SetupCheck.Of(AgeOf(member, context.UtcNow) < ReviewInterval, DeepLinkFor(member.Id));
+    }
+
+    /// <summary>
+    /// How long since the notes were last confirmed. Notes that predate the review date are the
+    /// ones most likely to be out of date, so they are asked about rather than exempted — but from
+    /// when the member joined, not from the deploy that added the column. Anchoring on "now" would
+    /// have every existing family go quiet for another six months, which is the opposite of what
+    /// this rule is for, and backfilling the column instead would have been the database claiming
+    /// a review that never happened.
+    /// </summary>
+    private static TimeSpan AgeOf(NudgeMemberSnapshot member, DateTime utcNow) =>
+        utcNow - (member.MedicalNotesReviewedAtUtc ?? member.CreatedDate);
 
     /// <summary>
     /// The same link the empty rule uses. Both gaps close on the same screen, and the fragment is

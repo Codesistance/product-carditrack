@@ -362,6 +362,47 @@ public class NudgeReconcilerTests
         Assert.False(inserted.IsOwner);
     }
 
+    /// <summary>
+    /// Ownership is re-decided on every run, not only when a row is first inserted: a stored row
+    /// whose owner has changed — a new primary caregiver, or a row stored under the wrong answer —
+    /// must stop being actionable for the old owner and become actionable for the new one.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void AStoredRowFollowsOwnershipWhenItChanges(bool storedAsOwner, bool nowOwner)
+    {
+        static NudgeContext MissingDeviceFor(bool owner) => owner
+            ? new NudgeContextBuilder().NoConnections().Build()
+            : new NudgeContextBuilder().NoConnections().NotOwner().Build();
+
+        var stored = NudgeReconciler.Reconcile(
+            [MissingDeviceFor(storedAsOwner)], [], OnlyDeviceRemoved).ToInsert;
+        Assert.Equal(storedAsOwner, Assert.Single(stored).IsOwner);
+
+        var plan = NudgeReconciler.Reconcile([MissingDeviceFor(nowOwner)], stored, OnlyDeviceRemoved);
+
+        Assert.Empty(plan.ToInsert);
+        Assert.Equal(nowOwner, Assert.Single(plan.ToUpdate).IsOwner);
+    }
+
+    /// <summary>A handover keeps the row, so the snooze on it survives rather than being reset.</summary>
+    [Fact]
+    public void AHandoverKeepsALiveSnooze()
+    {
+        var stored = NudgeReconciler.Reconcile(
+            [new NudgeContextBuilder().NoConnections().NotOwner().Build()], [], OnlyDeviceRemoved).ToInsert;
+        var row = Assert.Single(stored);
+        row.State = NotificationState.Snoozed;
+        row.SnoozedUntil = Now.AddDays(3);
+
+        NudgeReconciler.Reconcile([MissingDevice()], stored, OnlyDeviceRemoved);
+
+        Assert.True(row.IsOwner);
+        Assert.Equal(NotificationState.Snoozed, row.State);
+        Assert.Equal(Now.AddDays(3), row.SnoozedUntil);
+    }
+
     [Fact]
     public void TemplateDataNeverCarriesAName()
     {

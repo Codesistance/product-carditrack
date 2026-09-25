@@ -98,6 +98,16 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
             .Where(m => memberIds.Contains(m.Id) && m.IsActive)
             .ToListAsync(ct);
 
+        // Every caregiver of these members, not only the users being built. Ownership is decided
+        // between all of a member's caregivers, and `links` holds only this batch's — for a
+        // single user that is their own link alone, which made every relative the owner.
+        var ownershipLinks = await _context.UserCardiMembers
+            .Where(l => memberIds.Contains(l.CardiMemberId)
+                        && l.IsActive
+                        && l.CanViewHealthData
+                        && _context.Users.Any(u => u.Id == l.UserId && u.IsActive))
+            .ToListAsync(ct);
+
         var connections = await _context.DeviceConnections
             .Where(c => memberIds.Contains(c.CardiMemberId))
             .Select(c => new
@@ -244,7 +254,7 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                     OrganizationId = member.OrganizationId,
                     User = userSnapshot,
                     Mutes = userMutes,
-                    IsOwner = IsOwnerOf(user.Id, member.Id, links),
+                    IsOwner = IsOwnerOf(user.Id, member.Id, ownershipLinks),
                     Member = new NudgeMemberSnapshot
                     {
                         Id = member.Id,
@@ -293,6 +303,7 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
     /// active link. One owner, so a family of five is not nagged five times about one missing
     /// emergency contact — the rest see the item read-only.
     /// </summary>
+    /// <param name="links">Every active caregiver link to the member, whoever is being built.</param>
     private static bool IsOwnerOf(Guid userId, Guid memberId, List<UserCardiMember> links)
     {
         var candidates = links

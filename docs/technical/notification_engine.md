@@ -978,7 +978,7 @@ integer enums, `ICardiMemberAccessService` scoping (unreadable member → **404*
 | `POST` / `DELETE /api/v1/notifications/devices` | Token upsert / unregister. Upsert also carries OS authorization status and per-channel enablement (§4) and doubles as the reachability heartbeat |
 | `POST /api/v1/notifications/{id}/delivered` | **Client ack** — posted from the background push handler. Drives the SLO and stops escalation. `[AllowAnonymous]`, authorized by the payload's single-use `ackToken` rather than a user JWT, and separately rate-limited (§7.2 C3) |
 | `GET /api/v1/notifications` | Inbox. Filters `state`, `category`, `cardiMemberId`, `owned`, `limit` (≤200), `offset` |
-| `GET /api/v1/notifications/summary` | Unseen count, safety banners, top 2 cards. One call on launch and foreground sync |
+| `GET /api/v1/notifications/summary` | Unseen count, safety banners, top 2 cards, and each watched member's setup checklist (`memberSetup`, computed from the Unlock rules' own predicates — see notifications.md). One call on launch and foreground sync |
 | `POST /api/v1/notifications/{id}/seen` · `/snooze` · `/dismiss` | Funnel + the three affordances. Dismiss requires `acknowledgedConsequence` for Safety, else **400** |
 | `GET` / `PUT /api/v1/notifications/preferences` | Quiet hours, muted categories, lock-screen detail |
 | `GET /api/v1/notifications/mutes` · `DELETE /mutes/{id}` · `POST /mutes/reset` | The silence surface |

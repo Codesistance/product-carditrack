@@ -74,6 +74,67 @@ public class NotificationSummaryResponse
 
     /// <summary>The top two by priority, for the dashboard's "Complete the picture" card.</summary>
     public List<NotificationResponse> DashboardCards { get; set; } = [];
+
+    /// <summary>
+    /// One setup checklist per member the caller watches, for the "Complete the picture" progress
+    /// ring — including members whose checklist is complete (<c>Done == Total</c>) or empty
+    /// (<c>Total == 0</c>), which the client hides. Ordered by first name.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="DashboardCards"/>, this is computed from the member's current data rather
+    /// than read from stored notifications, so it can tell "done" from "not applicable" and does
+    /// not go quiet while a nudge is being held back.
+    /// </remarks>
+    public List<MemberSetupProgress> MemberSetup { get; set; } = [];
+}
+
+/// <summary>One member's setup checklist — "Pop's profile 3 of 5 · Next: emergency contact".</summary>
+public class MemberSetupProgress
+{
+    public Guid CardiMemberId { get; set; }
+
+    /// <summary>What the app labels the member by.</summary>
+    public string CardiMemberFirstName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Same meaning as <see cref="NotificationResponse.IsOwner"/>: false when the caller is a
+    /// relative and somebody else is the one asked to finish this member's setup. The progress is
+    /// shown to them all the same; the client should not offer the "Next" step as a call to action.
+    /// </summary>
+    public bool IsOwner { get; set; }
+
+    /// <summary>How many of <see cref="Steps"/> are done.</summary>
+    public int Done { get; set; }
+
+    /// <summary>
+    /// How many steps apply to this member. Steps that do not apply (no connected device to grant
+    /// sleep) and steps the caller has muted are left out, not counted as done.
+    /// </summary>
+    public int Total { get; set; }
+
+    /// <summary>The applicable steps in the nudges' priority order; the first not done is "Next".</summary>
+    public List<MemberSetupStep> Steps { get; set; } = [];
+}
+
+/// <summary>One step on a member's setup checklist.</summary>
+public class MemberSetupStep
+{
+    /// <summary>
+    /// Stable identifier — <c>emergency-contact</c>, <c>sleep-access</c>, <c>irregular-rhythm</c>,
+    /// <c>time-zone</c>, <c>medical-information</c>. Key client copy off this.
+    /// </summary>
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>A short English label, for a client with no copy of its own for <see cref="Key"/>.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    public bool Done { get; set; }
+
+    /// <summary>
+    /// The screen that closes the step — the same link the step's nudge carries — present whether
+    /// or not the step is done, so a finished step can still be opened to review.
+    /// </summary>
+    public string ActionDeepLink { get; set; } = string.Empty;
 }
 
 public class NotificationMuteResponse

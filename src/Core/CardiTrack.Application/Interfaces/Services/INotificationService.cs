@@ -18,7 +18,10 @@ public interface INotificationService
         int offset,
         CancellationToken ct = default);
 
-    /// <summary>Badge count plus the dashboard card slots — one call on app launch.</summary>
+    /// <summary>
+    /// Badge count, the dashboard card slots, and each watched member's setup checklist — one call
+    /// on app launch.
+    /// </summary>
     Task<NotificationSummaryResponse> GetSummaryAsync(Guid requestingUserId, CancellationToken ct = default);
 
     /// <summary>Records that the user has laid eyes on it. The denominator of the comply funnel.</summary>

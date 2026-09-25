@@ -11,7 +11,7 @@ namespace CardiTrack.Application.Services.Notifications.Rules;
 /// built, and a nudge that trades a caregiver's effort for a capability we do not ship spends the
 /// trust the whole engine runs on.
 /// </remarks>
-public sealed class SleepScopeMissingRule : INudgeRule
+public sealed class SleepScopeMissingRule : ISetupStepRule
 {
     public const string Code = "SLEEP_SCOPE_MISSING";
 
@@ -28,24 +28,48 @@ public sealed class SleepScopeMissingRule : INudgeRule
 
     public NudgeVerdict Evaluate(NudgeContext context)
     {
-        if (context.Member is null)
+        var (check, target) = Assess(context);
+        if (!check.IsNotDone)
             return NudgeVerdict.NoGap;
+
+        return NudgeVerdict.Gap(
+            deepLink: check.ActionDeepLink,
+            discriminator: target.ToString("N"));
+    }
+
+    /// <summary>
+    /// Applies only while the member has a connected device — that is what could grant sleep —
+    /// and is done once any of them does. A member with no device has no sleep step at all,
+    /// rather than one that reads as finished.
+    /// </summary>
+    public SetupCheck CheckSetup(NudgeContext context) => Assess(context).Check;
+
+    /// <summary>
+    /// The one predicate both answers come from, with the connection it is about: the one to fix
+    /// when nothing grants sleep, or the one that does when something does.
+    /// </summary>
+    private static (SetupCheck Check, Guid Target) Assess(NudgeContext context)
+    {
+        if (context.Member is null)
+            return (SetupCheck.NotApplicable, Guid.Empty);
 
         var live = context.Connections
             .Where(c => c.Status == ConnectionStatus.Connected)
+            .OrderBy(c => c.Id)
             .ToList();
 
         if (live.Count == 0)
-            return NudgeVerdict.NoGap;
+            return (SetupCheck.NotApplicable, Guid.Empty);
 
         // Any connection granting sleep covers the member — a second watch without it is not a gap.
-        if (live.Any(c => DeviceScopes.GrantsSleep(c.Scopes)))
-            return NudgeVerdict.NoGap;
+        var granting = live.FirstOrDefault(c => DeviceScopes.GrantsSleep(c.Scopes));
+        var target = granting ?? live[0];
 
-        var target = live.OrderBy(c => c.Id).First();
-
-        return NudgeVerdict.Gap(
-            deepLink: $"carditrack://cardimembers/{context.Member.Id}/devices/{target.Id}",
-            discriminator: target.Id.ToString("N"));
+        return (
+            SetupCheck.Of(granting is not null, DeepLinkFor(context.Member.Id, target.Id)),
+            target.Id);
     }
+
+    private static string DeepLinkFor(Guid memberId, Guid connectionId) =>
+        $"carditrack://cardimembers/{memberId}/devices/{connectionId}";
 }

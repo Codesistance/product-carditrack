@@ -33,7 +33,7 @@ namespace CardiTrack.Application.Services.Notifications.Rules;
 /// it unlocks is reaching help, not a better report.
 /// </para>
 /// </remarks>
-public sealed class EmergencyContactMissingRule : INudgeRule
+public sealed class EmergencyContactMissingRule : ISetupStepRule
 {
     public const string Code = "EMERGENCY_CONTACT_MISSING";
 
@@ -57,15 +57,32 @@ public sealed class EmergencyContactMissingRule : INudgeRule
 
     public NudgeVerdict Evaluate(NudgeContext context)
     {
-        var member = context.Member;
-        if (member is null || member.HasEmergencyContact)
+        var check = CheckSetup(context);
+        if (!check.IsNotDone)
             return NudgeVerdict.NoGap;
 
+        // CheckSetup only answers NotDone for a member context.
+        var member = context.Member!;
         if (context.UtcNow - member.CreatedDate < Grace)
             return NudgeVerdict.NoGap;
 
         return NudgeVerdict.Gap(
-            deepLink: $"carditrack://cardimembers/{member.Id}/edit#emergencyContact",
+            deepLink: check.ActionDeepLink,
             discriminator: member.Id.ToString("N"));
+    }
+
+    /// <summary>
+    /// Done once a number is saved. The day's <see cref="Grace"/> is a "not yet" for the nudge,
+    /// not a "done" for the checklist — a member added an hour ago still has no number for SOS.
+    /// </summary>
+    public SetupCheck CheckSetup(NudgeContext context)
+    {
+        var member = context.Member;
+        if (member is null)
+            return SetupCheck.NotApplicable;
+
+        return SetupCheck.Of(
+            member.HasEmergencyContact,
+            $"carditrack://cardimembers/{member.Id}/edit#emergencyContact");
     }
 }
