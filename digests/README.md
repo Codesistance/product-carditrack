@@ -19,6 +19,12 @@ These files do two jobs:
   "date": "2026-09-18",
   "summary": "*CardiTrack digest — 2026-09-18* · 2 items · 1 CRITICAL, 1 FYI",
   "empty_reason": null,
+  "notes": [
+    { "heading": "Deadlines on record",
+      "lines": ["NIA 2027 closes 2026-09-27 — application status still unconfirmed in the repo"] },
+    { "heading": "Checked, nothing new",
+      "lines": ["Ollama 0.34.4 — no security fixes", ".NET 10.0.12 still current"] }
+  ],
   "items": [
     {
       "slug": "medgemma-licence-change",
@@ -38,7 +44,8 @@ These files do two jobs:
 | Field | Notes |
 |---|---|
 | `date` | `YYYY-MM-DD`, Europe/London. Matches the filename. |
-| `summary` | The parent Slack message — a one-line severity roll-up. Required. |
+| `summary` | The parent Slack message's first line — the date and the severity roll-up, **one short line and nothing else**. Required. Standing context (deadlines, what was checked and found clean, what was held back, sandbox notes) goes in `notes`, never here: Slack renders `summary` as a single paragraph, so anything appended to it becomes one unreadable run-on block. |
+| `notes` | Optional. An ordered list of `{ "heading", "lines": [] }` sections rendered under the summary in the parent message, one bulleted block per section. Use it for the context that is not an item: deadlines still on record, items held for want of a primary source, what was checked and found clean, which hosts the sandbox could not reach. Each line is one short sentence; each rendered section must stay under Slack's 3,000-character block limit or the post is rejected before anything is sent. |
 | `empty_reason` | Short string when `items` is empty and it is worth saying why (e.g. `"nothing cleared the bar"`), otherwise absent or `null`. Distinguishes a quiet morning from a run that failed before it published. |
 | `items` | Array, possibly empty. One entry per published item. |
 
@@ -54,7 +61,8 @@ These files do two jobs:
 | `brief` | Repo-relative path to the research brief under `research/queue/`. |
 | `text` | The threaded reply, Slack mrkdwn, ending with the Claude Code pickup line. |
 
-No `blocks` key: `scripts/post-digest.sh` builds the blocks, including the
+No `blocks` key: `scripts/post-digest.sh` builds the blocks — the parent from
+`summary` and `notes`, each reply from its item — including the
 issue-button URL, which it derives from the fields above and URL-encodes. An
 unencoded space or `#` breaks a button silently, so that encoding lives in one
 place rather than in the routine's output.
