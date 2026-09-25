@@ -256,8 +256,9 @@
                                    Margin="4,4,4,0"/>
                             <VerticalStackLayout x:Name="RosterHost" Spacing="10"/>
 
-                            <!-- The people this family watches, each with how many caregivers
-                                 it has and whether one of its alerts is open. -->
+                            <!-- The people this family watches — photo, name and when their
+                                 device last sent anything — and, for the admin, a card to add
+                                 another. Built in code-behind (ApplyWatched). -->
                             <VerticalStackLayout x:Name="WatchedSection" Spacing="10" IsVisible="False">
                                 <Label Text="Who we watch"
                                        Style="{StaticResource DashboardSectionTitle}"

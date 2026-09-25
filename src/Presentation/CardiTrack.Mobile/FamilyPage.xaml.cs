@@ -8,8 +8,10 @@ using CardiTrack.Mobile.Core.Family;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Offline;
+using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile;
 
@@ -290,7 +292,7 @@ public partial class FamilyPage : ContentPage
 
         ApplyQueue(view.Queue, isAdmin);
         ApplyRoster(view.Roster, isAdmin, family.OrganizationId);
-        ApplyWatched(family);
+        ApplyWatched(family, isAdmin);
 
         // An admin cannot simply leave (D-13): the button stays, and the refusal explains itself
         // rather than the row vanishing and leaving nothing to ask about.
@@ -444,91 +446,171 @@ public partial class FamilyPage : ContentPage
     /// holds its own record (D-15), and a row matched on the name could show the other family's
     /// alert and open the other family's member.
     /// </remarks>
-    private void ApplyWatched(FamilySummary family)
+    /// <summary>
+    /// "Who we watch": one card per CardiMember — photo, name, and when their device last sent
+    /// anything — and, for the admin, a card to add another.
+    /// </summary>
+    /// <remarks>
+    /// A person, not an alert. These cards used to lead with the member's worst open alert and a
+    /// severity pill, which made the list a second, smaller Alerts tab; what a caregiver scanning
+    /// the family wants here is whether everybody's device is still talking to us, and the alerts
+    /// have their own tab. The add card sits under the members because this is where a family
+    /// grows: until it existed, adding a second person was reachable only through "Start a
+    /// family", which said it did something else.
+    /// </remarks>
+    private void ApplyWatched(FamilySummary family, bool isAdmin)
     {
         WatchedHost.Clear();
         var members = _members.Where(m => m.OrganizationId == family.OrganizationId).ToList();
-        WatchedSection.IsVisible = members.Count > 0;
+        WatchedSection.IsVisible = members.Count > 0 || isAdmin;
         if (!WatchedSection.IsVisible)
             return;
 
+        var now = DateTime.UtcNow;
         foreach (var member in members)
-        {
-            var name = member.DisplayFirstName();
-            var alert = _openAlerts
-                .Where(a => a.CardiMemberId == member.Id)
-                .OrderByDescending(a => FamilyAlertState.SeverityRank(a.Severity))
-                .ThenByDescending(a => a.TriggeredAt)
-                .FirstOrDefault();
+            WatchedHost.Add(MemberCard(member, now));
 
-            var row = new Grid
-            {
-                ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto)],
-                ColumnSpacing = 12,
-                MinimumHeightRequest = 52,
-            };
-
-            var avatar = new MemberAvatar { BoxWidth = 40, VerticalOptions = LayoutOptions.Center };
-            avatar.Apply(member.Name, member.PhotoUrl);
-            row.Add(avatar, 0, 0);
-
-            var text = new VerticalStackLayout { Spacing = 1, VerticalOptions = LayoutOptions.Center };
-            text.Add(new Label { Text = name, Style = Named("Body1SemiBoldDark") });
-            text.Add(new Label
-            {
-                Text = alert is null ? "Nothing open" : alert.Title,
-                Style = Named("Body2"),
-                LineBreakMode = LineBreakMode.TailTruncation,
-            });
-            row.Add(text, 1, 0);
-
-            if (alert is not null)
-            {
-                // Top of its column, not the middle: the pill labels the row, and a row whose
-                // second line wraps would otherwise drag it down the card away from the name it
-                // belongs to.
-                var pill = SeverityPill(alert.Severity);
-                pill.VerticalOptions = LayoutOptions.Start;
-                row.Add(pill, 2, 0);
-            }
-
-            var tap = new TapGestureRecognizer();
-            tap.Tapped += async (_, _) => await Shell.Current.GoToAsync(alert is not null
-                ? $"{AlertDetailPage.Route}?alertId={alert.AlertId}"
-                : $"{CardiMemberDetailPage.Route}?memberId={member.Id}");
-            row.GestureRecognizers.Add(tap);
-
-            WatchedHost.Add(Card(row, padding: new Thickness(14, 10)));
-        }
+        // Admin only: adding a CardiMember is a decision about the family's plan, and the admin is
+        // the one who holds it.
+        if (isAdmin)
+            WatchedHost.Add(AddMemberCard());
     }
 
-    /// <summary>
-    /// The row's open-alert badge, in the severity contract's own words and colours — the same
-    /// vocabulary the alert screen uses, so a pill and the page it opens never disagree.
-    /// </summary>
-    private Border SeverityPill(string? severity)
+    private Border MemberCard(CardiMemberResponse member, DateTime now)
     {
-        var (tint, ink, word) = severity?.ToLowerInvariant() switch
+        var row = new Grid
         {
-            "red" => ("PillRedBackground", "StatusRed", "CRITICAL"),
-            "orange" => ("PillOrangeBackground", "StatusOrange", "URGENT"),
-            "yellow" => ("PillYellowBackground", "StatusYellow", "NOTICE"),
-            _ => ("PillNeutralBackground", "StatusUnknown", "OPEN"),
+            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto)],
+            ColumnSpacing = 12,
+            MinimumHeightRequest = 56,
         };
 
-        var pill = new Border
+        var avatar = new MemberAvatar { BoxWidth = 48, VerticalOptions = LayoutOptions.Center };
+        avatar.Apply(member.Name, member.PhotoUrl);
+        row.Add(avatar, 0, 0);
+
+        var (syncText, freshness) = MemberSyncLine.For(member.LastSyncedAt, member.ConnectedDeviceCount, now);
+
+        // The dot carries how worrying the silence is; the words carry how long. No dot at all for
+        // "no device connected" — that is a set-up step, not a fault, and a grey dot beside it
+        // read as a device that had died.
+        var syncLine = new HorizontalStackLayout { Spacing = 6 };
+        if (freshness != SyncFreshness.NoDevice)
         {
-            Style = Named("StatusPill"),
-            BackgroundColor = MetricStatus.Resource(tint, Colors.LightGray),
-            VerticalOptions = LayoutOptions.Center,
-            Content = new Label
+            syncLine.Add(new Ellipse
             {
-                Text = word,
-                Style = Named("StatusPillText"),
-                TextColor = MetricStatus.Resource(ink, Colors.Gray),
+                WidthRequest = 8,
+                HeightRequest = 8,
+                Fill = new SolidColorBrush(MetricStatus.Resource(freshness switch
+                {
+                    SyncFreshness.Recent => "StatusGreen",
+                    SyncFreshness.Quiet => "StatusYellow",
+                    _ => "StatusOrange",
+                }, Colors.Gray)),
+                VerticalOptions = LayoutOptions.Center,
+            });
+        }
+        syncLine.Add(new Label
+        {
+            Text = syncText,
+            Style = Named("Body2"),
+            LineBreakMode = LineBreakMode.TailTruncation,
+        });
+
+        var text = new VerticalStackLayout { Spacing = 2, VerticalOptions = LayoutOptions.Center };
+        text.Add(new Label { Text = member.Name, Style = Named("Body1SemiBoldDark") });
+        text.Add(syncLine);
+        row.Add(text, 1, 0);
+
+        row.Add(new Image
+        {
+            Source = "icon_chevron.svg",
+            WidthRequest = 20,
+            HeightRequest = 20,
+            VerticalOptions = LayoutOptions.Center,
+        }, 2, 0);
+
+        var card = Card(row, padding: new Thickness(14, 12));
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) =>
+            await Shell.Current.GoToAsync($"{CardiMemberDetailPage.Route}?memberId={member.Id}");
+        card.GestureRecognizers.Add(tap);
+        SemanticProperties.SetDescription(card, $"{member.Name}, {syncText}");
+        return card;
+    }
+
+    private Border AddMemberCard()
+    {
+        var row = new Grid
+        {
+            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Star)],
+            ColumnSpacing = 12,
+            MinimumHeightRequest = 56,
+        };
+
+        // The member card's 48 box, holding a plus where the photo would be, so the add card
+        // reads as the next member in the list rather than as a button dropped under it.
+        var tile = new Border
+        {
+            WidthRequest = 48,
+            HeightRequest = 48,
+            StrokeThickness = 0,
+            BackgroundColor = MetricStatus.Resource("MetricTileTint", Colors.LightBlue),
+            StrokeShape = new RoundRectangle { CornerRadius = 12 },
+            Content = new Image
+            {
+                Source = "icon_plus.svg",
+                WidthRequest = 22,
+                HeightRequest = 22,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
             },
         };
-        return pill;
+        row.Add(tile, 0, 0);
+        row.Add(new Label
+        {
+            Text = "Add someone to watch",
+            Style = Named("Body1SemiBoldDark"),
+            TextColor = MetricStatus.Resource("PrimaryDark", Colors.DarkBlue),
+            VerticalOptions = LayoutOptions.Center,
+        }, 1, 0);
+
+        var card = Card(row, padding: new Thickness(14, 12));
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += OnAddMemberTapped;
+        card.GestureRecognizers.Add(tap);
+        SemanticProperties.SetDescription(card, "Add someone to watch");
+        return card;
+    }
+
+    private bool _wizardActive;
+
+    /// <summary>
+    /// The add wizard, as the dashboard runs it for a family's first member. It remembers the new
+    /// member as the one the dashboard shows (AddCardiMemberPage), so "Go to Dashboard" lands on
+    /// the person just added; staying here reloads the list so they appear in it.
+    /// </summary>
+    private async void OnAddMemberTapped(object? sender, TappedEventArgs e)
+    {
+        if (_wizardActive)
+            return;
+        _wizardActive = true;
+        try
+        {
+            var result = await WizardLauncher.RunModalAsync(Navigation, member: null);
+            if (result.ExitedToDashboard)
+                return;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            // async void: anything escaping takes the app down rather than reaching a caller.
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't add a CardiMember");
+        }
+        finally
+        {
+            _wizardActive = false;
+        }
     }
 
     /// <summary>

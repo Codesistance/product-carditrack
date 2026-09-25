@@ -78,6 +78,9 @@ public partial class AddCardiMemberPage : ContentPage
             // Mid-flow entry: the onboarding "Step N of 4" story doesn't apply.
             Header.Step = string.Empty;
             Header.Progress = 0;
+            // Nor does "First": this route also adds a family's second and later members (the
+            // Family tab's add card), where the onboarding title said something untrue.
+            Header.Title = "Add CardiMember";
         }
 
         RelationshipPicker.ItemsSource = Relationships.Select(r => r.Label).ToList();
@@ -331,6 +334,13 @@ public partial class AddCardiMemberPage : ContentPage
 
             _ctx.Member = member;
             _ctx.MemberCreated = true;
+
+            // The person just added is the one the dashboard shows next. The dashboard keeps its
+            // remembered member across reloads on purpose, so without this a second member was
+            // created and connected, "Go to Dashboard" landed on the first one, and the add read
+            // as having failed.
+            Preferences.Default.Set(DashboardPage.PrimaryMemberIdKey, member.Id.ToString());
+
             await Navigation.PushAsync(new DeviceSelectionPage(_ctx));
         }
         catch (ApiException ex)
