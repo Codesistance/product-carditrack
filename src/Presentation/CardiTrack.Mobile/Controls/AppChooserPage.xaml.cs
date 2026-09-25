@@ -1,3 +1,4 @@
+using CardiTrack.Mobile.Core.Forms;
 using Microsoft.Maui.Controls.PlatformConfiguration;
 using Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific;
 
@@ -27,10 +28,14 @@ public partial class AppChooserPage : ContentPage
 
         foreach (var option in options)
         {
+            // An option that removes or ends something is outlined in red, by the same word rule
+            // the action buttons follow (ActionLooks), so "Delete permanently" reads as the one to
+            // think about before tapping, wherever a caller offers it.
+            var danger = ActionLooks.For(option).Tone == ActionTone.Red;
             var button = new Button
             {
                 Text = option,
-                Style = (Style)App.Current!.Resources["SecondaryOutlineButton"],
+                Style = (Style)App.Current!.Resources[danger ? "DangerOutlineButton" : "SecondaryOutlineButton"],
                 FontSize = 16,
                 // The shared style is sized for a page's primary CTA (52pt). A choice in a list
                 // of four is not that, and at 52 the stack ate the card: shorter rows keep the

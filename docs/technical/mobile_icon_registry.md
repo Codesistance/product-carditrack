@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**107 icons**, **35 distinct colours**, **3 referenced nowhere**.
+**113 icons**, **35 distinct colours**, **3 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -23,19 +23,20 @@ lists every colour rather than only the common ones: a colour used once still pi
 
 | Colour | Icons | Also known as |
 | --- | --- | --- |
-| `#FFFFFF` | 37 | White |
-| `#153D66` | 25 | icons.json brand outer stroke |
-| `#3175B9` | 20 | icons.json brand and activity fill, steel blue |
-| `#939DAA` | 14 | MutedText |
+| `#FFFFFF` | 39 | White |
+| `#153D66` | 28 | icons.json brand outer stroke |
+| `#3175B9` | 22 | icons.json brand and activity fill, steel blue |
+| `#939DAA` | 15 | MutedText |
+| `#C42F2F` | 12 | DangerRed |
 | `#1884DC` | 11 | Primary |
-| `#C42F2F` | 11 | DangerRed |
 | `#174E86` | 7 | PrimaryDark |
 | `#36C09B` | 7 | StatusGreen |
 | `#727272` | 7 | Body / Body2 ink |
-| `#FBE4E4` | 6 | derived: StatusRed at 14% over white |
+| `#FBE4E4` | 7 | derived: StatusRed at 14% over white |
 | `#1F8A72` | 5 | MetricTemperatureInk / DatasetBodyText |
 | `#D9DCE1` | 5 | — |
 | `#B45309` | 3 | severity orange ink |
+| `#5A3300` | 2 | — |
 | `#861B1B` | 2 | — |
 | `#A9741A` | 2 | DatasetWarningText |
 | `#123A5F` | 1 | — |
@@ -45,7 +46,6 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#34A853` | 1 | — |
 | `#3E8AC7` | 1 | MetricBreathingInk |
 | `#4285F4` | 1 | — |
-| `#5A3300` | 1 | — |
 | `#7C6FDC` | 1 | MetricSleepInk |
 | `#9FEBFF` | 1 | — |
 | `#B9F1FF` | 1 | — |
@@ -146,8 +146,8 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_back_white.svg` | `#FFFFFF` | AcceptInvitePage, AlertDetailPage, AlertRespondPage, AlertSettingsPage, AlertsPage, ApproveJoinRequestPage, CardiMemberDetailPage, CaregiverInvitesPage, DeviceManagementPage, EditCardiMemberPage, ExportConsentsPage, ExportHealthDataPage, FamilyPage, JoinFamilyPage, JournalEntryPage, JournalPage, JournalTimingPage, LegalDocumentPage, MedicalInformationPage, MemberChatPage, MetricAlarmEditPage, MetricAlarmsPage, MetricTrendPage, NotificationPreferencesPage, NotificationsPage, QuestionnairesPage, SettingsPage, StartFamilyPage, TransferFamilyAdminPage, WizardHeader |
 | `icon_caret_down.svg` | `#343434` | FilterChipBar |
 | `icon_caret_down_white.svg` | `#FFFFFF` | FamilyPage, FilterChipBar, MemberChatPage |
-| `icon_chevron.svg` | `#939DAA` | AlertDetailPage, CardiMemberDetailPage, DeviceCard, DeviceManagementPage, FamilyPage, MemberChatPage |
-| `icon_chevron_down.svg` | `#939DAA` | AccordionSection, AlertListCard, ChoiceField, DeviceCard, DeviceManagementPage |
+| `icon_chevron.svg` | `#939DAA` | AlertDetailPage, CardiMemberDetailPage, DeviceCard, FamilyPage, MemberChatPage |
+| `icon_chevron_down.svg` | `#939DAA` | AccordionSection, AlertListCard, ChoiceField, DeviceCard, DeviceManagementPage, MedicalInformationPage |
 | `icon_chevron_down_white.svg` | `#FFFFFF` | MemberChatPage |
 
 ### Brand and third party
@@ -169,14 +169,15 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
 | `icon_book_cog.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
-| `icon_btn_close.svg` | `#FFFFFF` | ActionLook, AlertRespondPage, AppPasswordPage, ContactEditPopupPage, MedicalNotesEditPopupPage, QuestionCard |
+| `icon_btn_close.svg` | `#FFFFFF` | ActionLook, AlertRespondPage, AppPasswordPage, ContactEditPopupPage, MedicalEntryEditPopupPage, MedicalSortPopupPage, QuestionCard |
 | `icon_btn_connect.svg` | `#FFFFFF` | ActionLook, DeviceManagementPage, NoDevicePopupPage |
 | `icon_btn_delete.svg` | `#FFFFFF` | ActionLook, AlertDetailPage |
 | `icon_btn_edit.svg` | `#FFFFFF` | ActionLook |
 | `icon_btn_later.svg` | `#FFFFFF` | ActionLook, NoDevicePopupPage |
-| `icon_btn_plus.svg` | `#FFFFFF` | ActionLook |
-| `icon_btn_resolve.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, AlertRespondPage |
-| `icon_btn_save.svg` | `#FFFFFF` | ActionLook, ContactEditPopupPage, MedicalNotesEditPopupPage, QuestionCard |
+| `icon_btn_plus.svg` | `#FFFFFF` | ActionLook, MedicalInformationPage |
+| `icon_btn_resolve.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, AlertRespondPage, MedicalInformationPage |
+| `icon_btn_save.svg` | `#FFFFFF` | ActionLook, ContactEditPopupPage, MedicalEntryEditPopupPage, MedicalSortPopupPage, QuestionCard |
+| `icon_btn_sort.svg` | `#5A3300` | MedicalInformationPage |
 | `icon_btn_undo.svg` | `#5A3300` | ActionLook, AlertDetailPage |
 | `icon_calendar.svg` | `#939DAA` | DateField, DeviceCard |
 | `icon_callout.svg` | `#3175B9` `#153D66` `#FFFFFF` | CardiMemberDetailPage |
@@ -187,7 +188,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_clipboard.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, InviteWaitPage |
 | `icon_clipboard_ink.svg` | `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_device_off.svg` | `#C42F2F` | StatusHeroCard |
-| `icon_edit.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage, MedicalInformationPage |
+| `icon_edit.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_expand.svg` | `#153D66` | MetricTrendCard |
 | `icon_export_white.svg` | `#FFFFFF` | ExportAction |
 | `icon_eye.svg` | `#939DAA` | CreateAccountPage, SignInPage |
@@ -197,9 +198,14 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_help.svg` | `#3175B9` `#153D66` `#FFFFFF` | DeviceManagementPage |
 | `icon_history_white.svg` | `#FFFFFF` | MemberChatPage |
 | `icon_home_white.svg` | `#FFFFFF` | DashboardHeader, WizardHeader |
+| `icon_ledger_allergy.svg` | `#FBE4E4` `#C42F2F` | MedicalLedgerLines |
+| `icon_ledger_condition.svg` | `#153D66` | MedicalLedgerLines |
+| `icon_ledger_medication.svg` | `#3175B9` `#153D66` `#FFFFFF` | MedicalLedgerLines |
+| `icon_ledger_other.svg` | `#3175B9` `#153D66` `#FFFFFF` | MedicalLedgerLines |
 | `icon_marker_square.svg` | `#C42F2F` `#861B1B` | FindingsList |
 | `icon_medical_files.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_moon.svg` | `#3175B9` `#153D66` | FamilyPage |
+| `icon_more_vertical.svg` | `#939DAA` | MedicalInformationPage |
 | `icon_movement_attention.svg` | `#FBE4E4` `#C42F2F` | MovementCards |
 | `icon_notification.svg` | `#FFFFFF` | FcmNotificationChannel, PushRegistrationCoordinator |
 | `icon_open.svg` | `#153D66` | ExportDeliveryPopupPage |

@@ -156,6 +156,28 @@ public sealed class PopupService : IPopupService
             }
         });
 
+    public Task<IReadOnlyList<(MedicalEntryKind Kind, string Text)>?> SortMedicalNotesAsync(
+        IReadOnlyList<string> statements) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return (IReadOnlyList<(MedicalEntryKind, string)>?)null;
+
+            var form = new MedicalSortPopupPage(statements);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(form, animated: false);
+                return await form.Result;
+            }
+            finally
+            {
+                // Same handshake as the forms above.
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
     public Task ShowWeatherAsync(WeatherSnapshotResponse weather) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {

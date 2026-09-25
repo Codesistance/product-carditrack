@@ -602,6 +602,48 @@
    "size": 24
   },
   {
+   "file": "icon_ledger_allergy.svg",
+   "source": "iconpark",
+   "name": "caution",
+   "group": "red",
+   "size": 24
+  },
+  {
+   "file": "icon_ledger_medication.svg",
+   "source": "iconpark",
+   "name": "pills",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_ledger_condition.svg",
+   "source": "iconpark",
+   "name": "heartbeat",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_ledger_other.svg",
+   "source": "iconpark",
+   "name": "notes",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_more_vertical.svg",
+   "source": "iconpark",
+   "name": "more-one",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_sort.svg",
+   "source": "iconpark",
+   "name": "list-checkbox",
+   "group": "onAmber",
+   "size": 24
+  },
+  {
    "file": "icon_metric_sleep.svg",
    "source": "material",
    "name": "bed",

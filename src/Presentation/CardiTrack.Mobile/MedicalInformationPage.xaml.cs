@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Members;
@@ -62,6 +63,9 @@ public partial class MedicalInformationPage : ContentPage
     private bool _editOnArrival;
     private bool _isSaving;
     private bool _historyOpen;
+
+    /// <summary>The block of old notes the "Sort into lines" prompt is offering to sort, if any.</summary>
+    private MedicalEntryResponse? _unsorted;
 
     public MedicalInformationPage(ICardiTrackApiClient api, IPopupService popups)
     {
@@ -125,6 +129,53 @@ public partial class MedicalInformationPage : ContentPage
             await _api.ConfirmMedicalNotesAsync(id);
             return await _api.GetMedicalEntriesAsync(id);
         }, "Couldn't confirm these");
+
+    private async void OnSortClicked(object? sender, EventArgs e) => await SortAsync();
+
+    /// <summary>
+    /// Sorts the block of old notes into lines: each part filed as what the caregiver says it is,
+    /// then the block itself taken off — into the history, where it stays as it was written.
+    /// </summary>
+    /// <remarks>
+    /// The new lines go on first and the block comes off last, so a failure part-way leaves the
+    /// block where it was rather than half the notes nowhere current. The one exception is a block
+    /// too long for the list to hold twice — the server caps the whole list at the single note's
+    /// 2,000 characters — which comes off first; the history still has every word of it.
+    /// </remarks>
+    private async Task SortAsync()
+    {
+        if (_unsorted is not { } block || !CanEdit || _isSaving)
+            return;
+
+        var lines = await _popups.SortMedicalNotesAsync(MedicalLedgerLines.SplitIntoStatements(block.Text));
+        if (lines is null)
+            return;
+
+        // Refused up front rather than part-way: the server takes one line at a time, and a part
+        // over its cap would stop the sort with some lines filed and the block still current.
+        if (lines.FirstOrDefault(l => l.Text.Length > MedicalEntryEditPopupPage.MaxLength) is { Text: { } tooLong })
+        {
+            await _popups.ShowWarningAsync(
+                $"\"{Shorten(tooLong)}\" is longer than one line can be. Add it by hand in shorter lines, then remove the block.",
+                "One part is too long");
+            return;
+        }
+
+        var tooLongForBoth = (block.Text.Length * 2) + (lines.Count * 16) > 2000;
+        await WriteAsync(async id =>
+        {
+            MedicalEntriesResponse ledger = _ledger!;
+            if (tooLongForBoth)
+                ledger = await _api.RemoveMedicalEntryAsync(id, block.Id);
+
+            foreach (var (kind, text) in lines)
+                ledger = await _api.AddMedicalEntryAsync(id, new MedicalEntryRequest { Kind = kind, Text = text });
+
+            if (!tooLongForBoth)
+                ledger = await _api.RemoveMedicalEntryAsync(id, block.Id);
+            return ledger;
+        }, "Couldn't sort these notes");
+    }
 
     private void OnHistoryToggled(object? sender, TappedEventArgs e)
     {
@@ -360,12 +411,18 @@ public partial class MedicalInformationPage : ContentPage
 
         foreach (var (kind, lines) in MedicalLedgerLines.Group(ledger.Current))
         {
-            LedgerList.Add(GroupHeading(kind, first: LedgerList.Count == 0));
+            LedgerList.Add(GroupHeading(kind));
+
+            // Allergies sit on a tint of their own, the one group a caregiver must not miss: what
+            // somebody cannot be given matters more than anything else on the card.
+            var alert = kind == MedicalEntryKind.Allergy;
+            var group = new VerticalStackLayout();
             for (var i = 0; i < lines.Count; i++)
             {
                 var line = lines[i];
-                LedgerList.Add(Row(line, historic: false, ruled: i > 0, () => _ = OnLineTappedAsync(line)));
+                group.Add(Row(line, historic: false, ruled: i > 0, alert, () => _ = OnLineTappedAsync(line)));
             }
+            LedgerList.Add(alert ? AllergyBand(group) : group);
         }
 
         var hasLines = ledger.Current.Count > 0;
@@ -373,19 +430,45 @@ public partial class MedicalInformationPage : ContentPage
         EmptyLabel.Text =
             $"Nothing recorded for {FirstName} yet. Conditions, allergies, medications — anything a "
             + "caregiver should know before they arrive — each go on a line of their own.";
-        ReviewedLabel.IsVisible = hasLines;
-        ReviewedLabel.Text = MedicalLedgerLines.ReviewedLine(ledger.ReviewedAtUtc);
-        AllAccurateButton.IsVisible = hasLines && CanEdit;
+
+        ShowStatus(ledger);
+        _unsorted = CanEdit ? ledger.Current.FirstOrDefault(MedicalLedgerLines.IsUnsortedBlock) : null;
+        SortPrompt.IsVisible = _unsorted is not null;
 
         HistoryList.Clear();
         for (var i = 0; i < ledger.History.Count; i++)
         {
             var line = ledger.History[i];
-            HistoryList.Add(Row(line, historic: true, ruled: i > 0, () => _ = OnHistoryLineTappedAsync(line)));
+            HistoryList.Add(Row(line, historic: true, ruled: i > 0, alert: false, () => _ = OnHistoryLineTappedAsync(line)));
         }
         HistoryCard.IsVisible = ledger.History.Count > 0;
         HistoryTitleLabel.Text = $"History ({ledger.History.Count})";
         ShowHistoryOpen();
+    }
+
+    /// <summary>
+    /// The chip at the head of the list, and the one-tap confirmation beside it — offered only while
+    /// the chip is not green. Confirming a list somebody checked two days ago adds nothing; the
+    /// per-line "Still accurate" stays in every line's sheet for anybody who wants it anyway.
+    /// </summary>
+    private void ShowStatus(MedicalEntriesResponse ledger)
+    {
+        var status = MedicalLedgerLines.ReviewStatus(
+            ledger.Current.Count, ledger.ReviewedAtUtc, DateTime.UtcNow);
+        StatusRow.IsVisible = status is not null;
+        if (status is not { } s)
+            return;
+
+        var (tint, ink) = s.Tone switch
+        {
+            LedgerReviewTone.Current => ("PillGreenBackground", "StatusGreen"),
+            LedgerReviewTone.Due => ("PillYellowBackground", "ActionAmberInk"),
+            _ => ("PillRedBackground", "DangerRed"),
+        };
+        StatusChip.BackgroundColor = Resource<Color>(tint);
+        StatusLabel.TextColor = Resource<Color>(ink);
+        StatusLabel.Text = s.Text;
+        AllAccurateButton.IsVisible = CanEdit && s.Tone != LedgerReviewTone.Current;
     }
 
     /// <summary>The ledger could not be read: the member's own one-block summary, as before the ledger.</summary>
@@ -393,8 +476,8 @@ public partial class MedicalInformationPage : ContentPage
     {
         LedgerList.Clear();
         HistoryCard.IsVisible = false;
-        AllAccurateButton.IsVisible = false;
-        ReviewedLabel.IsVisible = false;
+        StatusRow.IsVisible = false;
+        SortPrompt.IsVisible = false;
 
         var notes = _member?.MedicalNotes;
         EmptyLabel.IsVisible = true;
@@ -409,40 +492,63 @@ public partial class MedicalInformationPage : ContentPage
         HistoryChevron.Rotation = _historyOpen ? 180 : 0;
     }
 
-    private static View GroupHeading(MedicalEntryKind kind, bool first) =>
-        new Label
+    /// <summary>A group's heading: its icon, then its name in small capitals — red for allergies.</summary>
+    private static View GroupHeading(MedicalEntryKind kind)
+    {
+        var alert = kind == MedicalEntryKind.Allergy;
+        var heading = new HorizontalStackLayout
         {
-            Text = MedicalLedgerLines.Heading(kind).ToUpperInvariant(),
-            Style = Resource<Style>("Caption"),
-            FontFamily = "QuicksandSemiBold",
-            CharacterSpacing = 1,
-            Margin = new Thickness(0, first ? 6 : 16, 0, 2),
+            Spacing = 6,
+            Margin = new Thickness(0, 14, 0, 4),
+            Children =
+            {
+                new Image
+                {
+                    Source = MedicalLedgerLines.HeadingIcon(kind),
+                    WidthRequest = 16,
+                    HeightRequest = 16,
+                    VerticalOptions = LayoutOptions.Center,
+                },
+                new Label
+                {
+                    Text = MedicalLedgerLines.Heading(kind).ToUpperInvariant(),
+                    Style = Resource<Style>("Caption"),
+                    FontFamily = "QuicksandSemiBold",
+                    CharacterSpacing = 1,
+                    TextColor = alert ? Resource<Color>("DangerRed") : Resource<Color>("MutedText"),
+                    VerticalOptions = LayoutOptions.Center,
+                },
+            },
+        };
+        SemanticProperties.SetHeadingLevel(heading, SemanticHeadingLevel.Level3);
+        return heading;
+    }
+
+    /// <summary>The allergies group on its red tint, rounded like the other in-card panels.</summary>
+    private static View AllergyBand(View rows) =>
+        new Border
+        {
+            BackgroundColor = Resource<Color>("PillRedBackground"),
+            StrokeThickness = 0,
+            Padding = new Thickness(12, 0),
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
+            Content = rows,
         };
 
     /// <summary>
-    /// One ruled line of the ledger: the date it went on file (or left it, in the history) down a
-    /// narrow left column, the words and where they came from beside it. A hairline above every row
-    /// but the first of its group is what gives the card its ledger look.
+    /// One ruled line of the ledger: the words, and under them who put it on file and when — the
+    /// one date, rather than a column beside it saying the same again — with a ⋮ at the end for
+    /// the caregiver who can act on it, so a tappable row looks like one. A hairline above every
+    /// row but the first of its group gives the card its ledger look.
     /// </summary>
-    private View Row(MedicalEntryResponse line, bool historic, bool ruled, Action tapped)
+    private View Row(MedicalEntryResponse line, bool historic, bool ruled, bool alert, Action tapped)
     {
-        var dated = historic ? line.RemovedAtUtc ?? line.AddedAtUtc : line.AddedAtUtc;
-        var local = DateTime.SpecifyKind(dated, DateTimeKind.Utc).ToLocalTime();
-
-        var date = new Label
-        {
-            Text = $"{local:d MMM}\n{local:yyyy}",
-            Style = Resource<Style>("Caption"),
-            FontFamily = "QuicksandSemiBold",
-            LineHeight = 1.1,
-            VerticalOptions = LayoutOptions.Start,
-        };
-
         var text = new Label
         {
             Text = line.Text,
             Style = Resource<Style>("Body2"),
-            TextColor = Resource<Color>(historic ? "MutedText" : "HeadingText"),
+            FontFamily = alert ? "QuicksandSemiBold" : null,
+            TextColor = Resource<Color>(historic ? "MutedText" : alert ? "DangerRed" : "HeadingText"),
             TextDecorations = historic ? TextDecorations.Strikethrough : TextDecorations.None,
         };
         var caption = new Label
@@ -466,16 +572,25 @@ public partial class MedicalInformationPage : ContentPage
 
         var grid = new Grid
         {
-            ColumnDefinitions = { new ColumnDefinition(56), new ColumnDefinition(GridLength.Star) },
-            ColumnSpacing = 12,
+            ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto) },
+            ColumnSpacing = 8,
             Padding = new Thickness(0, 10),
         };
-        grid.Add(date, 0);
-        grid.Add(words, 1);
+        grid.Add(words, 0);
+        if (CanEdit)
+        {
+            grid.Add(new Image
+            {
+                Source = "icon_more_vertical.svg",
+                WidthRequest = 20,
+                HeightRequest = 20,
+                VerticalOptions = LayoutOptions.Center,
+            }, 1);
+        }
 
         var row = new VerticalStackLayout();
         if (ruled)
-            row.Add(new BoxView { HeightRequest = 1, Color = Resource<Color>("Divider") });
+            row.Add(new BoxView { HeightRequest = 1, Color = Resource<Color>(alert ? "PillRedBackground" : "Divider") });
         row.Add(grid);
 
         if (CanEdit)

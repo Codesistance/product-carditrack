@@ -144,6 +144,13 @@ public interface IPopupService
     Task<(MedicalEntryKind Kind, string Text)?> EditMedicalEntryAsync(
         string? firstName, MedicalEntryKind kind, string? text);
 
+    /// <summary>
+    /// Opens the "Sort into lines" form over a block of old notes cut into
+    /// <paramref name="statements"/>. Returns the lines to file, each with the kind the caregiver
+    /// chose (skipped parts left out), or null when they cancelled.
+    /// </summary>
+    Task<IReadOnlyList<(MedicalEntryKind Kind, string Text)>?> SortMedicalNotesAsync(IReadOnlyList<string> statements);
+
     /// <summary>Shows the detail behind a dashboard/detail weather chip. Completes once dismissed.</summary>
     Task ShowWeatherAsync(WeatherSnapshotResponse weather);
 

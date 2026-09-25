@@ -85,9 +85,9 @@
                         <controls:SavedDataBanner x:Name="SavedBanner"/>
 
                         <!-- The ledger: one ruled line per condition, allergy or medication, grouped
-                             under its kind, each with the date it went on file down the left edge
-                             and who wrote it underneath. Lines are built in code (ShowLedger); a
-                             tap on one offers what can be done with it. -->
+                             under its kind — allergies and medicines first — with who wrote it and
+                             when underneath. Lines are built in code (ShowLedger); a tap on one
+                             offers what can be done with it. -->
                         <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="0">
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
@@ -105,32 +105,68 @@
                                             Clicked="OnAddClicked"/>
                                 </Grid>
 
-                                <!-- When the list as a whole was last known to hold. Hidden with
-                                     nothing on file — a date on an empty record dates nothing. -->
-                                <Label x:Name="ReviewedLabel"
-                                       Margin="0,6,0,0"
-                                       Style="{StaticResource Caption}"
-                                       IsVisible="False"/>
+                                <!-- Where the list stands, as a chip: green while every line is
+                                     confirmed within six months, amber once it is due a check, red
+                                     while something on it has never been confirmed. The one-tap
+                                     confirmation sits beside it, and only when the chip is not
+                                     green — confirming a list checked two days ago is noise. -->
+                                <Grid x:Name="StatusRow" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
+                                      Margin="0,8,0,0" IsVisible="False">
+                                    <Border x:Name="StatusChip"
+                                            StrokeThickness="0"
+                                            Padding="10,4"
+                                            VerticalOptions="Center">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10"/>
+                                        </Border.StrokeShape>
+                                        <Label x:Name="StatusLabel"
+                                               FontFamily="QuicksandSemiBold"
+                                               FontSize="12"/>
+                                    </Border>
+                                    <Button x:Name="AllAccurateButton"
+                                            Grid.Column="2"
+                                            Text="All accurate"
+                                            Style="{StaticResource ActionButtonGreen}"
+                                            ImageSource="icon_btn_resolve.svg"
+                                            IsVisible="False"
+                                            Clicked="OnAllAccurateClicked"/>
+                                </Grid>
 
-                                <VerticalStackLayout x:Name="LedgerList" Margin="0,8,0,0"/>
+                                <!-- A block of old notes, written before there were lines: offered
+                                     to be sorted into lines so an allergy or a medicine in it stands
+                                     where it can be seen. Filled in code (ShowSortPrompt). -->
+                                <Border x:Name="SortPrompt"
+                                        Margin="0,12,0,0"
+                                        Padding="12,10"
+                                        StrokeThickness="0"
+                                        BackgroundColor="{StaticResource PillYellowBackground}"
+                                        IsVisible="False">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10"/>
+                                    </Border.StrokeShape>
+                                    <VerticalStackLayout Spacing="4">
+                                        <Label Text="These notes are one block"
+                                               FontFamily="QuicksandSemiBold"
+                                               FontSize="14"
+                                               TextColor="{StaticResource ActionAmberInk}"/>
+                                        <Label Text="Sort them into lines so allergies and medicines stand out."
+                                               FontSize="13"
+                                               TextColor="{StaticResource ActionAmberInk}"/>
+                                        <Button Text="Sort into lines"
+                                                Margin="0,6,0,0"
+                                                Style="{StaticResource ActionButtonAmber}"
+                                                ImageSource="icon_btn_sort.svg"
+                                                HorizontalOptions="Start"
+                                                Clicked="OnSortClicked"/>
+                                    </VerticalStackLayout>
+                                </Border>
+
+                                <VerticalStackLayout x:Name="LedgerList" Margin="0,4,0,0"/>
 
                                 <Label x:Name="EmptyLabel"
                                        Margin="0,12,0,0"
                                        Style="{StaticResource Body2}"
                                        IsVisible="False"/>
-
-                                <!-- Every line read and found still true, in one tap — the thing
-                                     the six-month reminder asks for. Its own line of the card,
-                                     right-aligned like the alert's actions, and only once there is
-                                     something to confirm. -->
-                                <Button x:Name="AllAccurateButton"
-                                        Margin="0,14,0,0"
-                                        Text="All still accurate"
-                                        Style="{StaticResource ActionButtonGreen}"
-                                        ImageSource="icon_btn_resolve.svg"
-                                        HorizontalOptions="End"
-                                        IsVisible="False"
-                                        Clicked="OnAllAccurateClicked"/>
                             </VerticalStackLayout>
                         </Border>
 
