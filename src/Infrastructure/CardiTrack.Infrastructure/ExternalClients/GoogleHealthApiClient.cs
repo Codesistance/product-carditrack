@@ -2303,13 +2303,16 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     // Neither throw below puts the response body in the exception message. Every sync catch-all
     // up the stack (Worker, PipelineJobs, manual sync) logs the exception object whole, so its
     // message lands in Datadog, and a body from this API can be the wearer's readings. Length,
-    // parse-error locations and the status enum are what is safe to carry.
+    // parse-error locations and the status enum are what is safe to carry. Locations, not the
+    // reader's error text: for a malformed number that text quotes the token, i.e. a reading.
     private static async Task<JToken> ParseBodyAsync(HttpResponseMessage response, string what)
     {
         var body = await response.Content.ReadAsStringAsync();
         if (!JsonUtility.TryParse(body, out var root, out var errors))
             throw new GoogleHealthApiException((int)response.StatusCode,
-                $"Google Health API {what} response was not valid JSON ({body.Length} chars): {string.Join("; ", errors)}");
+                $"Google Health API {what} response was not valid JSON ({body.Length} chars) at "
+                + string.Join("; ", errors.Select(e =>
+                    $"{(e.Path.Length == 0 ? "$" : e.Path)} (line {e.LineNumber}, pos {e.LinePosition})")));
         return root!;
     }
 

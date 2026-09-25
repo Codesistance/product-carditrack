@@ -1143,19 +1143,22 @@ public class GoogleHealthApiClientTests
 
     /// <summary>
     /// A 200 body that fails to parse is the likeliest to be the wearer's readings: length and
-    /// error locations only, no payload preview.
+    /// error locations only, no payload preview. The reader's own error text is left out too: for
+    /// a malformed number it quotes the token, which is a reading.
     /// </summary>
-    [Fact]
-    public async Task GetSleepAsync_KeepsThePayloadOutOfTheMessage_WhenTheBodyIsNotJson()
+    [Theory]
+    [InlineData("""{ "dataPoints": [ { "sleep": provider-free-text-sentinel """, BodySentinel)]
+    [InlineData("""{ "dataPoints": [ { "value": 9876.54.321 } ] }""", "9876.54.321")]
+    public async Task GetSleepAsync_KeepsThePayloadOutOfTheMessage_WhenTheBodyIsNotJson(
+        string body, string mustNotAppear)
     {
-        var handler = new RoutedFakeHttpHandler()
-            .Map("/dataTypes/sleep/", $$"""{ "dataPoints": [ { "sleep": {{BodySentinel}} """);
+        var handler = new RoutedFakeHttpHandler().Map("/dataTypes/sleep/", body);
 
         var (sut, _) = CreateSut(handler);
 
         var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(() => sut.GetSleepAsync("token", Today));
         Assert.Contains("not valid JSON", ex.Message);
-        Assert.DoesNotContain(BodySentinel, ex.Message);
+        Assert.DoesNotContain(mustNotAppear, ex.Message);
     }
 
     private const string BodySentinel = "provider-free-text-sentinel";
