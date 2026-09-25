@@ -2504,12 +2504,15 @@ public class MemberChatService : IMemberChatService
                     MedicalPromptBlocks.DailyReadingsJson(
                         data.RecentActivity, data.RecentActivity.Count, today))
                 + (missing is null ? string.Empty : $"\n{missing}"));
-
-            // The window's arithmetic, done here: handed only the rows, the clinical read averaged
-            // a week of 4h 18m–7h nights to 2h 22m (2026-09-25). See ChatWindowSummaryBlock.
-            if (ChatWindowSummaryBlock.Render(data, today, ageYears, askedMetrics) is { } summary)
-                sections.Add(summary);
         }
+
+        // The window's arithmetic, done here: handed only the rows, the clinical read averaged a
+        // week of 4h 18m–7h nights to 2h 22m (2026-09-25). See ChatWindowSummaryBlock. Outside the
+        // rows' branch because a window with no rows at all still has to say that a reading the
+        // question asked about never arrived — the investigation rung has no coverage gate, and
+        // silence there is answered from the baseline.
+        if (ChatWindowSummaryBlock.Render(data, today, ageYears, askedMetrics) is { } summary)
+            sections.Add(summary);
 
         if (data.Baseline is { } baseline)
         {

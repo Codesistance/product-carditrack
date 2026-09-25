@@ -203,6 +203,7 @@ public class RewriteCopyGuardsTests
     [Theory]
     [InlineData("CardiTrackCardiMember's sleep averaged 5h 45m this week.", "5h 45m")]
     [InlineData("CardiTrackCardiMember slept about 7 hours a night this week.", "7 hours")]
+    [InlineData("CardiTrackCardiMember's sleep average this week was 5h 45m.", "5h 45m")]
     public void A_thin_weeks_average_is_caught_even_on_the_usual_or_a_band_edge(string copy, string figure)
     {
         var thinWeek = RewriteCopyGuards.SupportedSleepFigures(

@@ -164,6 +164,27 @@ public class ReadingWindowSummaryTests
     }
 
     /// <summary>
+    /// The same with no rows at all: the investigation rung has no coverage gate, so a question
+    /// about sleep over an empty window still has to be told the nights never arrived.
+    /// </summary>
+    [Fact]
+    public void ThePrompt_StatesAnAskedReading_EvenWhenTheWindowHasNoRows()
+    {
+        var data = new FetchedMemberData
+        {
+            RecentActivity = [],
+            RecentActivityWindow = Week,
+            Baseline = Usual(),
+        };
+
+        var prompt = MemberChatService.FormatFetchedData(
+            data, Today, ageYears: 82, askedMetrics: [ChartMetricKind.Sleep]);
+
+        Assert.Contains("\"nights_with_reading\": \"0 of 7\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("\"average\": null", prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Breathing asleep is graded against the member alone: WHO's 12–20 is a waking rate at rest,
     /// and <see cref="HealthReferenceRanges.NoOvernightBreathingBand"/> forbids printing it beside an
     /// overnight figure.

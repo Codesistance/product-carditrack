@@ -47,7 +47,7 @@ internal static class ChatWindowSummaryBlock
         foreach (var summary in summaries)
             array.Add(Metric(summary, window.From));
 
-        return "--- Window summary (computed from the readings above) ---\n"
+        return "--- Window summary (computed in code from the window's daily readings) ---\n"
             + MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.WearableJsonString(array))
             + "\nEvery average, spread and comparison across the window is computed above. Quote these"
             + " figures for any average, total or comparison over the window — never add up or average"

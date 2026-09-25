@@ -301,8 +301,9 @@ internal static partial class RewriteCopyGuards
     [GeneratedRegex(@"\b(?:usual|usually|normal|normally|typical|typically|recommended|recommends?|range|guidelines?|floor|ceiling|least)\b(?:\W+\w+){0,3}?\W*$", RegexOptions.IgnoreCase)]
     private static partial Regex ReferenceBefore();
 
-    /// <summary>An average named within three words before the figure: "averaged about 4h 48m".</summary>
-    [GeneratedRegex(@"\b(?:averag\w*|mean)\b(?:\W+\w+){0,2}?\W*$", RegexOptions.IgnoreCase)]
+    /// <summary>An average named within three words before the figure: "averaged about 4h 48m",
+    /// "the average this week was 5h 45m".</summary>
+    [GeneratedRegex(@"\b(?:averag\w*|mean)\b(?:\W+\w+){0,3}?\W*$", RegexOptions.IgnoreCase)]
     private static partial Regex AverageBefore();
 
     /// <summary>A rate within two words after the figure: "4h 48m a night", "5 hours of sleep per night".</summary>
