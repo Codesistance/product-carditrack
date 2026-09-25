@@ -436,7 +436,7 @@ public static class AlertDetailComposer
             StatisticalAlertRules.ElevatedZoneWithoutMovementRule
                 => ElevatedZoneComparison(metrics, baseline, today, aboutDate),
             StatisticalAlertRules.DaytimeInactivityBlockRule
-                => SedentaryStretchComparison(metrics, baseline, today, aboutDate),
+                => SedentaryStretchComparison(metrics, baseline),
             DeviceSilenceRule => DeviceSilenceComparison(metrics, triggeredAt),
             _ => null,
         };
@@ -592,8 +592,27 @@ public static class AlertDetailComposer
         };
     }
 
-    private static AlertComparisonResponse? SedentaryStretchComparison(
-        JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
+    /// <summary>
+    /// The longest still stretch against the member's usual longest, with the gap told in hours
+    /// rather than the percentage the other cards quote. Both figures above the band are durations,
+    /// and "62% above usual" left a caregiver to turn a percentage of a stretch back into time to
+    /// know what it meant; "2.4 h longer" is the subtraction they would have done themselves.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The left column names the measure rather than the day. "6.2 h" under a date said nothing
+    /// about which of the day's figures it was, and the day is already on the chart headline and
+    /// the alert list row this screen was opened from.
+    /// </para>
+    /// <para>
+    /// The gap is taken between the two figures as shown, not the minutes behind them: 374 against
+    /// 226 minutes reads 6.2 h and 3.8 h, and a band saying 2.5 h under those would look like a
+    /// sum the card got wrong. Figures that show the same are "In line with usual" for the same
+    /// reason, and <see cref="AlertComparisonResponse.ChangePercent"/> is zeroed with them so the
+    /// arrow cannot point at a difference the words just said is not there.
+    /// </para>
+    /// </remarks>
+    private static AlertComparisonResponse? SedentaryStretchComparison(JsonElement metrics, PatternBaseline? baseline)
     {
         var current = ReadDecimal(metrics, "longestSedentaryStretchMinutes");
         var usual = ReadDecimal(metrics, "baselineAvgLongestSedentaryStretchMinutes")
@@ -601,16 +620,30 @@ public static class AlertDetailComposer
         if (current is null)
             return null;
 
-        static string Span(decimal minutes) => $"{minutes / 60m:0.#} h";
+        // Away from zero because that is how "0.#" rounds a midpoint. Math.Round's default
+        // banker's rounding would show 219 minutes as 3.7 h and subtract it as 3.6.
+        static decimal Shown(decimal minutes) => Math.Round(minutes / 60m, 1, MidpointRounding.AwayFromZero);
+        static string Span(decimal hours) => string.Create(CultureInfo.InvariantCulture, $"{hours:0.#} h");
+
+        var shownCurrent = Shown(current.Value);
+        decimal? shownUsual = usual is { } avg ? Shown(avg) : null;
+        // No usual yet, no band — the same gate the shared ChangeLabel applies.
+        var gap = usual is > 0 ? shownCurrent - shownUsual : null;
 
         return new AlertComparisonResponse
         {
-            CurrentLabel = DayLabel(aboutDate, today) ?? "Yesterday",
-            CurrentValue = Span(current.Value),
+            CurrentLabel = "Longest still stretch",
+            CurrentValue = Span(shownCurrent),
             NormalLabel = "Usual longest",
-            NormalValue = usual is { } avg ? Span(avg) : "—",
-            ChangeLabel = ChangeLabel(current, usual, "usual"),
-            ChangePercent = ChangePercent(current, usual),
+            NormalValue = shownUsual is { } shown ? Span(shown) : "—",
+            ChangeLabel = gap switch
+            {
+                null => null,
+                0 => "In line with usual",
+                < 0 => $"{Span(-gap.Value)} shorter than usual",
+                _ => $"{Span(gap.Value)} longer than usual",
+            },
+            ChangePercent = gap == 0 ? 0 : ChangePercent(current, usual),
         };
     }
 
