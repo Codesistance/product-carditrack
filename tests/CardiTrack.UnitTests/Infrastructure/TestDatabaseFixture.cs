@@ -66,7 +66,16 @@ public class TestDatabaseFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        await _serviceProvider.DisposeAsync();
-        await _container.DisposeAsync();
+        // The container goes even if StartAsync failed before the provider was built.
+        try
+        {
+            if (_serviceProvider is not null)
+                await _serviceProvider.DisposeAsync();
+        }
+        finally
+        {
+            if (_container is not null)
+                await _container.DisposeAsync();
+        }
     }
 }

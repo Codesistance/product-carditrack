@@ -7,8 +7,12 @@
 #   - CardiTrack.E2ETests is an empty scaffold and CardiTrack.Mobile has no test
 #     project. Neither is run, and neither is reported as passing.
 #
-# TESTCONTAINERS_RYUK_DISABLED=true matches CI: the Ryuk reaper container cannot
-# run in most agent sandboxes, and the suites clean up after themselves.
+# Ryuk, Testcontainers' reaper, stays on: the suites remove their containers when
+# a run finishes, but only Ryuk removes them when a run is killed part-way, and
+# without it those pile up on the daemon until Docker stops answering. That holds
+# on Linux too — the dev container drives the host's Docker Desktop. Only a
+# throwaway cloud VM turns it off, with TESTCONTAINERS_RYUK_DISABLED=true in its
+# environment (docs/technical/claude_cloud_environment_setup.md).
 #
 # Usage: scripts/agent/test-all.sh [--unit | --integration]
 set -uo pipefail
@@ -25,7 +29,6 @@ case "${1:-}" in
 esac
 
 log() { printf '\033[0;36m[test-all]\033[0m %s\n' "$*"; }
-export TESTCONTAINERS_RYUK_DISABLED="${TESTCONTAINERS_RYUK_DISABLED:-true}"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 
 # services-up.sh adds a non-root user to the docker group, but a group joined
