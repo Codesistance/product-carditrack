@@ -1187,6 +1187,35 @@ public class MemberChatRoutedDispatchTests
         Assert.Equal("failed", span.GetTagItem(MemberChatTelemetry.AnswerCheckTag));
     }
 
+    // ---- Suggestion chips ------------------------------------------------------------------
+
+    /// <summary>
+    /// Always six chips: the alert question swaps in for the watch-out one rather than adding a
+    /// seventh, and the last two teach the rungs that act — the journal and the alert settings —
+    /// which no reading question would lead a caregiver to.
+    /// </summary>
+    [Theory]
+    [InlineData(false, "Anything I should keep an eye on?")]
+    [InlineData(true, "What's behind the current alert?")]
+    public async Task TheChips_AreSix_AndTeachTheJournalAndTheAlertSettings(bool unresolvedAlert, string first)
+    {
+        _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(
+            unresolvedAlert ? [new Alert { CardiMemberId = _memberId }] : []);
+
+        var chips = (await CreateSut().GetSuggestionsAsync(_userId, _memberId)).Suggestions;
+
+        Assert.Equal(
+            [
+                first,
+                "How are they doing today?",
+                "How did they sleep last night?",
+                "How active have they been this week?",
+                "Show me yesterday's Daybook",
+                "Which alerts are switched on?",
+            ],
+            chips);
+    }
+
     // ---- Progress steps (the streaming endpoint's step events) --------------------------------
 
     private sealed class StepRecorder : IMemberChatSendProgress
