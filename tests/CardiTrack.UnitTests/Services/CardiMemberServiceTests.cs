@@ -396,8 +396,8 @@ public class CardiMemberServiceTests
     {
         // The Family tab's "last heard from" line: the newest across the member's active
         // connections when the member carries no stamp of its own — the detail screen's rule.
-        var watched = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
-        var unconnected = new CardiMember { OrganizationId = _organizationId, Name = "Arthur Doe" };
+        var watched = new CardiMember { OrganizationId = _organizationId, FirstName = "Margaret", LastName = "Doe" };
+        var unconnected = new CardiMember { OrganizationId = _organizationId, FirstName = "Arthur", LastName = "Doe" };
         _members.GetByOrganizationIdAsync(_organizationId).Returns([watched, unconnected]);
         foreach (var member in new[] { watched, unconnected })
         {
@@ -434,7 +434,7 @@ public class CardiMemberServiceTests
     public async Task GetForUserInOrganization_PrefersTheMembersOwnStamp_OverANewerConnection()
     {
         var own = new DateTime(2026, 9, 25, 9, 0, 0, DateTimeKind.Utc);
-        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe", LastSyncDate = own };
+        var member = new CardiMember { OrganizationId = _organizationId, FirstName = "Margaret", LastName = "Doe", LastSyncDate = own };
         _members.GetByOrganizationIdAsync(_organizationId).Returns([member]);
         _links.GetByCardiMemberIdAsync(member.Id).Returns(
         [
@@ -457,7 +457,7 @@ public class CardiMemberServiceTests
     [Fact]
     public async Task GetForUserInOrganization_ConnectedButNeverSynced_CountsTheDeviceWithNoTime()
     {
-        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
+        var member = new CardiMember { OrganizationId = _organizationId, FirstName = "Margaret", LastName = "Doe" };
         _members.GetByOrganizationIdAsync(_organizationId).Returns([member]);
         _links.GetByCardiMemberIdAsync(member.Id).Returns(
         [
