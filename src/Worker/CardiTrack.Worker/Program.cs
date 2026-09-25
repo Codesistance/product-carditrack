@@ -96,6 +96,7 @@ builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
 builder.Services.AddScoped<IGenerationLeaseRepository, GenerationLeaseRepository>();
 builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
 builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
+builder.Services.AddScoped<IMedicalEntryRepository, MedicalEntryRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddPushServices(configuration);
 builder.Services.AddScoped<IMemberWriteGuard, MemberWriteGuard>();

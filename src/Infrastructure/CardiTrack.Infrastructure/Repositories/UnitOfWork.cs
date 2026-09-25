@@ -53,6 +53,7 @@ public class UnitOfWork : IUnitOfWork
     public IGenerationLeaseRepository GenerationLeases { get; }
     public IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
     public IDeviceConnectionInviteRepository DeviceConnectionInvites { get; }
+    public IMedicalEntryRepository MedicalEntries { get; }
 
     public UnitOfWork(
         CardiTrackDbContext context,
@@ -99,6 +100,7 @@ public class UnitOfWork : IUnitOfWork
         IGenerationLeaseRepository generationLeases,
         IDeviceHistoryRepullRepository deviceHistoryRepulls,
         IDeviceConnectionInviteRepository deviceConnectionInvites,
+        IMedicalEntryRepository medicalEntries,
         ICardiMemberCreationKeyRepository cardiMemberCreationKeys)
     {
         _context = context;
@@ -145,6 +147,7 @@ public class UnitOfWork : IUnitOfWork
         GenerationLeases = generationLeases;
         DeviceHistoryRepulls = deviceHistoryRepulls;
         DeviceConnectionInvites = deviceConnectionInvites;
+        MedicalEntries = medicalEntries;
         CardiMemberCreationKeys = cardiMemberCreationKeys;
     }
 

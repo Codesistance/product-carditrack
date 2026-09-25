@@ -48,6 +48,7 @@ public interface IUnitOfWork : IDisposable
     IGenerationLeaseRepository GenerationLeases { get; }
     IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
     IDeviceConnectionInviteRepository DeviceConnectionInvites { get; }
+    IMedicalEntryRepository MedicalEntries { get; }
 
     Task<int> SaveChangesAsync();
 
