@@ -21,23 +21,28 @@ public interface IMemberChatService
         Guid userId, Guid cardiMemberId, string message, CancellationToken ct = default);
 
     /// <summary>
-    /// <see cref="SendMessageAsync(Guid, Guid, string, CancellationToken)"/>, reporting each step
-    /// of the pipeline to <paramref name="progress"/> as it starts — what the streaming endpoint
-    /// relays to the app. Steps are reported only after the malicious pre-check has passed, so
-    /// every failure that has its own HTTP status (access, empty message, refusal) happens before
-    /// the first report. Paths answered without a model — a journal yes or no, a message with no
-    /// question, a settings confirmation — report nothing. Reports are synchronous and must not
-    /// block: the pipeline does not wait for a slow reader.
+    /// <see cref="SendMessageAsync(Guid, Guid, string, CancellationToken)"/>, reporting to
+    /// <paramref name="progress"/> as it runs — what the streaming endpoint relays to the app:
+    /// each pipeline step as it starts, and the first reply as a draft before the answer check
+    /// reads it. Steps are reported only after the malicious pre-check has passed, so every
+    /// failure that has its own HTTP status (access, empty message, refusal) happens before the
+    /// first report. Paths answered without a model — a journal yes or no, a message with no
+    /// question, a settings confirmation — report nothing.
     /// <para>
     /// Each step arrives numbered (<see cref="MemberChatStep.Index"/>, and
-    /// <see cref="MemberChatStep.Total"/> once the route is known). When
-    /// <paramref name="progress"/> is an <see cref="IMemberChatProgress"/> and the route reads the
+    /// <see cref="MemberChatStep.Total"/> once the route is known). On a route that reads the
     /// readings — the long paths — question-specific waiting lines are generated alongside the
-    /// pipeline and reported through it if they are ready before the answer.
+    /// pipeline and reported through <see cref="IMemberChatSendProgress.WaitingLines"/> if they
+    /// are ready before the send settles.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// A reply the check finds did not address the question is retried once with the gap named,
+    /// but only here, with a caller shown the first answer while the second is worked on: the
+    /// plain send has no one to show a draft to, and would simply take twice as long.
+    /// </remarks>
     Task<MemberChatMessageResponse> SendMessageAsync(
-        Guid userId, Guid cardiMemberId, string message, IProgress<MemberChatStep>? progress,
+        Guid userId, Guid cardiMemberId, string message, IMemberChatSendProgress? progress,
         CancellationToken ct = default);
 
     /// <summary>The caregiver's active session for this member and its turns, or null if none

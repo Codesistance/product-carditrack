@@ -81,6 +81,82 @@ public class MemberChatStreamClientTests
         Assert.Equal(CardiTrackApiClient.MemberChatSendTimeout, requestedTimeout);
     }
 
+    private sealed class DraftRecorder : IProgress<MemberChatMessageResponse>
+    {
+        public List<string> Replies { get; } = [];
+        public MemberChatMessageResponse? Last { get; private set; }
+        public void Report(MemberChatMessageResponse value)
+        {
+            Replies.Add(value.Reply);
+            Last = value;
+        }
+    }
+
+    [Fact]
+    public async Task ADraftIsHandedOver_AndAnUpdatedAnswerIsTheResult()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(_ => Stream(AnswerEvent + """
+            event: step
+            data: {"step":"retrying","text":"Taking another look…"}
+
+            event: answer.updated
+            data: {"sessionId":"6f9619ff-8b86-d011-b42d-00c04fc964ff","reply":"No single night stood out.","charts":[],"generatedAt":"2026-08-20T15:51:00Z"}
+
+            event: done
+            data: {}
+
+
+            """));
+        var drafts = new DraftRecorder();
+
+        var answer = await client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null, drafts);
+
+        Assert.Equal(["Steady night."], drafts.Replies);
+        Assert.Equal("No single night stood out.", answer.Reply);
+        Assert.NotSame(drafts.Last, answer);
+    }
+
+    [Fact]
+    public async Task ADraftThatStood_IsTheResult()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(_ => Stream(AnswerEvent + """
+            event: done
+            data: {}
+
+
+            """));
+        var drafts = new DraftRecorder();
+
+        var answer = await client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null, drafts);
+
+        Assert.Equal("Steady night.", answer.Reply);
+        Assert.Equal(["Steady night."], drafts.Replies);
+        // The page tells a replaced draft by reference: an unreplaced one is the same instance.
+        Assert.Same(drafts.Last, answer);
+    }
+
+    [Fact]
+    public async Task AnErrorAfterTheDraft_IsStillAnError()
+    {
+        // The draft was not saved: the send failed after it, and the caller must not keep it.
+        var (client, http) = CreateSut();
+        http.Enqueue(_ => Stream(AnswerEvent + """
+            event: error
+            data: {"status":404,"message":"We couldn't find what you were looking for."}
+
+
+            """));
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null));
+
+        Assert.Equal(HttpStatusCode.NotFound, ex.StatusCode);
+    }
+
     [Fact]
     public async Task AnErrorEvent_IsTheSameApiExceptionThePlainSendThrows()
     {
@@ -135,21 +211,20 @@ public class MemberChatStreamClientTests
     }
 
     [Fact]
-    public async Task AnAnswerWithoutDone_IsStillTheAnswer()
+    public async Task AnAnswerWithoutDone_IsNotTakenAsSaved()
     {
-        // The reply is saved server-side before the answer event goes out; a connection that
-        // drops after it has lost nothing the caregiver needs.
+        // An answer may be a draft the send never saved; only `done` confirms it.
         var (client, http) = CreateSut();
         http.Enqueue(_ => Stream(AnswerEvent));
 
-        var answer = await client.StreamMemberChatMessageAsync(
-            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null);
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null));
 
-        Assert.Equal("Steady night.", answer.Reply);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ex.StatusCode);
     }
 
     [Fact]
-    public async Task AConnectionThatDropsAfterTheAnswer_StillReturnsIt()
+    public async Task AConnectionThatDropsAfterADraft_IsANetworkError()
     {
         var (client, http) = CreateSut();
         http.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.OK)
@@ -157,10 +232,10 @@ public class MemberChatStreamClientTests
             Content = new StreamContent(new BreaksAfter(Encoding.UTF8.GetBytes(AnswerEvent.Replace("\r\n", "\n")))),
         });
 
-        var answer = await client.StreamMemberChatMessageAsync(
-            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null);
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null));
 
-        Assert.Equal("Steady night.", answer.Reply);
+        Assert.IsType<IOException>(ex.InnerException);
     }
 
     [Fact]
