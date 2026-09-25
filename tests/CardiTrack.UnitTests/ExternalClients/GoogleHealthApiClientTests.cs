@@ -13,7 +13,8 @@ public class GoogleHealthApiClientTests
 {
     /// <summary>
     /// The Google Health API client issues one request per data type, so responses are routed by
-    /// path substring. Unmatched dailyRollUp routes return an empty rollup (a day with no data).
+    /// path substring, the longest matching substring winning. Unmatched rollup routes return an
+    /// empty rollup (a day with no data).
     /// </summary>
     private sealed class RoutedFakeHttpHandler : HttpMessageHandler
     {
@@ -162,7 +163,10 @@ public class GoogleHealthApiClientTests
                 };
             }
 
-            var route = _routes.FirstOrDefault(r => path.Contains(r.PathContains, StringComparison.Ordinal));
+            var route = _routes
+                .Where(r => path.Contains(r.PathContains, StringComparison.Ordinal))
+                .OrderByDescending(r => r.PathContains.Length)
+                .FirstOrDefault();
             var body = route == default ? """{ "rollupDataPoints": [] }""" : route.Body;
             var status = route == default ? HttpStatusCode.OK : route.Status;
             return new HttpResponseMessage(status)
@@ -1410,6 +1414,7 @@ public class GoogleHealthApiClientTests
     {
         var date = new DateOnly(2026, 8, 5);
         var handler = new RoutedFakeHttpHandler()
+            .Map(WornPath, WornThroughout)
             .MapSequence(
                 "/dataTypes/sleep/",
                 SleepSessionList("2026-08-04T23:00:00Z", "2026-08-05T06:30:00Z", asleepMinutes: "400"),
@@ -1460,6 +1465,7 @@ public class GoogleHealthApiClientTests
     {
         var date = new DateOnly(2026, 8, 5);
         var handler = new RoutedFakeHttpHandler()
+            .Map(WornPath, WornThroughout)
             .MapSequence(
                 "/dataTypes/sleep/",
                 SleepSessionList("2026-08-04T23:00:00Z", "2026-08-05T06:30:00Z", asleepMinutes: "400"))
@@ -1625,7 +1631,8 @@ public class GoogleHealthApiClientTests
                 "/dataTypes/sleep/",
                 SleepSessionList("2026-08-04T23:00:00Z", "2026-08-05T06:30:00Z", asleepMinutes: "400"))
             .ThrowWhenSequenceExhausted("/dataTypes/sleep/", tomorrow)
-            .Map("/dataTypes/activity-level/", EveningSedentaryRollup);
+            .Map("/dataTypes/activity-level/", EveningSedentaryRollup)
+            .Map(WornPath, WornThroughout);
 
         var (sut, _) = CreateSut(handler);
         return await ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", date);
@@ -2344,6 +2351,7 @@ public class GoogleHealthApiClientTests
     public async Task GetExertionAsync_ClipsAStretchThatRunsPastMidnight_AtTheDaysEnd()
     {
         var handler = new RoutedFakeHttpHandler()
+            .Map(WornPath, WornThroughout)
             .Map("/dataTypes/activity-level/", $$"""
                 {
                   "dataPoints": [
@@ -2371,6 +2379,7 @@ public class GoogleHealthApiClientTests
     public async Task GetExertionAsync_LeavesAnIntervalAlone_WhenItCarriesNoCivilEnd()
     {
         var handler = new RoutedFakeHttpHandler()
+            .Map(WornPath, WornThroughout)
             .Map("/dataTypes/activity-level/", $$"""
                 {
                   "dataPoints": [
@@ -2394,6 +2403,7 @@ public class GoogleHealthApiClientTests
     public async Task GetExertionAsync_JoinsTouchingSedentaryIntervals_IntoOneStretch()
     {
         var handler = new RoutedFakeHttpHandler()
+            .Map(WornPath, WornThroughout)
             .Map("/dataTypes/activity-level/", $$"""
                 {
                   "dataPoints": [
@@ -2467,6 +2477,7 @@ public class GoogleHealthApiClientTests
     public async Task GetExertionAsync_ExcludesTheNightsSleep_FromTheLongestStretch()
     {
         var handler = new RoutedFakeHttpHandler()
+            .Map(WornPath, WornThroughout)
             .Map("/dataTypes/activity-level/", $$"""
                 {
                   "dataPoints": [
@@ -2500,6 +2511,7 @@ public class GoogleHealthApiClientTests
     public async Task GetExertionAsync_ExcludesEverySleepSession_NapsIncluded()
     {
         var handler = new RoutedFakeHttpHandler()
+            .Map(WornPath, WornThroughout)
             .Map("/dataTypes/activity-level/", $$"""
                 {
                   "dataPoints": [
@@ -2533,6 +2545,7 @@ public class GoogleHealthApiClientTests
     public async Task GetExertionAsync_KeepsBothDaytimeEnds_OfAnIntervalSpanningTheNight()
     {
         var handler = new RoutedFakeHttpHandler()
+            .Map(WornPath, WornThroughout)
             .Map("/dataTypes/activity-level/", $$"""
                 {
                   "dataPoints": [
@@ -2566,6 +2579,7 @@ public class GoogleHealthApiClientTests
     public async Task GetExertionAsync_BreaksTheStretch_WhenTheWearerMovedInBetween()
     {
         var handler = new RoutedFakeHttpHandler()
+            .Map(WornPath, WornThroughout)
             .Map("/dataTypes/activity-level/", $$"""
                 {
                   "dataPoints": [
@@ -2579,6 +2593,305 @@ public class GoogleHealthApiClientTests
         var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
 
         Assert.Equal(60, result.LongestSedentaryStretchMinutes);
+    }
+
+    private const string WornPath = "/dataTypes/heart-rate/dataPoints:rollUp";
+
+    /// <summary>
+    /// Heart rate across every instant any test here uses — one rollup point spanning a century —
+    /// for the tests whose subject is not the worn check. The client reads each point's own
+    /// <c>startTime</c>/<c>endTime</c> rather than assuming the window size it asked for.
+    /// </summary>
+    private const string WornThroughout = """
+        {
+          "rollupDataPoints": [
+            {
+              "startTime": "2000-01-01T00:00:00Z", "endTime": "2100-01-01T00:00:00Z",
+              "heartRate": { "beatsPerMinuteAvg": 68 }
+            }
+          ]
+        }
+        """;
+
+    /// <summary>An instant on the fifth of August 2026, UTC — the day the worn-check tests judge.</summary>
+    private static DateTime OnTheFifth(int hour, int minute) =>
+        new(2026, 8, 5, hour, minute, 0, DateTimeKind.Utc);
+
+    /// <summary>Five-minute heart-rate rollup windows covering each span, as one response page.</summary>
+    private static string WornWindows(params (DateTime From, DateTime To)[] spans) =>
+        WornWindowsPage(nextPageToken: null, spans);
+
+    private static string WornWindowsPage(string? nextPageToken, params (DateTime From, DateTime To)[] spans)
+    {
+        static string Utc(DateTime instant) =>
+            instant.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+
+        var points = new List<string>();
+        foreach (var (from, to) in spans)
+        {
+            for (var start = from; start < to; start = start.AddMinutes(5))
+            {
+                points.Add($$"""
+                    { "startTime": "{{Utc(start)}}", "endTime": "{{Utc(start.AddMinutes(5))}}",
+                      "heartRate": { "beatsPerMinuteAvg": 68 } }
+                    """);
+            }
+        }
+
+        var token = nextPageToken is null ? string.Empty : $$""", "nextPageToken": "{{nextPageToken}}" """;
+        return $$"""{ "rollupDataPoints": [ {{string.Join(", ", points)}} ]{{token}} }""";
+    }
+
+    private static string SedentaryBetween(DateTime from, DateTime to) => $$"""
+        {
+          "dataPoints": [
+            {{ActivityLevelPoint(
+                "SEDENTARY",
+                from.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture),
+                to.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture))}}
+          ]
+        }
+        """;
+
+    /// <summary>
+    /// The watch on its charger is not a wearer sitting still. <c>activity-level</c> is not
+    /// documented as worn-only, so a sedentary run is cut wherever heart rate stops for longer than
+    /// a blip, and the longest <em>worn</em> piece is the reading — not the six hours the device
+    /// reported, two of which it spent off the wrist.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_SplitsTheStretch_WhereTheWatchCameOff()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(12, 0), OnTheFifth(18, 0)))
+            .Map(WornPath, WornWindows(
+                (OnTheFifth(12, 0), OnTheFifth(13, 0)),
+                (OnTheFifth(15, 0), OnTheFifth(18, 0))));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Equal(180, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(OnTheFifth(15, 0), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// A loose band drops heart rate for a few minutes while the wearer sits perfectly still. One
+    /// empty window is a blip, not the watch coming off, and must not split the stretch.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_BridgesASingleMissingHeartRateWindow()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(13, 0), OnTheFifth(16, 0)))
+            .Map(WornPath, WornWindows(
+                (OnTheFifth(13, 0), OnTheFifth(14, 0)),
+                (OnTheFifth(14, 5), OnTheFifth(16, 0))));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Equal(180, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(OnTheFifth(13, 0), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// Two empty windows in a row — ten minutes without a heart rate — is the watch off the wrist,
+    /// and the stretch is judged on either side of it.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_SplitsTheStretch_OnTwoMissingHeartRateWindows()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(13, 0), OnTheFifth(16, 0)))
+            .Map(WornPath, WornWindows(
+                (OnTheFifth(13, 0), OnTheFifth(14, 0)),
+                (OnTheFifth(14, 10), OnTheFifth(16, 0))));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Equal(110, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(OnTheFifth(14, 10), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// Stillness alone is not evidence. A day with sedentary intervals and no heart rate at all
+    /// reports no stretch — never the unchecked one.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ReportsNoStretch_WhenNoHeartRateWasRecorded()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(13, 0), OnTheFifth(18, 0)))
+            .Map(WornPath, """{ "rollupDataPoints": [] }""");
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Null(result.LongestSedentaryStretchMinutes);
+        Assert.Null(result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// A rollup window that comes back without a value is as unworn as a window that is not
+    /// returned at all — the discovery document does not say which the API sends.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_TreatsAWindowWithoutAValue_AsUnworn()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(13, 0), OnTheFifth(18, 0)))
+            .Map(WornPath, """
+                {
+                  "rollupDataPoints": [
+                    { "startTime": "2026-08-05T13:00:00Z", "endTime": "2026-08-05T18:00:00Z", "heartRate": {} }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Null(result.LongestSedentaryStretchMinutes);
+    }
+
+    [Fact]
+    public async Task GetExertionAsync_ReportsNoStretch_WhenTheHeartRateTypeIsAbsent()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(13, 0), OnTheFifth(18, 0)))
+            .Map(WornPath, """{ "error": { "status": "NOT_FOUND" } }""", HttpStatusCode.NotFound);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Null(result.LongestSedentaryStretchMinutes);
+        Assert.Null(result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// The worn check is enrichment. A failed request costs the stretch — never an unchecked one in
+    /// its place — and leaves the rest of the day's exertion readings alone.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ReportsNoStretch_WhenTheWornCheckFails()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(13, 0), OnTheFifth(18, 0)))
+            .Map(WornPath, "{}", HttpStatusCode.InternalServerError)
+            .Map("/dataTypes/daily-heart-rate-zones/", """
+                {
+                  "dataPoints": [
+                    { "dailyHeartRateZones": { "heartRateZones": [
+                        { "heartRateZoneType": "MODERATE", "minBeatsPerMinute": 97 } ] } }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Null(result.LongestSedentaryStretchMinutes);
+        Assert.Null(result.LongestSedentaryStretchStartUtc);
+        Assert.Equal(97, result.ModerateZoneFloorBpm);
+    }
+
+    /// <summary>A dropped connection never becomes a <see cref="GoogleHealthApiException"/>, and is the same miss.</summary>
+    [Fact]
+    public async Task GetExertionAsync_ReportsNoStretch_WhenTheWornCheckDrops()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(13, 0), OnTheFifth(18, 0)))
+            .MapSequence(WornPath, Array.Empty<string>())
+            .ThrowWhenSequenceExhausted(WornPath, new HttpRequestException("connection reset"));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Null(result.LongestSedentaryStretchMinutes);
+    }
+
+    /// <summary>
+    /// A 400 with field violations is a bug in the request this client built, not a device without
+    /// heart rate. Swallowing it would quietly switch the stretch off for every wearer.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_Throws_WhenTheWornCheckIsMalformed()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(13, 0), OnTheFifth(18, 0)))
+            .Map(WornPath, MalformedSleepFilter400, HttpStatusCode.BadRequest);
+
+        var (sut, _) = CreateSut(handler);
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(
+            () => sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth));
+        Assert.True(ex.IsMalformedRequest);
+    }
+
+    /// <summary>A day with no stillness has nothing to check, and spends no quota checking it.</summary>
+    [Fact]
+    public async Task GetExertionAsync_SkipsTheWornCheck_WhenNothingWasSedentary()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("LIGHTLY_ACTIVE", "2026-08-05T13:00:00Z", "2026-08-05T14:00:00Z")}}
+                  ]
+                }
+                """)
+            .Map(WornPath, WornThroughout);
+
+        var (sut, handlerOut) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Null(result.LongestSedentaryStretchMinutes);
+        Assert.DoesNotContain(handlerOut.Requests, r =>
+            r.RequestUri!.AbsolutePath.Contains(WornPath, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The request asks the right question: five-minute windows, wearable sources only, over the
+    /// day's own sedentary time as physical instants.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_RollsUpWearableHeartRate_OverTheSedentaryTime()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(13, 0), OnTheFifth(16, 0)))
+            .Map(WornPath, WornThroughout);
+
+        var (sut, handlerOut) = CreateSut(handler);
+        await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        using var body = JsonDocument.Parse(handlerOut.BodyFor(WornPath));
+        var root = body.RootElement;
+        Assert.Equal("300s", root.GetProperty("windowSize").GetString());
+        Assert.Equal(
+            "users/me/dataSourceFamilies/google-wearables", root.GetProperty("dataSourceFamily").GetString());
+        var range = root.GetProperty("range");
+        Assert.Equal(OnTheFifth(13, 0), range.GetProperty("startTime").GetDateTime().ToUniversalTime());
+        Assert.Equal(OnTheFifth(16, 0), range.GetProperty("endTime").GetDateTime().ToUniversalTime());
+    }
+
+    /// <summary>A second page of windows is read, not dropped — a dropped tail would read as the watch coming off.</summary>
+    [Fact]
+    public async Task GetExertionAsync_FollowsTheWornCheckPageToken()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", SedentaryBetween(OnTheFifth(13, 0), OnTheFifth(16, 0)))
+            .MapSequence(
+                WornPath,
+                WornWindowsPage("page-2", (OnTheFifth(13, 0), OnTheFifth(14, 30))),
+                WornWindows((OnTheFifth(14, 30), OnTheFifth(16, 0))));
+
+        var (sut, handlerOut) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Equal(180, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(2, handlerOut.Requests.Count(r =>
+            r.RequestUri!.AbsolutePath.Contains(WornPath, StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -2611,6 +2924,7 @@ public class GoogleHealthApiClientTests
     public async Task GetExertionAsync_SkipsAMalformedPoint_RatherThanThrowing()
     {
         var handler = new RoutedFakeHttpHandler()
+            .Map(WornPath, WornThroughout)
             .Map("/dataTypes/activity-level/", """
                 {
                   "dataPoints": [

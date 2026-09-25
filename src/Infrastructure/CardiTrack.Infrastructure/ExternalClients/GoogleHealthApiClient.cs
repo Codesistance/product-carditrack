@@ -20,7 +20,9 @@ namespace CardiTrack.Infrastructure.ExternalClients;
 /// daily-vo2-max, daily-respiratory-rate, daily-sleep-temperature-derivations) support only
 /// `list`/`reconcile` and 400 on a rollup; Session types (sleep) take `list` with a civil-time
 /// filter. A Sample type is also listed directly, rather than rolled up, where the rollup omits an
-/// aggregation this client needs — `oxygen-saturation` has no min/max rollup.
+/// aggregation this client needs — `oxygen-saturation` has no min/max rollup. `heart-rate` is
+/// additionally rolled up over short physical windows with `dataPoints:rollUp`, as the worn check
+/// behind the longest sedentary stretch.
 /// </para>
 /// <para>
 /// Every field name and enum member below is checked against the v4 discovery document
@@ -122,6 +124,33 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// up, walking to the kitchen — still breaks the run, which is the whole point of measuring it.
     /// </summary>
     private const int SedentaryJoinToleranceMinutes = 2;
+
+    /// <summary>
+    /// The heart-rate rollup window the worn check reads, in seconds. A window with a heart-rate
+    /// value is a window the watch was on a wrist: the optical sensor reads nothing off skin, and
+    /// the rollup itself already excludes readings the API identifies as recorded while not worn.
+    /// </summary>
+    private const int WornWindowSeconds = 300;
+
+    /// <summary>
+    /// The shortest run of heart-rate-less time that counts as the watch coming off. Two empty
+    /// windows, not one: a loose band drops heart rate for a few minutes while the wearer sits
+    /// perfectly still, and splitting the stretch on every such blip would under-report exactly
+    /// the stillness this reading exists to catch. Anything this long or longer is treated as
+    /// unworn, so a charge in the middle of the afternoon cannot be counted as sitting still.
+    /// </summary>
+    private const int UnwornBreakMinutes = 10;
+
+    /// <summary>
+    /// Pages the worn-check rollup may take before it gives up. Its range never exceeds one civil
+    /// day, which is under 300 windows at <see cref="WornWindowSeconds"/> — one page at
+    /// <see cref="WornWindowPageSize"/>. More than this means the range is wrong, and the check
+    /// gives up — no stretch for the day — rather than looping.
+    /// </summary>
+    private const int WornWindowPageCap = 4;
+
+    /// <summary>Windows per page for the worn-check rollup — the API's own default, and a day's worth.</summary>
+    private const int WornWindowPageSize = 1440;
 
     private readonly HttpClient _httpClient;
     private readonly TimeSpan _pageRequestDelay;
@@ -567,7 +596,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// <summary>
     /// How the day's heart rate was distributed across the wearer's own effort zones, the bpm at
     /// which their moderate zone starts, and the longest unbroken stretch their device recorded
-    /// them as sedentary.
+    /// them as sedentary while it was being worn.
     /// </summary>
     /// <remarks>
     /// Three reads that answer one question the daily totals cannot: not how much the wearer moved,
@@ -698,6 +727,18 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// that only passes sessions ending today still sees that tail, which is at most bedtime to
     /// midnight.
     /// </para>
+    /// <para>
+    /// <b>No heart rate, no reading.</b> Stillness alone is not evidence the wearer was still.
+    /// <c>activity-level</c> is the one source here the v4 discovery document does not qualify as
+    /// worn: <c>SedentaryPeriod</c> is defined as "not moving while wearing the device", and every
+    /// rollup excludes points recorded while not worn, but <c>ActivityLevel</c> says neither. A watch
+    /// left on its charger all afternoon could therefore come back as an afternoon without moving,
+    /// and <c>daytime_inactivity_block</c> would tell a family about it as fact. So the sedentary
+    /// intervals are clipped to the time the watch had a heart rate (<see cref="WornIntervalsAsync"/>)
+    /// before the longest run is taken, and a day whose heart rate cannot be read at all — absent,
+    /// or a failed request — reports no stretch rather than an unchecked one. A malformed request
+    /// still throws, as everywhere in this client.
+    /// </para>
     /// </remarks>
     private async Task<(int? Minutes, DateTime? StartUtc)> OptionalLongestSedentaryStretchAsync(
         string accessToken, DateOnly date, IReadOnlyCollection<(DateTime Start, DateTime End)>? sleepWindows)
@@ -724,6 +765,20 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
                 .Where(i => i.Start.HasValue && i.End.HasValue && i.End > i.Start)
                 .Select(i => (Start: i.Start!.Value, End: i.End!.Value))
                 .SelectMany(i => OutsideSleep(i, sleepWindows))
+                .ToList();
+
+            // Nothing sedentary to check means no heart-rate request: a day with no stillness
+            // must not spend quota proving the watch was on.
+            if (sedentary.Count == 0)
+                return (null, null);
+
+            var worn = await WornIntervalsAsync(
+                accessToken, date, sedentary.Min(i => i.Start), sedentary.Max(i => i.End));
+            if (worn is not { Count: > 0 })
+                return (null, null);
+
+            sedentary = sedentary
+                .SelectMany(i => InsideWorn(i, worn))
                 .OrderBy(i => i.Start)
                 .ToList();
 
@@ -803,6 +858,147 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         if (interval.End > sleep.End)
             yield return (sleep.End, interval.End);
     }
+
+    /// <summary>
+    /// The stretches between <paramref name="fromUtc"/> and <paramref name="toUtc"/> the watch was
+    /// on a wrist, read as <see cref="WornWindowSeconds"/> heart-rate rollup windows and joined
+    /// across gaps shorter than <see cref="UnwornBreakMinutes"/>. Null when heart rate could not be
+    /// read — the type is absent for this wearer, or the request failed — which the caller reports
+    /// as no stretch, never as an unchecked one.
+    /// </summary>
+    /// <remarks>
+    /// The range is the day's own sedentary time rather than its civil bounds: <c>rollUp</c> takes
+    /// a physical interval, this client is never told the wearer's zone, and the sedentary
+    /// intervals are already physical instants inside the day. Only wearable sources are rolled
+    /// up, because the question is whether <em>the watch</em> was on; a reading another app wrote
+    /// through Health Connect would answer a different one.
+    /// <para>
+    /// A window counts as worn when its rollup carries an average heart rate. Whether the API
+    /// omits an empty window or returns it without a value is not something the discovery
+    /// document settles, so both read the same here.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<(DateTime Start, DateTime End)>?> WornIntervalsAsync(
+        string accessToken, DateOnly date, DateTime fromUtc, DateTime toUtc)
+    {
+        const string dataType = "heart-rate";
+        var windows = new List<(DateTime Start, DateTime End)>();
+        try
+        {
+            string? pageToken = null;
+            var pages = 0;
+            do
+            {
+                if (++pages > WornWindowPageCap)
+                {
+                    throw new GoogleHealthApiException(
+                        0,
+                        $"Google Health API {dataType} rollup for {date:yyyy-MM-dd} still had pages "
+                        + $"outstanding after {WornWindowPageCap}. A single civil day cannot hold that "
+                        + "many windows, so the range is wrong.");
+                }
+
+                if (pageToken is not null)
+                    await Task.Delay(_pageRequestDelay, _clock);
+
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    $"/v4/users/me/dataTypes/{dataType}/dataPoints:rollUp");
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+                var body = new JObject
+                {
+                    // Closed-open physical Interval; the instants are UTC throughout this client.
+                    ["range"] = new JObject
+                    {
+                        ["startTime"] = Rfc3339Utc(fromUtc),
+                        ["endTime"] = Rfc3339Utc(toUtc),
+                    },
+                    ["windowSize"] = $"{WornWindowSeconds}s",
+                    ["pageSize"] = WornWindowPageSize,
+                    ["dataSourceFamily"] = "users/me/dataSourceFamilies/google-wearables",
+                };
+                if (pageToken is not null)
+                    body["pageToken"] = pageToken;
+                request.Content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json");
+
+                using var response = await _httpClient.SendAsync(request);
+                await EnsureSuccessAsync(response);
+
+                var root = await ParseBodyAsync(response, dataType);
+                foreach (var point in (root["rollupDataPoints"] as JArray)?.OfType<JObject>() ?? [])
+                {
+                    if (ReadDecimal(point["heartRate"], "beatsPerMinuteAvg") is null
+                        || ParseInstantUtc(ReadString(point, "startTime")) is not { } start)
+                    {
+                        continue;
+                    }
+
+                    var end = ParseInstantUtc(ReadString(point, "endTime"))
+                              ?? start.AddSeconds(WornWindowSeconds);
+                    if (end > start)
+                        windows.Add((start, end));
+                }
+
+                pageToken = ReadString(root, "nextPageToken");
+            }
+            while (!string.IsNullOrEmpty(pageToken));
+        }
+        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex))
+        {
+            return null;
+        }
+        catch (Exception ex) when (IsEnrichmentFailure(ex))
+        {
+            // The stretch is enrichment: a failed worn check costs this reading, not the day.
+            _logger.LogWarning(
+                ex, "Heart-rate rollup for the worn check failed; reporting no sedentary stretch for {Date}.",
+                date);
+            return null;
+        }
+
+        windows.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+        var breakGap = TimeSpan.FromMinutes(UnwornBreakMinutes);
+        var worn = new List<(DateTime Start, DateTime End)>();
+        foreach (var (start, end) in windows)
+        {
+            if (worn.Count > 0 && start - worn[^1].End < breakGap)
+            {
+                // One empty window between two worn ones is a blip, not the watch coming off.
+                var last = worn[^1];
+                worn[^1] = (last.Start, end > last.End ? end : last.End);
+            }
+            else
+            {
+                worn.Add((start, end));
+            }
+        }
+
+        return worn;
+    }
+
+    /// <summary>
+    /// The parts of a sedentary interval that fall inside the time the watch was worn — the
+    /// counterpart of <c>OutsideSleep</c>.
+    /// A stretch interrupted by a charge becomes two, separated by at least
+    /// <see cref="UnwornBreakMinutes"/>, which the join below will not bridge.
+    /// </summary>
+    private static IEnumerable<(DateTime Start, DateTime End)> InsideWorn(
+        (DateTime Start, DateTime End) interval, IReadOnlyList<(DateTime Start, DateTime End)> worn)
+    {
+        foreach (var (wornStart, wornEnd) in worn)
+        {
+            var start = interval.Start > wornStart ? interval.Start : wornStart;
+            var end = interval.End < wornEnd ? interval.End : wornEnd;
+            if (end > start)
+                yield return (start, end);
+        }
+    }
+
+    /// <summary>An RFC-3339 UTC timestamp for a physical <c>Interval</c> bound.</summary>
+    private static string Rfc3339Utc(DateTime utc) =>
+        utc.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// One civil day's ECG readings and irregular-rhythm notifications, or
