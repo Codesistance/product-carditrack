@@ -110,61 +110,90 @@
                             </Grid>
                         </Border>
 
+                        <!-- No padding on the banner itself: the handled strip runs edge to edge
+                             across its top and is clipped by its corners, so the padding lives on
+                             the strip and on the content below it instead. -->
                         <Border x:Name="SeverityBanner"
                                 StrokeThickness="0"
-                                Padding="16,14">
+                                Padding="0">
                             <Border.StrokeShape>
                                 <RoundRectangle CornerRadius="20"/>
                             </Border.StrokeShape>
-                            <!-- The icon says what the alert is about; the banner's colour already
-                                 says how bad it is. It used to be a second severity glyph — and
-                                 one stroked in the severity colour at that, so on the yellow and
-                                 orange banners it was the same colour as the ground behind it and
-                                 the title simply had no icon at all. Hence the translucent-white
-                                 tile and the white-stroke variants: on a coloured ground the mark
-                                 has to bring its own contrast.
+                            <VerticalStackLayout Spacing="0">
 
-                                 NOTICE / URGENT / CRITICAL is not on this banner at all: it sits
-                                 in the top-right of the CardiMember card above, where the banner's
-                                 colour has already said how bad it is. The tile spans both rows,
-                                 from the title's top to the date's bottom — the same Fill +
-                                 width-bound-to-height treatment the header's back button uses. -->
-                            <Grid RowDefinitions="Auto,Auto"
-                                  ColumnDefinitions="Auto,*"
-                                  ColumnSpacing="12"
-                                  RowSpacing="4">
-                                <!-- Fill + width-bound-to-height: the tile matches the title and
-                                     date exactly and stays square at whatever that is. -->
-                                <controls:SquareBorder Grid.Row="0" Grid.RowSpan="2"
-                                        Grid.Column="0"
-                                        StrokeThickness="0"
-                                        BackgroundColor="#33FFFFFF"
-                                        VerticalOptions="Fill">
-                                    <controls:SquareBorder.StrokeShape>
-                                        <RoundRectangle CornerRadius="14"/>
-                                    </controls:SquareBorder.StrokeShape>
-                                    <Image x:Name="ReasonIcon"
-                                           WidthRequest="24" HeightRequest="24"
-                                           HorizontalOptions="Center"
+                                <!-- Once the alert has been dealt with, the banner says so first: a
+                                     green strip across its top, part of the same card rather than a
+                                     caption under the buttons, because "it settled on its own" or "Tom
+                                     acknowledged" changes how everything below it reads. Green because
+                                     the episode is handled, whatever colour the alert itself was; the
+                                     severity ground stays underneath so the two never blur. -->
+                                <Grid x:Name="HandledStrip"
+                                      IsVisible="False"
+                                      BackgroundColor="{StaticResource HandledStripBackground}"
+                                      Padding="16,7"
+                                      ColumnDefinitions="Auto,*"
+                                      ColumnSpacing="6">
+                                    <Image Source="icon_check_white.svg"
+                                           WidthRequest="15" HeightRequest="15"
                                            VerticalOptions="Center"/>
-                                </controls:SquareBorder>
-                                <Label x:Name="TitleLabel"
-                                       Grid.Row="0" Grid.Column="1"
-                                       Style="{StaticResource Heading3}"
-                                       TextColor="{StaticResource White}"
-                                       LineBreakMode="WordWrap"/>
-                                <!-- A size under the body text: when it happened is the least
-                                     load-bearing line on the banner, and at body size it competed
-                                     with the title. Pinned to the bottom of its row so its last line
-                                     sits on the icon tile's bottom edge — the tile spans both rows,
-                                     so the two finish on the same line whatever the title wraps to. -->
-                                <Label x:Name="TimeLabel"
-                                       Grid.Row="1" Grid.Column="1"
-                                       Style="{StaticResource Body2}"
-                                       FontSize="12"
-                                       TextColor="{StaticResource White}"
-                                       VerticalOptions="End"/>
-                            </Grid>
+                                    <Label x:Name="AcknowledgedLabel"
+                                           Grid.Column="1"
+                                           FontFamily="QuicksandSemiBold"
+                                           FontSize="12"
+                                           TextColor="{StaticResource White}"
+                                           VerticalTextAlignment="Center"/>
+                                </Grid>
+                                <!-- The icon says what the alert is about; the banner's colour already
+                                     says how bad it is. It used to be a second severity glyph — and
+                                     one stroked in the severity colour at that, so on the yellow and
+                                     orange banners it was the same colour as the ground behind it and
+                                     the title simply had no icon at all. Hence the translucent-white
+                                     tile and the white-stroke variants: on a coloured ground the mark
+                                     has to bring its own contrast.
+
+                                     NOTICE / URGENT / CRITICAL is not on this banner at all: it sits
+                                     in the top-right of the CardiMember card above, where the banner's
+                                     colour has already said how bad it is. The tile spans both rows,
+                                     from the title's top to the date's bottom — the same Fill +
+                                     width-bound-to-height treatment the header's back button uses. -->
+                                <Grid RowDefinitions="Auto,Auto"
+                                      ColumnDefinitions="Auto,*"
+                                      ColumnSpacing="12"
+                                      RowSpacing="4"
+                                      Padding="16,14">
+                                    <!-- Fill + width-bound-to-height: the tile matches the title and
+                                         date exactly and stays square at whatever that is. -->
+                                    <controls:SquareBorder Grid.Row="0" Grid.RowSpan="2"
+                                            Grid.Column="0"
+                                            StrokeThickness="0"
+                                            BackgroundColor="#33FFFFFF"
+                                            VerticalOptions="Fill">
+                                        <controls:SquareBorder.StrokeShape>
+                                            <RoundRectangle CornerRadius="14"/>
+                                        </controls:SquareBorder.StrokeShape>
+                                        <Image x:Name="ReasonIcon"
+                                               WidthRequest="24" HeightRequest="24"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center"/>
+                                    </controls:SquareBorder>
+                                    <Label x:Name="TitleLabel"
+                                           Grid.Row="0" Grid.Column="1"
+                                           Style="{StaticResource Heading3}"
+                                           TextColor="{StaticResource White}"
+                                           LineBreakMode="WordWrap"/>
+                                    <!-- A size under the body text: when it happened is the least
+                                         load-bearing line on the banner, and at body size it competed
+                                         with the title. Pinned to the bottom of its row so its last line
+                                         sits on the icon tile's bottom edge — the tile spans both rows,
+                                         so the two finish on the same line whatever the title wraps to. -->
+                                    <Label x:Name="TimeLabel"
+                                           Grid.Row="1" Grid.Column="1"
+                                           Style="{StaticResource Body2}"
+                                           FontSize="12"
+                                           TextColor="{StaticResource White}"
+                                           VerticalOptions="End"/>
+                                </Grid>
+                            </VerticalStackLayout>
                         </Border>
 
                         <Border Style="{StaticResource ElevatedCard}">
@@ -427,12 +456,6 @@
                                 <VerticalStackLayout x:Name="ResponsesHost"/>
                             </Border>
                         </VerticalStackLayout>
-
-                        <Label x:Name="AcknowledgedLabel"
-                               Style="{StaticResource Body2}"
-                               HorizontalTextAlignment="Center"
-                               Margin="0,6,0,0"
-                               IsVisible="False"/>
 
                         <Button x:Name="AcknowledgeButton"
                                 Style="{StaticResource PrimaryGradientButton}"

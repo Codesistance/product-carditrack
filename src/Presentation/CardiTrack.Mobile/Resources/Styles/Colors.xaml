@@ -116,6 +116,11 @@
     <Color x:Key="CountBadgeNeutral">#5F6B7A</Color>
     <Color x:Key="CountBadgeFavourable">#15644F</Color>
 
+    <!-- The strip across the top of an alert banner once the alert has been dealt with ("This
+         settled on its own", "Acknowledged by …"). StatusGreen's family, darkened until white
+         12px text on it clears 4.5:1 (about 5.3:1): the strip is a sentence, not a swatch. -->
+    <Color x:Key="HandledStripBackground">#1A7A5E</Color>
+
     <!-- Alert icon tiles — Figma rgba(239,68,68,0.14), generalised across the severity set -->
     <!-- Quick actions (dashboard), in the app's own blue rather than a severity colour — these are
          ordinary controls, and only the one that dials an emergency contact wears red. The row

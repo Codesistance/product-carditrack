@@ -472,12 +472,12 @@ public partial class AlertDetailPage : ContentPage
 
         if (!handled)
         {
-            AcknowledgedLabel.IsVisible = false;
+            HandledStrip.IsVisible = false;
             return;
         }
 
         AcknowledgedLabel.Text = AlertAnswerCopy.HandledLine(alert) ?? AlertAnswerCopy.SettledOnItsOwn;
-        AcknowledgedLabel.IsVisible = true;
+        HandledStrip.IsVisible = true;
     }
 
     /// <summary>

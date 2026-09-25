@@ -335,6 +335,13 @@
    "size": 24
   },
   {
+   "file": "icon_check_white.svg",
+   "source": "iconpark",
+   "name": "check",
+   "group": "white",
+   "size": 24
+  },
+  {
    "file": "icon_back_white.svg",
    "source": "iconpark",
    "name": "left",
