@@ -407,7 +407,7 @@ The state token carries the initiation's `mode` and `deviceId`; the grant's prov
 |------|-------------|--------|
 | `add` | one the member already has connected | That connection is refreshed; `alreadyConnected: true` |
 | `add` | new, or could not be read | A **new connection**. Primary only if the member has no primary |
-| `reconnect` | the connection's own, or could not be compared | That connection gets fresh tokens and returns to `active` |
+| `reconnect` | the connection's own, or could not be compared | That connection gets fresh tokens and returns to `active`. If the account could not be read, its stored `HealthUserId` is cleared rather than kept, so the next sync captures the right one |
 | `reconnect` | a different one | **409**. Nothing is stored — switching the account under an existing card would show a stranger's data under this member. The app offers "Change device" instead |
 | `replace` | the replaced connection's own | Just a reconnect of it; `replacedDeviceId: null` |
 | `replace` | another of the member's connections' | **409**. Two cards would read one data stream |
@@ -629,7 +629,9 @@ Removes a device connection. Soft delete: the connection is deactivated, its sta
 - another of the member's live connections on the same API is **not known to be on a different account** — both identities captured and different. Identity capture is best-effort, and an uncaptured one may well be the same account; or
 - any member's live connection has the same `HealthUserId`.
 
-The removed connection's tokens are discarded either way. If the removed device was the primary, another connection is promoted — a collecting one by preference, never a suspended one — so a member with devices always has a primary.
+The removed connection's tokens are discarded either way. The check runs twice: once under the member's lock when the device is removed, and again immediately before the provider call after the commit. A grant for the same account stored in between, on another member, therefore still stops the revocation.
+
+One case no database check can close: a grant whose code exchange with Google has already happened but whose row is not yet stored. Revocation is ordered against Google's token issuance, which happens before we know the account. That connection fails its next sync and reads `token_expired`. The caregiver is asked to reconnect; nothing is read under the wrong member. If the removed device was the primary, another connection is promoted — a collecting one by preference, never a suspended one — so a member with devices always has a primary.
 
 Historical data synced via this device is retained. A CardiMember **may have zero connected devices** (e.g. before their first connection); the dashboard reports `device.hasActiveConnection: false` in that state.
 

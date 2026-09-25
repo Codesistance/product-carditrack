@@ -1774,7 +1774,43 @@ public class DeviceConnectionServiceTests
             _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId);
             _unitOfWork.SaveChangesAsync();
             _unitOfWork.CommitTransactionAsync();
+            // A removal re-reads the member's devices after the commit, to re-check the grant is
+            // not shared immediately before revoking it.
+            if (change == "disconnect")
+                _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId);
         });
+    }
+
+    [Fact]
+    public async Task Disconnect_ReChecksTheGrant_BeforeRevoking_AndKeepsItIfNowShared()
+    {
+        // The decision is taken under the member's lock, the call made after the commit; a grant
+        // for the same account stored in between (on another member) must stop the revocation.
+        var removed = SeedAccount("ACCOUNT_A", isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([removed]);
+        _unitOfWork.DeviceConnections.AnyOtherActiveWithHealthUserIdAsync(removed.Id, "ACCOUNT_A")
+            .Returns(false, true);
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, removed.Id);
+
+        await _unitOfWork.DeviceConnections.Received(2).AnyOtherActiveWithHealthUserIdAsync(removed.Id, "ACCOUNT_A");
+        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task CompleteConnection_Reconnect_ClearsTheStoredAccount_WhenTheNewOneCannotBeRead()
+    {
+        // The grant may be for another account; keeping the old id would label it with that account
+        // for good, since the sync only captures an id that is missing.
+        var existing = SeedAccount("ACCOUNT_A", status: ConnectionStatus.TokenExpired);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        GrantIsForAccount(null);
+        GrantReturns(access: "new_access");
+
+        await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id));
+
+        Assert.Null(existing.HealthUserId);
+        Assert.Equal("enc(new_access)", existing.AccessToken);
     }
 
     [Fact]

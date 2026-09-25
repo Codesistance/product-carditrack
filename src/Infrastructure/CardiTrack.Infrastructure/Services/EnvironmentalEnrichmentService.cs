@@ -91,8 +91,10 @@ public class EnvironmentalEnrichmentService : IEnvironmentalEnrichmentService
             return 0;
         }
 
+        // A suspended device is out of every collection path, and reading its exercise sessions
+        // here would be collection by another name.
         var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(memberId))
-            .Where(c => c.IsActive && HasLocationScope(c))
+            .Where(c => c.IsActive && c.SuspendedAt is null && HasLocationScope(c))
             .ToList();
 
         var written = 0;

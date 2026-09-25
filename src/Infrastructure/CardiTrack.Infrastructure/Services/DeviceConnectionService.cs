@@ -519,8 +519,10 @@ public class DeviceConnectionService : IDeviceConnectionService
 
             // Captured here rather than waiting for the first sync, so the next grant can be told
             // apart from this one — and webhooks reach a new connection from its first minute.
-            if (account.HealthUserId is not null)
-                connection.HealthUserId = account.HealthUserId;
+            // Stored even when the lookup failed: a reconnect whose account could not be read may
+            // be on another account, and keeping the old id would label the new grant with it for
+            // good, since the sync only captures an id that is missing. Null lets it re-capture.
+            connection.HealthUserId = account.HealthUserId;
 
             if (outcome.Connection is null)
                 await _unitOfWork.DeviceConnections.AddAsync(connection);
@@ -553,7 +555,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         // call stays outside the transaction, and the old grant is only ended once the new one is
         // certainly stored.
         if (outcome.RevokeAfterStore is { } revoke)
-            await _grantRevoker.TryRevokeAsync(revoke, ct);
+            await RevokeUnlessSharedAsync(revoke, ct);
 
         // A fresh connection closes the device gaps immediately — the caregiver should not land
         // back on a dashboard still telling them to reconnect.
@@ -704,15 +706,42 @@ public class DeviceConnectionService : IDeviceConnectionService
         }
     }
 
-    /// <summary>A detached copy carrying only what the revoker reads, taken before the tokens are discarded.</summary>
+    /// <summary>
+    /// A detached copy carrying what the revoker and the shared-grant check read, taken before the
+    /// tokens are discarded.
+    /// </summary>
     private static DeviceConnection TokensOf(DeviceConnection connection) => new()
     {
         Id = connection.Id,
         CardiMemberId = connection.CardiMemberId,
         DeviceType = connection.DeviceType,
+        HealthUserId = connection.HealthUserId,
         AccessToken = connection.AccessToken,
         RefreshToken = connection.RefreshToken,
     };
+
+    /// <summary>
+    /// Ends a retired connection's grant at the provider, re-checking first that nothing now shares
+    /// it.
+    /// </summary>
+    /// <remarks>
+    /// The decision to revoke was taken under the member's lock, but the call happens after the
+    /// commit, and a grant for the same account may have been stored in between — on another
+    /// member, whose lock this does not hold. Re-reading immediately before the call closes that
+    /// case. What no database check can close is a grant whose code exchange with the provider
+    /// already happened but whose row is not yet stored: revocation is ordered against the
+    /// provider's token issuance, which precedes our knowing the account at all. That connection
+    /// would fail its next sync and read <c>token_expired</c> — the caregiver is asked to reconnect,
+    /// nothing is read under the wrong member.
+    /// </remarks>
+    private async Task RevokeUnlessSharedAsync(DeviceConnection retired, CancellationToken ct)
+    {
+        var memberConnections = await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(retired.CardiMemberId);
+        if (await GrantMayBeSharedAsync(retired, memberConnections))
+            return;
+
+        await _grantRevoker.TryRevokeAsync(retired, ct);
+    }
 
     /// <summary>
     /// Takes a connection out of service: soft-deleted, no longer primary, its tokens discarded.
@@ -762,7 +791,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         // After the commit, so no provider round trip is made while the transaction holds the lock.
         // Best effort by design: a provider outage must not stop a caregiver disconnecting a device.
         if (revoke is not null)
-            await _grantRevoker.TryRevokeAsync(revoke, ct);
+            await RevokeUnlessSharedAsync(revoke, ct);
 
         // Removing the last device is itself a gap worth raising, so re-evaluate rather than
         // assuming a disconnect only ever closes things.
