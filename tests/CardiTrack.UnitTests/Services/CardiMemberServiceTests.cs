@@ -8,6 +8,7 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.UnitTests.Notifications;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
@@ -487,6 +488,99 @@ public class CardiMemberServiceTests
         var detail = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: today.AddDays(10));
 
         Assert.Equal(today, detail.Metrics!.Steps.Series[^1].Date);
+    }
+
+    // The detail screen reads "today" on the member's anchor clock, as the dashboard does —
+    // ingestion stores rows under that local date. Zones without daylight saving, so the offsets
+    // hold whatever the date.
+
+    private readonly IUserRepository _users = Substitute.For<IUserRepository>();
+
+    private CardiMemberService CreateSutAt(DateTimeOffset utcNow) => new(
+        _unitOfWork, _access, _encryption, new NoOpNotificationGapResolver(), _photoProcessor,
+        _photoStorage, _grantRevoker, new FakeTimeProvider(utcNow));
+
+    private void AnchorToCaregiverZone(CardiMember member, string timeZoneId)
+    {
+        _unitOfWork.Users.Returns(_users);
+        _users.GetByIdAsync(_userId).Returns(new User { Id = _userId, TimeZoneId = timeZoneId });
+        _baselines.GetLatestByCardiMemberAsync(member.Id, BaselineProgress.PeriodDays).Returns(new PatternBaseline
+        {
+            CardiMemberId = member.Id,
+            PeriodDays = BaselineProgress.PeriodDays,
+            AvgSteps = 8000,
+        });
+    }
+
+    [Fact]
+    public async Task GetDetail_EastOfUtc_ReadsTheMembersDateBeforeTheUtcDateRolls()
+    {
+        // 06:00 on the 25th in Brisbane (UTC+10) is still the 24th in UTC.
+        var member = SeedMember();
+        AnchorToCaregiverZone(member, "Australia/Brisbane");
+        var localToday = new DateOnly(2026, 9, 25);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, localToday.AddDays(-29), localToday)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = localToday, Steps = 300, SleepMinutes = 450 }]);
+
+        var detail = await CreateSutAt(new DateTimeOffset(2026, 9, 24, 20, 0, 0, TimeSpan.Zero))
+            .GetDetailAsync(_userId, member.Id);
+
+        Assert.NotNull(detail.Metrics);
+        Assert.Equal(7.5m, detail.Metrics.Sleep.Value);
+        Assert.Equal(localToday, detail.Metrics.Sleep.Series[^1].Date);
+        Assert.Null(detail.Metrics.Steps.ChangePercent);
+    }
+
+    [Fact]
+    public async Task GetDetail_WestOfUtc_KeepsTheEveningAsTheDayInProgress()
+    {
+        // 20:00 on the 25th in Phoenix (UTC-7) is already the 26th in UTC.
+        var member = SeedMember();
+        AnchorToCaregiverZone(member, "America/Phoenix");
+        var localToday = new DateOnly(2026, 9, 25);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, localToday.AddDays(-29), localToday)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = localToday, Steps = 4000 }]);
+
+        var detail = await CreateSutAt(new DateTimeOffset(2026, 9, 26, 3, 0, 0, TimeSpan.Zero))
+            .GetDetailAsync(_userId, member.Id);
+
+        Assert.NotNull(detail.Metrics);
+        var steps = detail.Metrics.Steps;
+        Assert.Equal(4000m, steps.Value);
+        Assert.Null(steps.ChangePercent);
+        Assert.Equal("unknown", steps.Status);
+        Assert.Equal(localToday, steps.Series[^1].Date);
+    }
+
+    /// <summary>
+    /// A journal entry is dated on a finished local day. East of UTC that day can be UTC's today,
+    /// which used to hand it today's window — whose latest reading was then the journal day's,
+    /// not the member's current one. It is a closed period: its series ends on it, and the latest
+    /// reading stays the member's own today.
+    /// </summary>
+    [Fact]
+    public async Task GetDetail_EastOfUtc_DrawsLocalYesterdaysJournalWindow()
+    {
+        var member = SeedMember();
+        AnchorToCaregiverZone(member, "Australia/Brisbane");
+        var localToday = new DateOnly(2026, 9, 25);
+        var localYesterday = localToday.AddDays(-1);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, localToday.AddDays(-29), localToday)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = localToday, Steps = 300 }]);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, localYesterday.AddDays(-29), localYesterday)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = localYesterday, Steps = 6100 }]);
+
+        var detail = await CreateSutAt(new DateTimeOffset(2026, 9, 24, 20, 0, 0, TimeSpan.Zero))
+            .GetDetailAsync(_userId, member.Id, seriesEndsOn: localYesterday);
+
+        Assert.NotNull(detail.Metrics);
+        Assert.Equal(300m, detail.Metrics.Steps.Value);
+        Assert.Equal(localYesterday, detail.Metrics.Steps.Series[^1].Date);
+        Assert.Equal(6100m, detail.Metrics.Steps.Series[^1].Value);
     }
 
     [Fact]

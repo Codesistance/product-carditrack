@@ -8,6 +8,7 @@ using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 
 namespace CardiTrack.Application.Services;
 
@@ -20,7 +21,13 @@ public class CardiMemberService : ICardiMemberService
     private readonly IProfilePhotoProcessor _photoProcessor;
     private readonly IProfilePhotoStorage _photoStorage;
     private readonly IOAuthGrantRevoker _grantRevoker;
+    private readonly TimeProvider _timeProvider;
 
+    /// <param name="timeProvider">
+    /// The clock the detail screen's "today" is read from — the same member-local day
+    /// <c>DashboardService</c> uses, and injectable for the same reason: a test has to be able to
+    /// put a member either side of UTC midnight.
+    /// </param>
     public CardiMemberService(
         IUnitOfWork unitOfWork,
         ICardiMemberAccessService access,
@@ -28,8 +35,10 @@ public class CardiMemberService : ICardiMemberService
         INotificationGapResolver gapResolver,
         IProfilePhotoProcessor photoProcessor,
         IProfilePhotoStorage photoStorage,
-        IOAuthGrantRevoker grantRevoker)
+        IOAuthGrantRevoker grantRevoker,
+        TimeProvider? timeProvider = null)
     {
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _grantRevoker = grantRevoker;
         _unitOfWork = unitOfWork;
         _access = access;
@@ -654,7 +663,12 @@ public class CardiMemberService : ICardiMemberService
         var link = await FindLinkAsync(requestingUserId, member.Id);
         var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(member.Id)).ToList();
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // The member's local day, on the anchor clock ingestion writes rows under — the same
+        // "today" the dashboard reads, so the two screens cannot disagree about which row is the
+        // day in progress. See DashboardService for what UTC got wrong either side of Greenwich.
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, member.Id);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(now, zone));
         var logs = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
                 member.Id, today.AddDays(-(BaselineProgress.PeriodDays - 1)), today))
             .ToList();
@@ -662,9 +676,10 @@ public class CardiMemberService : ICardiMemberService
             member.Id, BaselineProgress.PeriodDays);
         var unresolvedAlerts = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(member.Id);
 
-        var now = DateTime.UtcNow;
         var pause = PauseStateOf(member, now);
-        var age = CalculateAge(member.DateOfBirth);
+        // On the member's date rather than CalculateAge's UTC one, so a birthday turns over at the
+        // member's midnight and this screen shows the age the dashboard does.
+        var age = member.DateOfBirth.ToAgeInYears(today);
         var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
 
         // Judged on today's window, before the series can move: the status is a statement about
@@ -679,12 +694,11 @@ public class CardiMemberService : ICardiMemberService
         // profile is about now whichever period its charts are drawn for. A member with nothing
         // in today's window still gets the series, on metrics that carry no current reading.
         //
-        // The comparison is against the UTC calendar day, which is what the series above ends on.
-        // A journal entry is dated on a finished local day, which is never after the UTC day
-        // (the furthest-ahead zone's yesterday is UTC's today at most), so a journal date is
-        // either earlier — and gets its own window — or equal, where today's window already
-        // ends on it. A day too early for its own thirty-day window to exist is nonsense rather
-        // than a request, and gets today's series.
+        // The comparison is against the member's local day, which is what the series above ends
+        // on. A journal entry is dated on a finished day on that same anchor clock, so its date
+        // is always earlier and gets its own window ending on it; a date on or after today is not
+        // a closed period and gets today's series. A day too early for its own thirty-day window
+        // to exist is nonsense rather than a request, and gets today's series too.
         if (seriesEndsOn is { } requested
             && requested < today
             && requested.DayNumber >= BaselineProgress.PeriodDays - 1)

@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
@@ -1078,5 +1079,109 @@ public class DashboardServiceTests
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
         Assert.Null(result.Reassurance);
+    }
+
+    // ── The member's day, not UTC's ─────────────────────────────────────────────
+    //
+    // Ingestion writes each row under the member's local date (MemberAnchorTimeZone), so the
+    // dashboard has to ask for — and call "today" — the same date. Zones without daylight saving,
+    // so the offsets below hold whatever the date.
+
+    private readonly IUserRepository _users = Substitute.For<IUserRepository>();
+
+    private DashboardService CreateSutAt(DateTimeOffset utcNow) =>
+        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _photoStorage, _questionnaires,
+            new FakeTimeProvider(utcNow));
+
+    private void AnchorMemberTo(string timeZoneId)
+    {
+        var caregiverId = Guid.NewGuid();
+        _unitOfWork.Users.Returns(_users);
+        _links.GetByCardiMemberIdAsync(_memberId).Returns(
+        [
+            new UserCardiMember { UserId = caregiverId, CardiMemberId = _memberId, IsActive = true },
+        ]);
+        _users.GetByIdAsync(caregiverId).Returns(new User { Id = caregiverId, TimeZoneId = timeZoneId });
+    }
+
+    private void SetupEstablishedBaseline(int avgSteps) =>
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            CardiMemberId = _memberId,
+            PeriodDays = 30,
+            AvgSteps = avgSteps,
+        });
+
+    [Fact]
+    public async Task EastOfUtc_ReadsLastNightsSleep_BeforeTheUtcDateRolls()
+    {
+        // 06:00 on the 25th in Brisbane (UTC+10) is still the 24th in UTC. The night that just
+        // ended is stored under the 25th, which a UTC "today" left outside the range until 10:00.
+        AnchorMemberTo("Australia/Brisbane");
+        SetupEstablishedBaseline(avgSteps: 6000);
+        var localToday = new DateOnly(2026, 9, 25);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, localToday.AddDays(-29), localToday)
+            .Returns(
+            [
+                new ActivityLog { CardiMemberId = _memberId, Date = localToday.AddDays(-1), Steps = 6100, SleepMinutes = 400 },
+                new ActivityLog { CardiMemberId = _memberId, Date = localToday, Steps = 300, SleepMinutes = 450 },
+            ]);
+
+        var result = await CreateSutAt(new DateTimeOffset(2026, 9, 24, 20, 0, 0, TimeSpan.Zero))
+            .GetDashboardAsync(_userId, _memberId);
+
+        await _activityLogs.Received(1)
+            .GetByCardiMemberAndDateRangeAsync(_memberId, localToday.AddDays(-29), localToday);
+        Assert.NotNull(result.Metrics);
+        Assert.Equal(7.5m, result.Metrics.Sleep.Value);
+        Assert.Equal(localToday, result.Metrics.Sleep.Series[^1].Date);
+        // The morning's few steps are the day in progress, not a finished day scored at -95%.
+        Assert.Equal(300m, result.Metrics.Steps.Value);
+        Assert.Null(result.Metrics.Steps.ChangePercent);
+    }
+
+    [Fact]
+    public async Task WestOfUtc_KeepsTheEveningAsTheDayInProgress_AfterTheUtcDateRolls()
+    {
+        // 20:00 on the 25th in Phoenix (UTC-7) is already the 26th in UTC. A UTC "today" treated
+        // the 26th as in progress and scored the real, unfinished 25th against a whole day.
+        AnchorMemberTo("America/Phoenix");
+        SetupEstablishedBaseline(avgSteps: 8000);
+        var localToday = new DateOnly(2026, 9, 25);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, localToday.AddDays(-29), localToday)
+            .Returns(
+            [
+                new ActivityLog { CardiMemberId = _memberId, Date = localToday.AddDays(-1), Steps = 8000 },
+                new ActivityLog { CardiMemberId = _memberId, Date = localToday, Steps = 4000 },
+            ]);
+
+        var result = await CreateSutAt(new DateTimeOffset(2026, 9, 26, 3, 0, 0, TimeSpan.Zero))
+            .GetDashboardAsync(_userId, _memberId);
+
+        await _activityLogs.Received(1)
+            .GetByCardiMemberAndDateRangeAsync(_memberId, localToday.AddDays(-29), localToday);
+        Assert.NotNull(result.Metrics);
+        var steps = result.Metrics.Steps;
+        Assert.Equal(4000m, steps.Value);
+        Assert.Null(steps.ChangePercent);
+        Assert.Equal("unknown", steps.Status);
+        // The series ends on the member's today, with no empty UTC-tomorrow on the end of it.
+        Assert.Equal(localToday, steps.Series[^1].Date);
+        Assert.Equal(4000m, steps.Series[^1].Value);
+    }
+
+    [Fact]
+    public async Task FallsBackToTheUtcDate_WhenNoCaregiverHasAZone()
+    {
+        AnchorMemberTo(timeZoneId: "");
+        var utcToday = new DateOnly(2026, 9, 24);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, utcToday.AddDays(-29), utcToday)
+            .Returns([new ActivityLog { CardiMemberId = _memberId, Date = utcToday, Steps = 1200 }]);
+
+        var result = await CreateSutAt(new DateTimeOffset(2026, 9, 24, 20, 0, 0, TimeSpan.Zero))
+            .GetDashboardAsync(_userId, _memberId);
+
+        Assert.NotNull(result.Metrics);
+        Assert.Equal(utcToday, result.Metrics.Steps.Series[^1].Date);
     }
 }

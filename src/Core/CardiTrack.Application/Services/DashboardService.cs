@@ -30,17 +30,25 @@ public class DashboardService : IDashboardService
     private readonly ICardiMemberAccessService _access;
     private readonly IProfilePhotoStorage _photoStorage;
     private readonly IQuestionnaireService _questionnaires;
+    private readonly TimeProvider _timeProvider;
 
+    /// <param name="timeProvider">
+    /// The clock "today" is read from. Injectable because which row is the day in progress
+    /// depends on where the member's midnight falls against UTC's, and a test that cannot pin the
+    /// clock cannot put a member either side of it.
+    /// </param>
     public DashboardService(
         IUnitOfWork unitOfWork,
         ICardiMemberAccessService access,
         IProfilePhotoStorage photoStorage,
-        IQuestionnaireService questionnaires)
+        IQuestionnaireService questionnaires,
+        TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _access = access;
         _photoStorage = photoStorage;
         _questionnaires = questionnaires;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<DashboardResponse> GetDashboardAsync(
@@ -55,7 +63,15 @@ public class DashboardService : IDashboardService
         var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(cardiMemberId)).ToList();
         var primaryConnection = connections.FirstOrDefault(c => c.IsPrimary) ?? connections.FirstOrDefault();
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // The member's local day, not UTC's. Ingestion writes each row under the day on the
+        // member's anchor clock, and StatisticalAlertService reads "yesterday" on that same
+        // clock; a dashboard on UTC disagreed with both for part of every day. East of Greenwich
+        // it kept reading UTC-yesterday as today until the UTC date rolled, so last night's sleep
+        // row sat outside the range; west of it, the evening's UTC-tomorrow made the real day in
+        // progress look finished, and its running step count was scored against a whole day.
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(now, zone));
         var logs = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
                 cardiMemberId, today.AddDays(-(BaselinePeriodDays - 1)), today))
             .ToList();
@@ -90,7 +106,6 @@ public class DashboardService : IDashboardService
         var age = member.DateOfBirth.ToAgeInYears(today);
         var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
 
-        var now = DateTime.UtcNow;
         var isPaused = member.IsMonitoringPaused(now);
         var lastSyncedAt = member.LastSyncDate ?? connections.Max(c => c.LastSyncDate);
 
@@ -226,7 +241,7 @@ public class DashboardService : IDashboardService
                     FollowsAnAlert = lastAlertAt is not null,
                 }
                 : null,
-            GeneratedAt = DateTime.UtcNow,
+            GeneratedAt = _timeProvider.GetUtcNow().UtcDateTime,
         };
     }
 
