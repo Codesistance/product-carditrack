@@ -29,7 +29,37 @@ API="https://slack.com/api/chat.postMessage"
 jq -e 'has("summary") and (.items | type == "array")' "$DIGEST" >/dev/null 2>&1 \
   || { echo "malformed digest: $DIGEST needs .summary and .items[]" >&2; exit 1; }
 
+# `notes` is optional. When present it is an ordered list of sections, each a
+# heading and its lines; the parent renders one bulleted block per section so
+# the standing context (deadlines, what was checked and found clean, what was
+# held back) reads as a list rather than one run-on paragraph.
+jq -e '
+  (.notes // []) as $n
+  | ($n | type == "array")
+  and all($n[]; (.heading | type == "string") and (.lines | type == "array")
+                and all(.lines[]; type == "string"))
+' "$DIGEST" >/dev/null 2>&1 \
+  || { echo "malformed digest: .notes must be [{heading, lines[]}]" >&2; exit 1; }
+
+# Slack caps a section block at 3000 characters and rejects the whole message
+# past it. Failing here, with the section named, beats a silent lost post.
+over=$(jq -r '
+  def block: "*" + .heading + "*\n" + (.lines | map("• " + .) | join("\n"));
+  [ (.summary | select(length > 3000) | "summary"),
+    ((.notes // [])[] | select((block | length) > 3000) | "notes: " + .heading) ]
+  | .[]' "$DIGEST")
+[ -z "$over" ] || { echo "digest section over Slack's 3000-char block limit: $over" >&2; exit 1; }
+
 post() {
+  # DIGEST_DRY_RUN=1 prints each payload instead of sending it, so the rendering
+  # can be checked locally without a token. Slack's own limits (block count, the
+  # 3000-character section cap) are still only enforced by Slack.
+  if [ "${DIGEST_DRY_RUN:-}" = "1" ]; then
+    echo "$1" | jq . >&2
+    echo '{"ok":true,"ts":"0.0"}'
+    return 0
+  fi
+
   # Timeouts matter: this runs unattended, and a hung connection with no cap
   # would stall the job rather than fail it.
   curl -sS --connect-timeout 10 --max-time 30 -X POST "$API" \
@@ -60,9 +90,21 @@ check() {
 
 # --- parent ------------------------------------------------------------------
 
-SUMMARY=$(jq -r '.summary' "$DIGEST")
+# The parent is the one-line roll-up as its first block, then one block per
+# `notes` section. `text` stays the bare summary: it is what notifications and
+# the channel preview show, and what the thread replies hang off.
+parent_payload=$(jq -c --arg c "$CHANNEL" '
+  def block: "*" + .heading + "*\n" + (.lines | map("• " + .) | join("\n"));
+  {
+    channel: $c,
+    text: .summary,
+    blocks: (
+      [ { type: "section", text: { type: "mrkdwn", text: .summary } } ]
+      + [ (.notes // [])[] | { type: "section", text: { type: "mrkdwn", text: block } } ]
+    )
+  }' "$DIGEST")
 
-parent=$(post "$(jq -n --arg c "$CHANNEL" --arg t "$SUMMARY" '{channel:$c, text:$t}')")
+parent=$(post "$parent_payload")
 check "$parent"
 
 TS=$(echo "$parent" | jq -r '.ts')

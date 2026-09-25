@@ -153,6 +153,12 @@ The full shape is in `digests/README.md`. In short:
 {
   "date": "2026-09-18",
   "summary": "*CardiTrack digest — 2026-09-18* · 2 items · 1 CRITICAL, 1 FYI",
+  "notes": [
+    { "heading": "Deadlines on record",
+      "lines": ["NIA 2027 closes 2026-09-27 — application status still unconfirmed in the repo"] },
+    { "heading": "Checked, nothing new",
+      "lines": ["Ollama 0.34.4 — no security fixes", ".NET 10.0.12 still current"] }
+  ],
   "items": [
     {
       "slug": "kebab-case-matching-the-brief-filename",
@@ -167,8 +173,29 @@ The full shape is in `digests/README.md`. In short:
 }
 ```
 
-`summary` is the parent message: a one-line severity roll-up. `text` is the
-threaded reply, Slack mrkdwn, ending with the Claude Code pickup line:
+`summary` is the parent message's first line: the date and the severity
+roll-up, **one short line and nothing else**. Slack renders it as a single
+paragraph, so everything you append to it becomes one run-on block — do not
+put deadlines, "checked, nothing new" lists, held items or sandbox notes there.
+
+`notes` is where that context goes: an ordered list of sections, each a
+`heading` and its `lines`, rendered under the summary as bulleted blocks. Use
+the same few headings every day so the parent reads the same way each morning:
+
+- **Deadlines on record** — grant or platform dates already reported that are
+  still open, with the one fact that matters (days left, status unconfirmed).
+- **Held — no primary source yet** — candidates that failed sourcing, one line
+  each, so a later run knows they were seen.
+- **Checked, nothing new** — what was looked at and found unchanged, one line
+  per thing, not a paragraph.
+- **Sandbox** — hosts the network policy denied this run, if any.
+
+One short sentence per line. A section must stay under Slack's 3,000-character
+block limit; `scripts/post-digest.sh` refuses the file otherwise. Omit `notes`
+entirely on a day with nothing to carry.
+
+`text` is the threaded reply, Slack mrkdwn, ending with the Claude Code pickup
+line:
 
     claude "work through @research/queue/YYYY-MM-DD-<slug>.md"
 
