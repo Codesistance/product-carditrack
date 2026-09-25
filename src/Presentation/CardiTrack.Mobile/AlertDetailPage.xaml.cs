@@ -228,21 +228,21 @@ public partial class AlertDetailPage : ContentPage
         ChartCard.IsVisible = true;
         ChartNameLabel.Text = chart.Name;
         ChartWindowLabel.Text = chart.WindowLabel;
-        ChartValueLabel.Text = chart.Value is { } value
-            ? AlertChartKey.Value(chart, value)
-            : "—";
+        ChartValueLabel.Text = AlertChartKey.Headline(chart);
         ChartValueDayLabel.Text = chart.ValueLabel ?? string.Empty;
         ChartValueDayLabel.IsVisible = !string.IsNullOrWhiteSpace(chart.ValueLabel);
         ChartPartialDayLabel.Text = chart.PartialDayLabel ?? string.Empty;
         ChartPartialDayLabel.IsVisible = !string.IsNullOrWhiteSpace(chart.PartialDayLabel);
         // The still stretch is a movement reading and breathing is a lungs one; giving either the
         // heart fallback told a caregiver the wrong organ — and under the mislabelled "bpm"
-        // headline, read as heart-rate-deduced inactivity detection.
+        // headline, read as heart-rate-deduced inactivity detection. Blood oxygen (the low-oxygen
+        // alert's chart) got the same heart fallback until it had an entry of its own.
         ChartIcon.Source = chart.Metric switch
         {
             "steps" or "longestSedentaryStretch" => "icon_metric_steps.svg",
             "sleep" => "icon_metric_sleep.svg",
             "overnightBreathingRate" => "icon_metric_breathing.svg",
+            "spo2" => "icon_metric_spo2.svg",
             _ => "icon_metric_heart.svg",
         };
 
@@ -251,11 +251,14 @@ public partial class AlertDetailPage : ContentPage
             "steps" or "longestSedentaryStretch" => "MetricStepsInk",
             "sleep" => "MetricSleepInk",
             "overnightBreathingRate" => "MetricBreathingInk",
+            "spo2" => "MetricSpO2Ink",
             _ => "MetricHeartInk",
         };
         var ink = MetricStatus.Resource(inkKey, Colors.Gray);
 
-        var values = chart.Series.Where(p => p.Value is not null).Select(p => (double)p.Value!).ToList();
+        // A sleep chart's zeros are awake nights — see AlertChartKey.Series.
+        var series = AlertChartKey.Series(chart);
+        var values = series.Where(p => p.Value is not null).Select(p => (double)p.Value!).ToList();
         if (values.Count == 0)
         {
             ChartCard.IsVisible = false;
@@ -263,7 +266,7 @@ public partial class AlertDetailPage : ContentPage
         }
 
         var baseline = chart.Baseline is { } b ? (double)b : (double?)null;
-        var reference = chart.Reference;
+        var reference = AlertChartKey.Reference(chart);
         // Both lines get a say in the extent, on the same rule and in the same order of priority
         // the dashboard's trend card uses, so the band cannot end up drawn off a chart it exists
         // to be read against.
@@ -284,10 +287,10 @@ public partial class AlertDetailPage : ContentPage
             ? "Tap a reading to see its value"
             : "Tap a reading to see its value. The coloured point is the day this alert is about.");
         Chart.Render(
-            chart.Series,
+            series,
             scale,
             ink,
-            showMarkers: chart.Series.Count <= MarkerPointLimit,
+            showMarkers: series.Count <= MarkerPointLimit,
             baseline: chart.Baseline,
             reference: reference,
             flaggedDates: flagged,

@@ -33,24 +33,63 @@ public static class AlertChartKey
     /// The key for this chart, or null when it has neither mark — a member still being learned has
     /// no usual to rule, and no standards body publishes a daily step count.
     /// </summary>
+    /// <remarks>
+    /// Where the band is the normal (<see cref="MetricReference.IsPublishedNormal"/> — sleep,
+    /// resting heart rate, blood oxygen) it is the chart's primary mark and is named first, as the
+    /// normal range; the published-range alerts are about exactly that band. Elsewhere the dash is
+    /// drawn in the line's own ink and reads first, so it is named first. An awake night's diamond
+    /// is named last, and only on a chart that has one.
+    /// </remarks>
     public static string? For(AlertChartResponse chart)
     {
         var axis = AxisFormat(chart.Metric);
-        var entries = new List<string>(2);
+        var entries = new List<string>(3);
 
-        // The dash is drawn in the line's own ink and reads first, so it is named first.
         if (chart.Baseline is { } usual)
             entries.Add($"Dashed: their usual {string.Format(axis, usual)}");
 
-        if (chart.Reference is { } reference)
+        if (Reference(chart) is { } reference)
         {
-            entries.Add(
-                $"Shaded: recommended {string.Format(axis, reference.Low)}"
-                + $"–{string.Format(axis, reference.High)} ({reference.Source})");
+            var range = $"{string.Format(axis, reference.Low)}–{string.Format(axis, reference.High)} "
+                        + $"({reference.Source})";
+            if (reference.IsPublishedNormal)
+                entries.Insert(0, $"Shaded: normal range {range}");
+            else
+                entries.Add($"Shaded: recommended {range}");
         }
+
+        if (Series(chart).Any(NightReading.IsAwake))
+            entries.Add($"Diamond: {NightReading.AwakeCallout.ToLowerInvariant()}");
 
         return entries.Count == 0 ? null : string.Join(Separator, entries);
     }
+
+    /// <summary>
+    /// The published range this chart may shade — the response's own, except that breathing while
+    /// asleep never gets one (see <see cref="ReferenceBands.Drawable"/>). The page draws from this
+    /// and the key names from it, so neither can show a band the other does not.
+    /// </summary>
+    public static MetricReference? Reference(AlertChartResponse chart) =>
+        ReferenceBands.Drawable(chart.Metric, chart.Reference);
+
+    /// <summary>
+    /// The points to draw. A sleep chart's zeros are read as the awake nights they are, since the
+    /// alert chart's points do not carry a night status of their own — see
+    /// <see cref="NightReading.WithAwakeZeros"/>.
+    /// </summary>
+    public static IReadOnlyList<MetricPoint> Series(AlertChartResponse chart) =>
+        chart.Metric == "sleep" ? NightReading.WithAwakeZeros(chart.Series) : chart.Series;
+
+    /// <summary>
+    /// The chart card's headline: <see cref="Value"/>, or "—" with no figure — except an awake
+    /// night, whose 0 is named rather than printed as "0 hours".
+    /// </summary>
+    public static string Headline(AlertChartResponse chart) => chart.Value switch
+    {
+        null => "—",
+        0 when chart.Metric == "sleep" => NightReading.AwakeCallout,
+        { } value => Value(chart, value),
+    };
 
     /// <summary>
     /// The civil day this alert is about, when the series has exactly one slot for that day and
@@ -92,7 +131,9 @@ public static class AlertChartKey
     /// </remarks>
     public static string AxisFormat(string metric) => metric switch
     {
-        "sleep" or "longestSedentaryStretch" or "overnightBreathingRate" or "heartRateVariability"
+        // Blood oxygen too: a whole number rounds 93.6% up to "94" beside an alert saying the
+        // readings sat below 94%.
+        "sleep" or "longestSedentaryStretch" or "overnightBreathingRate" or "heartRateVariability" or "spo2"
             => "{0:0.#}",
         _ => "{0:N0}",
     };

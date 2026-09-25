@@ -77,7 +77,15 @@ public partial class MetricCard : ContentView
     {
         MetricIcon.Source = "icon_metric_sleep.svg";
         NameLabel.Text = "Sleep";
-        var showedTrend = SetReading(metric.Value is { } v ? $"{v:0.#} hours" : "—", metric);
+
+        // An awake night is stored as 0 so the averages count it, and "0 hours" is the one way it
+        // must never be printed — it reads as a missing figure, not as a night the watch was worn
+        // through without sleep. Its movement is left off too: "↓100%" beside "Awake" restates
+        // the word as arithmetic. See NightReading.
+        var awake = NightReading.IsAwake(metric);
+        var showedTrend = awake
+            ? SetReading(NightReading.AwakeValue, changePercent: null, BaselineComparison)
+            : SetReading(metric.Value is { } v ? $"{v:0.#} hours" : "—", metric);
 
         // The one card whose stars and status answer different questions — the stars read how well
         // and how long the night was, the status reads its duration against the baseline — so its
@@ -94,15 +102,26 @@ public partial class MetricCard : ContentView
         // Silent about direction once the percentage beside the reading states it: the two would
         // be the same sentence twice on a tile with room for neither to spare, so the caption
         // names the night instead.
-        CaptionLabel.Text = showedTrend
-            ? "Last night"
-            : metric.ChangePercent switch
-            {
-                > 0 => "Longer than usual",
-                < 0 => "Shorter than usual",
-                0 => "In line with usual",
-                _ => "Last night",
-            };
+        //
+        // Which night it is outranks both. While last night has not synced, the figure is the
+        // night before's, and a caption calling it "Last night" named the wrong night.
+        CaptionLabel.Text = NightReading.LastNightPending(metric)
+            ? metric.Value is null ? NightReading.PendingCaption : NightReading.NightBeforeCaption
+            : awake
+                ? NightReading.AwakeCaption
+                : showedTrend
+                    ? "Last night"
+                    : metric.ChangePercent switch
+                    {
+                        > 0 => "Longer than usual",
+                        < 0 => "Shorter than usual",
+                        0 => "In line with usual",
+                        _ => "Last night",
+                    };
+
+        // "Awake" alone is a word a screen reader announces with nothing saying what it rests on.
+        if (awake)
+            SemanticProperties.SetDescription(ReadingLabel, NightReading.AwakeCallout);
     }
 
     public void ApplyTemperature(DashboardMetric metric)
