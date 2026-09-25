@@ -469,6 +469,10 @@ public partial class AlertDetailPage : ContentPage
         // sequence, one caregiver says they are on it and then says what happened — and goes when
         // it is resolved, which is what closed means.
         CloseButton.IsVisible = alert.Status != "resolved";
+        // One filled button on the screen at a time: acknowledge while nobody has, close once
+        // somebody has — the next real step either way.
+        CloseButton.Style = (Style)Microsoft.Maui.Controls.Application.Current!.Resources[
+            acknowledged ? "PrimaryGradientButton" : "SecondaryOutlineButton"];
 
         if (!handled)
         {
@@ -494,9 +498,9 @@ public partial class AlertDetailPage : ContentPage
     private void ApplyResponses(AlertDetailResponse alert)
     {
         var responses = AlertAnswerCopy.NewestFirst(alert.Responses);
-        ResponsesSection.IsVisible = responses.Count > 0;
+        ResponsesSection.IsVisible = AlertAnswerCopy.HistoryAddsToTheStrip(responses);
         ResponsesHost.Clear();
-        if (responses.Count == 0)
+        if (!ResponsesSection.IsVisible)
             return;
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
@@ -649,7 +653,7 @@ public partial class AlertDetailPage : ContentPage
     /// of the two.
     /// </para>
     /// </remarks>
-    private async void OnDeleteAlertTapped(object? sender, TappedEventArgs e)
+    private async void OnDeleteAlertTapped(object? sender, EventArgs e)
     {
         if (_alert is not { } alert)
             return;

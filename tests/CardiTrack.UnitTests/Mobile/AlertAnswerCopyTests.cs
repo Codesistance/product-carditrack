@@ -114,6 +114,22 @@ public class AlertAnswerCopyTests
     }
 
     [Fact]
+    public void TheHistoryShowsOnlyWhenItSaysMoreThanTheStrip()
+    {
+        // Nothing yet, and a bare tap the strip already names word for word: no section.
+        Assert.False(AlertAnswerCopy.HistoryAddsToTheStrip([]));
+        Assert.False(AlertAnswerCopy.HistoryAddsToTheStrip([Response("acknowledge", "Tom", null, null, 1)]));
+
+        // A label or a note is what the strip leaves out, so a lone response carrying one shows.
+        Assert.True(AlertAnswerCopy.HistoryAddsToTheStrip([Response("acknowledge", "Tom", "Calling them now", null, 1)]));
+        Assert.True(AlertAnswerCopy.HistoryAddsToTheStrip([Response("acknowledge", "Tom", null, "Rang twice", 1)]));
+
+        // A second response is history the strip cannot hold.
+        Assert.True(AlertAnswerCopy.HistoryAddsToTheStrip(
+            [Response("acknowledge", "Tom", null, null, 5), Response("close", "Jane", null, null, 1)]));
+    }
+
+    [Fact]
     public void NewestFirst_DoesNotTrustTheServersOrder()
     {
         var older = Response("acknowledge", "A", null, null, 10);

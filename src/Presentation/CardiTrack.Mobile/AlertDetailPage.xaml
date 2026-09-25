@@ -466,7 +466,11 @@
                         <!-- Close is caregiver-owned resolution: the family has dealt with it,
                              and the rule re-arms so a condition that persists fires again rather
                              than staying silent behind a note (D-20). Offered beside acknowledge
-                             rather than instead of it — they are different claims. -->
+                             rather than instead of it — they are different claims. The outline
+                             style while acknowledging is still the primary action; once somebody
+                             has acknowledged, closing is the next real step and the code-behind
+                             promotes it to the filled button (ApplyAcknowledgement), so the screen
+                             never offers two actions that look equally like "the one". -->
                         <Button x:Name="CloseButton"
                                 Text="Close this alert"
                                 Style="{StaticResource SecondaryOutlineButton}"
@@ -474,39 +478,35 @@
 
                         <!-- Acknowledging is a claim a caregiver makes about themselves, and they
                              can make it by accident. Undo stays on the screen rather than living
-                             in a toast that is gone by the time they notice. -->
+                             in a toast that is gone by the time they notice — but as a quiet link
+                             under the primary action, not a second full-width button: it is a
+                             rare correction, and at full weight it read as a peer of Close. -->
                         <Button x:Name="UndoAcknowledgeButton"
-                                Text="Undo — mark as not handled"
-                                Style="{StaticResource SecondaryOutlineButton}"
+                                Text="Mark as not handled"
+                                Style="{StaticResource QuietActionLink}"
+                                FontSize="14"
                                 IsVisible="False"
                                 Clicked="OnUndoAcknowledgeClicked"/>
 
-                        <!-- Removal, in the same shape M1-13 gives its destructive row: its own
-                             card, red ink, and below the acknowledge pair rather than above it, so
-                             the irreversible action never sits where the primary one is expected.
-                             The same trash glyph the alert list's swipe action uses — one action
-                             reached two ways should not look like two.
+                        <!-- Removal: red ink and the same trash glyph the alert list's swipe action
+                             uses — one action reached two ways should not look like two — but a
+                             quiet link set apart at the foot of the screen rather than a card in
+                             the stack of actions. As a card it sat in line with Close and Undo,
+                             one more thing that looked like the next step; set apart, the
+                             irreversible action is findable without being where a thumb expects
+                             the primary one.
 
                              Deliberately not a row inside "More Options": those two navigate and
                              carry a chevron, and this ends the screen. It repeats the list's swipe
                              delete because a caregiver who opened an alert to decide about it
                              should not have to go back and find the row again to act on it. -->
-                        <Border Style="{StaticResource ElevatedCard}"
-                                Padding="14,4"
-                                Margin="0,2,0,0">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnDeleteAlertTapped"/>
-                            </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="52">
-                                <Image Grid.Column="0" Source="icon_trash.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Remove this alert"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       TextColor="{StaticResource DangerRed}"
-                                       VerticalTextAlignment="Center"/>
-                            </Grid>
-                        </Border>
+                        <Button Text="Remove this alert"
+                                Style="{StaticResource DangerActionLink}"
+                                FontSize="14"
+                                ImageSource="icon_trash.svg"
+                                ContentLayout="Left,8"
+                                Margin="0,18,0,0"
+                                Clicked="OnDeleteAlertTapped"/>
 
                     </VerticalStackLayout>
                 </Grid>

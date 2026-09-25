@@ -414,7 +414,7 @@
          links Forgot Password uses, but stays a Button so a screen reader still announces a
          button and the target stays 44 points. Verify Email spelled these setters out
          inline, which is how it drifted from the screens either side of it. -->
-    <Style x:Key="AuthActionLink" TargetType="Button">
+    <Style x:Key="QuietActionLink" TargetType="Button">
         <Setter Property="BackgroundColor" Value="Transparent"/>
         <Setter Property="TextColor" Value="{StaticResource Primary}"/>
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
@@ -423,6 +423,14 @@
         <Setter Property="Padding" Value="12,8"/>
         <Setter Property="BorderWidth" Value="0"/>
         <Setter Property="HorizontalOptions" Value="Center"/>
+    </Style>
+
+    <Style x:Key="AuthActionLink" TargetType="Button" BasedOn="{StaticResource QuietActionLink}"/>
+
+    <!-- The same quiet link in the destructive red, for an irreversible action that should be
+         findable but never sit in the row of ordinary ones (Alert Details' "Remove this alert"). -->
+    <Style x:Key="DangerActionLink" TargetType="Button" BasedOn="{StaticResource QuietActionLink}">
+        <Setter Property="TextColor" Value="{StaticResource DangerRed}"/>
     </Style>
 
     <Style x:Key="DividerLine" TargetType="BoxView">

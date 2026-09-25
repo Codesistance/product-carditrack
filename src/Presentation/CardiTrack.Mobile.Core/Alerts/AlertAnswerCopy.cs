@@ -66,6 +66,24 @@ public static class AlertAnswerCopy
         return alert.Status == "resolved";
     }
 
+    /// <summary>
+    /// Whether "What the family did" says anything the banner's strip does not. The strip names
+    /// the latest response's who and when; a lone response with no label and no note would be
+    /// that same line again underneath, so the section waits for a second response or for
+    /// something the strip leaves out ("Calling them now", a note).
+    /// </summary>
+    public static bool HistoryAddsToTheStrip(IReadOnlyCollection<AlertResponseEntry> responses)
+    {
+        ArgumentNullException.ThrowIfNull(responses);
+        return responses.Count switch
+        {
+            0 => false,
+            1 => responses.Single() is var only
+                && (!string.IsNullOrWhiteSpace(only.ResponseLabel) || !string.IsNullOrWhiteSpace(only.Note)),
+            _ => true,
+        };
+    }
+
     /// <summary>"Tom acknowledged" / "Jane closed this".</summary>
     public static string RowTitle(AlertResponseEntry response)
     {
