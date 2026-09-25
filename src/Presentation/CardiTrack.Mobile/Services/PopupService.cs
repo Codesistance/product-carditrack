@@ -175,6 +175,26 @@ public sealed class PopupService : IPopupService
             }
         });
 
+    public Task<bool> ShowNoDeviceAsync(string firstName) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return false;
+
+            var popup = new NoDevicePopupPage(firstName);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(popup, animated: false);
+                return await popup.Result;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
     public Task ShowSyncStatusAsync(string? tier, string? stateMessage, DateTime? lastSyncedUtc) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {

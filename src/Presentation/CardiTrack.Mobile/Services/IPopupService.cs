@@ -151,6 +151,13 @@ public interface IPopupService
     Task ShowWeatherAsync(WeatherSnapshotResponse weather);
 
     /// <summary>
+    /// The no-device card (Figma M1-09 D) as a modal, for the member card's no-device button.
+    /// True when the caregiver tapped Connect — the caller runs the connect flow — false when
+    /// they put it off.
+    /// </summary>
+    Task<bool> ShowNoDeviceAsync(string firstName);
+
+    /// <summary>
     /// Shows what the freshness dot on a CardiMember card means: the tier's own colour, when
     /// data last arrived and the pipeline's word for the state. Completes once dismissed.
     /// </summary>
