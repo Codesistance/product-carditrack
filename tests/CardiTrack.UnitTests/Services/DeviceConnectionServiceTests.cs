@@ -1908,6 +1908,74 @@ public class DeviceConnectionServiceTests
             Arg.Is<DeviceConnection>(c => c.RefreshToken == "enc(b_refresh)"), CancellationToken.None);
     }
 
+    // Copilot review round 6 on #1290.
+
+    [Fact]
+    public async Task CompleteConnection_WhenTheTransactionCannotOpen_StillRevokesTheUnstoredGrant()
+    {
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns(access: "b_access", refresh: "b_refresh");
+        _unitOfWork.BeginTransactionAsync().Returns<Task>(_ => throw new InvalidOperationException("db down"));
+
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
+            {
+                Code = "code",
+                State = initiation.State,
+                CodeVerifier = initiation.CodeVerifier,
+            }));
+
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.RefreshToken == "enc(b_refresh)"), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PostCommitRevocations_DoNotRunOnTheRequestsToken()
+    {
+        // The tokens are gone from the database by then; a caller disconnecting must not leave the
+        // grant live with nothing left to end it.
+        using var request = new CancellationTokenSource();
+        var removed = SeedAccount("ACCOUNT_A", isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([removed]);
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, removed.Id, request.Token);
+
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.Id == removed.Id), CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task CompleteConnection_Replace_RevokesTheOldGrant_OffTheRequestsToken()
+    {
+        var old = SeedAccount("ACCOUNT_A", isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old]);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns();
+
+        await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id));
+
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.Id == old.Id), CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Disconnect_OfTheLastCollectingDevice_LeavesASuspendedSiblingAsPrimary()
+    {
+        // Suspension only needs another device collecting at the time; that one can be removed
+        // later. The member keeps a primary rather than none.
+        var collecting = SeedAccount("ACCOUNT_A", isPrimary: true);
+        var suspended = SeedAccount("ACCOUNT_B");
+        suspended.SuspendedAt = DateTime.UtcNow.AddDays(-1);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([collecting, suspended]);
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, collecting.Id);
+
+        Assert.True(suspended.IsPrimary);
+        Assert.NotNull(suspended.SuspendedAt);
+    }
+
     [Fact]
     public async Task CompleteConnection_Add_DoesNotMatch_OnOneIdentifierWhenTheOtherConflicts()
     {

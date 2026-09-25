@@ -238,6 +238,13 @@ public class InactivityDetectionService : IInactivityDetectionService
         if (!rulePrefs.IsEnabled(AlertRuleCatalogue.DeviceSilence))
             return false;
 
+        // Every device suspended: collection stopped because a caregiver stopped it, and "the watch
+        // has gone quiet" would be telling them something they did themselves. A member with no
+        // devices at all is a different case and still falls through.
+        var devices = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(memberId)).ToList();
+        if (devices.Count > 0 && devices.All(c => c.SuspendedAt is not null))
+            return false;
+
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
 

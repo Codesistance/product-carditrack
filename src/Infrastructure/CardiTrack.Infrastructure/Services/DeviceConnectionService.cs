@@ -481,12 +481,14 @@ public class DeviceConnectionService : IDeviceConnectionService
         // The exchange is done and the transaction opens here, so it spans only our own writes. It
         // holds the member's device lock, so a second grant completing at the same moment reads
         // what this one stored — the account match and the primary flag both depend on it.
-        await _unitOfWork.BeginTransactionAsync();
-
         DeviceConnection connection;
         StoredGrant outcome;
         try
         {
+            // Inside the try: a transaction that cannot even be opened is a failure after the
+            // exchange like any other, and must reach the cleanup below. Rolling back with none
+            // open is a no-op.
+            await _unitOfWork.BeginTransactionAsync();
             await _unitOfWork.DeviceConnections.LockMemberDevicesAsync(payload.CardiMemberId, ct);
             var existing = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(payload.CardiMemberId)).ToList();
             outcome = await ResolveGrantTargetAsync(payload, existing, deviceType, account);
@@ -574,9 +576,10 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         // After the commit, and from a copy taken before Retire discarded the tokens: the provider
         // call stays outside the transaction, and the old grant is only ended once the new one is
-        // certainly stored.
+        // certainly stored. Not on the request's token: the tokens are already gone from here, so
+        // a caller disconnecting now would leave the grant live with nothing left to end it.
         if (outcome.RevokeAfterStore is { } revoke)
-            await RevokeUnlessSharedAsync(revoke, ct);
+            await RevokeUnlessSharedAsync(revoke, CancellationToken.None);
 
         // A fresh connection closes the device gaps immediately — the caregiver should not land
         // back on a dashboard still telling them to reconnect.
@@ -847,8 +850,9 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         // After the commit, so no provider round trip is made while the transaction holds the lock.
         // Best effort by design: a provider outage must not stop a caregiver disconnecting a device.
+        // Not on the request's token, for the same reason as a replacement's: the tokens are gone.
         if (revoke is not null)
-            await RevokeUnlessSharedAsync(revoke, ct);
+            await RevokeUnlessSharedAsync(revoke, CancellationToken.None);
 
         // Removing the last device is itself a gap worth raising, so re-evaluate rather than
         // assuming a disconnect only ever closes things.
@@ -1018,13 +1022,21 @@ public class DeviceConnectionService : IDeviceConnectionService
 
     /// <summary>
     /// Hands the primary flag to another of the member's devices — a collecting one by preference,
-    /// else any unsuspended one — so the member is never left with devices but no primary.
+    /// else an unsuspended one, else a suspended one — so the member is never left with devices but
+    /// no primary.
     /// </summary>
+    /// <remarks>
+    /// The last fallback is reachable: suspension only needs another device collecting at the
+    /// time, and that device can be removed later. A suspended primary contributes nothing to a
+    /// merge until it is resumed, which is no worse than having none, and it keeps the flag where
+    /// resuming will find it.
+    /// </remarks>
     private void PromotePrimary(List<DeviceConnection> connections, Guid excludingId, DateTime now)
     {
         var candidates = connections.Where(c => c.Id != excludingId && c.IsActive).ToList();
         var next = candidates.FirstOrDefault(IsCollecting)
-            ?? candidates.FirstOrDefault(c => c.SuspendedAt is null);
+            ?? candidates.FirstOrDefault(c => c.SuspendedAt is null)
+            ?? candidates.FirstOrDefault();
         if (next is null)
             return;
 

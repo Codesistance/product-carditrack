@@ -497,7 +497,7 @@ Stored as `DeviceConnection.SuspendedAt` / `SuspendedByUserId`, **beside** `Conn
 
 The queries that select devices for collection leave suspended ones out. The sync (routine, webhook-triggered and audit), auth recovery and environmental enrichment also re-check `SuspendedAt` when they run, so a batch selected just before the suspension committed does not still pull. Only a pull already in flight at that moment completes.
 
-If the suspended device was primary, the flag moves to another collecting device.
+If the suspended device was primary, the flag moves to another collecting device. A member whose devices are **all** suspended gets no device-silence alert: collection stopped because a caregiver stopped it. That is reachable by removing the last collecting device while the rest are suspended.
 
 Returns the device with `status: "suspended"`.
 
@@ -637,7 +637,9 @@ Removes a device connection. Soft delete: the connection is deactivated, its sta
 
 The removed connection's tokens are discarded either way. The check runs twice: once under the member's lock when the device is removed, and again immediately before the provider call after the commit. A grant for the same account stored in between, on another member, therefore still stops the revocation.
 
-One case no database check can close: a grant whose code exchange with Google has already happened but whose row is not yet stored. Revocation is ordered against Google's token issuance, which happens before we know the account. That connection fails its next sync and reads `token_expired`. The caregiver is asked to reconnect; nothing is read under the wrong member. If the removed device was the primary, another connection is promoted — a collecting one by preference, never a suspended one — so a member with devices always has a primary.
+One case no database check can close: a grant whose code exchange with Google has already happened but whose row is not yet stored. Revocation is ordered against Google's token issuance, which happens before we know the account. That connection fails its next sync and reads `token_expired`. The caregiver is asked to reconnect; nothing is read under the wrong member.
+
+If the removed device was the primary, another connection is promoted: a collecting one by preference, then an unsuspended one, then a suspended one. A member with devices therefore always has a primary. The last case arises when the only collecting device is removed while the rest are suspended.
 
 Historical data synced via this device is retained. A CardiMember **may have zero connected devices** (e.g. before their first connection); the dashboard reports `device.hasActiveConnection: false` in that state.
 
