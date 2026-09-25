@@ -58,6 +58,7 @@ public class SplitCardiMemberNameMigrationTests : IAsyncLifetime
         "  Padded   Name  ",
         "Tab\tSeparated",
         "Line\nBreak Name",
+        "A B\nC",
         "Jean-Luc Picard",
         "Zoë O'Brien",
     ];

@@ -1686,11 +1686,12 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             var request = new UpdateCardiMemberRequest
             {
-                FirstName = _member.FirstName,
-                LastName = _member.LastName,
-                // Restated for an API from before the first/last split, which reads only this;
-                // a current API ignores it whenever FirstName is sent.
-                Name = _member.Name,
+                // Display* rather than the raw fields: from an API that predates the split, FirstName
+                // is empty and the parts come from the full name. Name is the old API's single name,
+                // held to its 2–100 rule; a current API ignores it whenever FirstName is sent.
+                FirstName = _member.DisplayFirstName(),
+                LastName = _member.DisplayLastName(),
+                Name = MemberNameRules.LegacyName(_member.DisplayFirstName(), _member.DisplayLastName()),
                 DateOfBirth = _member.DateOfBirth,
                 RelationshipType = _member.Relationship,
                 Email = _member.Email,

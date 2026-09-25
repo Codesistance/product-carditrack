@@ -131,10 +131,16 @@ public class CardiMemberServiceTests
     {
         CardiMember? savedMember = null;
         await _members.AddAsync(Arg.Do<CardiMember>(m => savedMember = m));
-        var request = BuildRequest();
-        request.FirstName = null!;
-        request.LastName = null;
-        request.Name = "Mary Ann Smith";
+        // Built without FirstName/LastName, as an old build's payload deserialises: omitted.
+        var full = BuildRequest();
+        var request = new CreateCardiMemberRequest
+        {
+            Name = "Mary Ann Smith",
+            DateOfBirth = full.DateOfBirth,
+            Gender = full.Gender,
+            RelationshipType = full.RelationshipType,
+            IsPrimaryCaregiver = full.IsPrimaryCaregiver,
+        };
 
         await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request);
 

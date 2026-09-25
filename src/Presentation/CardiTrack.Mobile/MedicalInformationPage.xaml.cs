@@ -186,11 +186,12 @@ public partial class MedicalInformationPage : ContentPage
     private static UpdateCardiMemberRequest RequestFor(CardiMemberDetailResponse member, string notes) =>
         new()
         {
-            FirstName = member.FirstName,
-            LastName = member.LastName,
-            // Restated for an API from before the first/last split, which reads only this; a
-            // current API ignores it whenever FirstName is sent.
-            Name = member.Name,
+            // Display* rather than the raw fields: from an API that predates the split, FirstName
+            // is empty and the parts come from the full name. Name is the old API's single name,
+            // held to its 2–100 rule; a current API ignores it whenever FirstName is sent.
+            FirstName = member.DisplayFirstName(),
+            LastName = member.DisplayLastName(),
+            Name = MemberNameRules.LegacyName(member.DisplayFirstName(), member.DisplayLastName()),
             DateOfBirth = member.DateOfBirth,
             RelationshipType = member.Relationship,
             Email = member.Email,
