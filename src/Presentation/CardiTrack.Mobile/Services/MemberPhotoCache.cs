@@ -39,12 +39,21 @@ public static class MemberPhotoCache
     private static int _generation;
     private static readonly object Gate = new();
 
+    /// <summary>
+    /// The photo each member folder was most recently asked for — the member's current photo, as
+    /// far as the phone knows. Only that one may clear the folder when it lands: a download of the
+    /// photo it replaced can still be in flight (a screen that loaded before the change) and
+    /// finish afterwards, and without this it would delete the newer photo it lost the race to.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, string> Latest = new();
+
     private static string Root => Path.Combine(FileSystem.CacheDirectory, "member-photos");
 
     /// <summary>The saved file for this photo, if it is already on the phone.</summary>
     public static string? Cached(MemberPhotoCacheKey key)
     {
         var path = PathFor(key);
+        Latest[Path.GetDirectoryName(path)!] = path;
         return File.Exists(path) ? path : null;
     }
 
@@ -52,8 +61,12 @@ public static class MemberPhotoCache
     /// Downloads the photo and saves it under its key, replacing that member's older photo.
     /// Null when it could not be fetched — the avatar keeps its initials rather than failing.
     /// </summary>
-    public static Task<string?> FetchAsync(Uri url, MemberPhotoCacheKey key) =>
-        InFlight.GetOrAdd(PathFor(key), _ => new Lazy<Task<string?>>(() => FetchCoreAsync(url, key))).Value;
+    public static Task<string?> FetchAsync(Uri url, MemberPhotoCacheKey key)
+    {
+        var path = PathFor(key);
+        Latest[Path.GetDirectoryName(path)!] = path;
+        return InFlight.GetOrAdd(path, _ => new Lazy<Task<string?>>(() => FetchCoreAsync(url, key))).Value;
+    }
 
     private static async Task<string?> FetchCoreAsync(Uri url, MemberPhotoCacheKey key)
     {
@@ -87,8 +100,12 @@ public static class MemberPhotoCache
                 // as the photo.
                 File.Move(temp, path, overwrite: true);
 
-                // The member has one photo: anything else in their folder is the one this replaced.
-                if (key.Folder != MemberPhotoCacheKey.SharedFolder)
+                // The member has one photo: anything else in their folder is the one this replaced
+                // — but only when this is the photo the folder was last asked for. An older one
+                // landing late keeps its own file for the screen that asked, and leaves the
+                // clearing to the current photo.
+                if (key.Folder != MemberPhotoCacheKey.SharedFolder
+                    && Latest.TryGetValue(folder, out var latest) && latest == path)
                 {
                     foreach (var stale in Directory.EnumerateFiles(folder).Where(f => f != path))
                         TryDelete(stale);
@@ -118,6 +135,8 @@ public static class MemberPhotoCache
             // First, so a download finishing while the folder is being deleted is discarded
             // rather than moved into a folder it would recreate.
             _generation++;
+            // Which photo is whose is the old session's knowledge too.
+            Latest.Clear();
             try
             {
                 if (Directory.Exists(Root))
