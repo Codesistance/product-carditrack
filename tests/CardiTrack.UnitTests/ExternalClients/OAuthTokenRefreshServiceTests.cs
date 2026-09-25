@@ -267,6 +267,59 @@ public class OAuthTokenRefreshServiceTests
             .UpdateStatusAsync(Arg.Any<Guid>(), Arg.Any<ConnectionStatus>());
     }
 
+    // Every caller logs these exceptions whole — the sync workers, auth recovery — so the message
+    // carries the status and the RFC 6749 code, never the provider's free text.
+    [Fact]
+    public async Task RefreshIfExpiredAsync_KeepsTheErrorBodyOutOfTheMessage_WhenTheGrantIsRefused()
+    {
+        _encryption.Decrypt("enc_refresh").Returns("plain_refresh");
+        _encryption.Decrypt("enc_access").Returns("plain_access");
+        var body = JsonSerializer.Serialize(new { error = "invalid_grant", error_description = BodySentinel });
+
+        var rejection = await Assert.ThrowsAsync<DeviceGrantRejectedException>(() =>
+            CreateSut(new FakeHttpHandler(body, HttpStatusCode.BadRequest))
+                .RefreshIfExpiredAsync(ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10)), _config));
+
+        Assert.Contains("invalid_grant", rejection.Message);
+        Assert.DoesNotContain(BodySentinel, rejection.Message);
+    }
+
+    [Theory]
+    [InlineData("<html>" + BodySentinel + "</html>")]
+    [InlineData("{ \"error\": \"not a code: " + BodySentinel + "\" }")]
+    public async Task RefreshIfExpiredAsync_KeepsTheErrorBodyOutOfTheMessage_WhenTheProviderFails(string body)
+    {
+        _encryption.Decrypt("enc_refresh").Returns("plain_refresh");
+        _encryption.Decrypt("enc_access").Returns("plain_access");
+
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateSut(new FakeHttpHandler(body, HttpStatusCode.InternalServerError))
+                .RefreshIfExpiredAsync(ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10)), _config));
+
+        Assert.Contains("500", failure.Message);
+        Assert.Contains("no error code", failure.Message);
+        Assert.DoesNotContain(BodySentinel, failure.Message);
+    }
+
+    // A 2xx body that fails to parse can still hold a live token fragment: positions only, never
+    // the parser's text or the JSON path, both of which echo the body.
+    [Theory]
+    [InlineData("{ \"" + BodySentinel + "\": tru }", BodySentinel)]
+    [InlineData("""{ "access_token": 9876.54.321 }""", "9876.54.321")]
+    public async Task RefreshIfExpiredAsync_KeepsTheBodyOutOfTheMessage_WhenTheTokenResponseIsNotJson(
+        string body, string mustNotAppear)
+    {
+        _encryption.Decrypt("enc_refresh").Returns("plain_refresh");
+        _encryption.Decrypt("enc_access").Returns("plain_access");
+
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateSut(new FakeHttpHandler(body))
+                .RefreshIfExpiredAsync(ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10)), _config));
+
+        Assert.Contains("not valid JSON", failure.Message);
+        Assert.DoesNotContain(mustNotAppear, failure.Message);
+    }
+
     [Fact]
     public async Task RefreshIfExpiredAsync_Throws_WhenProviderNotConfigured()
     {
@@ -283,6 +336,8 @@ public class OAuthTokenRefreshServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             CreateSut(new FakeHttpHandler()).RefreshIfExpiredAsync(connection, _config));
     }
+
+    private const string BodySentinel = "provider-free-text-sentinel";
 
     private static string BuildErrorResponse(string errorCode)
         => JsonSerializer.Serialize(new { error = errorCode });

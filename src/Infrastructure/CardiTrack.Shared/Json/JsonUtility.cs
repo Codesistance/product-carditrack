@@ -8,6 +8,15 @@ public sealed record JsonError(string Path, int LineNumber, int LinePosition, st
 {
     public override string ToString() =>
         $"{(Path.Length == 0 ? "$" : Path)} (line {LineNumber}, pos {LinePosition}): {Message}";
+
+    /// <summary>
+    /// Every error's line and position, and nothing else — for a payload that may carry
+    /// credentials or health data. <see cref="Path"/> is built from the payload's own property
+    /// names and <see cref="Message"/> can quote a token (a malformed number in full), so neither
+    /// belongs in a log or an exception message about such a payload.
+    /// </summary>
+    public static string PositionsOf(IEnumerable<JsonError> errors) =>
+        string.Join("; ", errors.Select(e => $"line {e.LineNumber}, pos {e.LinePosition}"));
 }
 
 /// <summary>

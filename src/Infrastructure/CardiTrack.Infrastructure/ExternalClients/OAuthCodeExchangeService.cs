@@ -55,7 +55,8 @@ public class OAuthCodeExchangeService : IOAuthCodeExchangeService
         if (!response.IsSuccessStatusCode)
         {
             throw new OAuthExchangeException(
-                $"Token exchange returned {(int)response.StatusCode} from {providerConfig.Provider}: {content}");
+                $"Token exchange returned {(int)response.StatusCode} from {providerConfig.Provider} " +
+                $"({OAuthErrorCode.Describe(content)}).");
         }
 
         if (!JsonUtility.TryParse(content, out var root, out var jsonErrors))
@@ -63,7 +64,7 @@ public class OAuthCodeExchangeService : IOAuthCodeExchangeService
             // contain a live token fragment — report length + error locations, not content.
             throw new OAuthExchangeException(
                 $"{providerConfig.Provider} token response was not valid JSON " +
-                $"({content.Length} chars): {string.Join("; ", jsonErrors)}");
+                $"({content.Length} chars) at {JsonError.PositionsOf(jsonErrors)}");
 
         var accessToken = root!.Value<string>("access_token");
         if (string.IsNullOrEmpty(accessToken))

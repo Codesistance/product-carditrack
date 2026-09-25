@@ -153,7 +153,7 @@ public class Auth0ManagementClient : IAuth0ManagementService
                 "Auth0 management token request failed with {StatusCode} ({BodyLength} chars): {Detail}. " +
                 "Is the application authorized for the Management API (read:users, update:users)?",
                 (int)response.StatusCode, body.Length,
-                errors.Count > 0 ? string.Join("; ", errors) : "no access_token in payload");
+                errors.Count > 0 ? $"not valid JSON at {JsonError.PositionsOf(errors)}" : "no access_token in payload");
             return null;
         }
 
@@ -177,7 +177,7 @@ public class Auth0ManagementClient : IAuth0ManagementService
         if (payload is null)
         {
             _logger.LogWarning("Auth0 users-by-email lookup failed with {StatusCode}: {JsonErrors}",
-                (int)response.StatusCode, string.Join("; ", errors));
+                (int)response.StatusCode, JsonError.PositionsOf(errors));
             return null;
         }
 

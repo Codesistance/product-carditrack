@@ -57,7 +57,9 @@ Returns **200** with a plain list of the organization's CardiMembers — **no so
   "isPrimaryCaregiver": false,
   "photoUrl": null,
   "isActive": true,
-  "createdDate": "2026-01-15T09:00:00Z"
+  "createdDate": "2026-01-15T09:00:00Z",
+  "lastSyncedAt": "2026-09-25T11:40:00Z",
+  "connectedDeviceCount": 1
 }
 ```
 
@@ -65,6 +67,7 @@ Returns **200** with a plain list of the organization's CardiMembers — **no so
 - `gender` and `relationship` are **integer enums** (`Gender`: Male=1, Female=2, PreferNotToSay=4; `RelationshipType`: Self=1, Parent=2, Spouse=3, Grandparent=4, Sibling=5, Child=6, Other=99). **3 is retired** — it was `Other`, and is now rejected by both validators; the members holding it were migrated to `PreferNotToSay` by the `RetireOtherGender` migration. The mobile form offers only Male and Female; `PreferNotToSay` remains readable because it is the stored value for every member created before M1-04 asked.
 - The **list** response deliberately carries no `medicalNotes` or emergency contact. Those are PHI and are served only by the single-member GET below, so a "which members do I have?" call never broadcasts them.
 - `photoUrl` is a **short-lived signed URL** (see the detail response notes below), or `null` when no photo is set.
+- `lastSyncedAt` (UTC) is when the member's device last sent anything — the member's own stamp, else the newest across its active connections, the same rule as the detail response — or `null` when nothing has synced. `connectedDeviceCount` counts active connections, so a client can tell "no device connected" (0) from "connected, nothing synced yet" (≥ 1, `lastSyncedAt` null). Both are filled on **this list only**; other reads of `CardiMemberResponse` leave them `null` and `0`.
 
 ### GET `/api/v1/cardimembers/{id}`
 

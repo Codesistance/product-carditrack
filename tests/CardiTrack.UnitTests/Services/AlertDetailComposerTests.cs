@@ -435,6 +435,114 @@ public class AlertDetailComposerTests
         Assert.Equal(about, Assert.Single(AlertChartKey.FlaggedDates(detail.Chart, detail.AboutDate)));
     }
 
+    /// <summary>
+    /// The left column names the measure, not the day — the day is already on the chart headline —
+    /// and the band tells the gap in hours, beside two figures that are themselves hours.
+    /// </summary>
+    [Fact]
+    public void DaytimeInactivityBlock_ComparisonNamesTheStretch_AndTheGapInHours()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """
+            {"rule":"daytime_inactivity_block","day":"2026-08-10",
+             "longestSedentaryStretchMinutes":372,
+             "baselineAvgLongestSedentaryStretchMinutes":145}
+            """);
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal("Longest still stretch", detail.Comparison!.CurrentLabel);
+        Assert.Equal("6.2 h", detail.Comparison.CurrentValue);
+        Assert.Equal("Usual longest", detail.Comparison.NormalLabel);
+        Assert.Equal("2.4 h", detail.Comparison.NormalValue);
+        Assert.Equal("3.8 h longer than usual", detail.Comparison.ChangeLabel);
+        Assert.True(detail.Comparison.ChangePercent > 0);
+    }
+
+    /// <summary>
+    /// The gap is the subtraction a caregiver would do on the two figures shown, not on the
+    /// minutes behind them: 374 against 226 minutes shows 6.2 h and 3.8 h, and 2.5 h under
+    /// those would read as a sum the card got wrong. 219 minutes is a midpoint (3.65 h) that must
+    /// round the way "0.#" displays it, or the band disagrees with the figure above it.
+    /// </summary>
+    [Theory]
+    [InlineData(374, 226, "6.2 h", "3.8 h", "2.4 h longer than usual")]
+    [InlineData(219, 180, "3.7 h", "3 h", "0.7 h longer than usual")]
+    [InlineData(150, 240, "2.5 h", "4 h", "1.5 h shorter than usual")]
+    [InlineData(229, 226, "3.8 h", "3.8 h", "In line with usual")]
+    public void DaytimeInactivityBlock_GapIsBetweenTheFiguresShown(
+        int stretchMinutes, int usualMinutes, string currentValue, string normalValue, string expected)
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            $$"""
+            {"rule":"daytime_inactivity_block",
+             "longestSedentaryStretchMinutes":{{stretchMinutes}},
+             "baselineAvgLongestSedentaryStretchMinutes":{{usualMinutes}}}
+            """);
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal(currentValue, detail.Comparison!.CurrentValue);
+        Assert.Equal(normalValue, detail.Comparison.NormalValue);
+        Assert.Equal(expected, detail.Comparison.ChangeLabel);
+    }
+
+    /// <summary>
+    /// 229 against 226 minutes is a 1% difference that both figures round away. The arrow is
+    /// driven by <see cref="AlertComparisonResponse.ChangePercent"/>, so it has to go with them,
+    /// or "↑ In line with usual" points at a difference the words just said is not there.
+    /// </summary>
+    [Fact]
+    public void DaytimeInactivityBlock_InLine_CarriesNoDirection()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """
+            {"rule":"daytime_inactivity_block","longestSedentaryStretchMinutes":229,
+             "baselineAvgLongestSedentaryStretchMinutes":226}
+            """);
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal("In line with usual", detail.Comparison!.ChangeLabel);
+        Assert.Equal(0, detail.Comparison.ChangePercent);
+    }
+
+    [Fact]
+    public void DaytimeInactivityBlock_Shorter_PointsDown()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """
+            {"rule":"daytime_inactivity_block","longestSedentaryStretchMinutes":150,
+             "baselineAvgLongestSedentaryStretchMinutes":240}
+            """);
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal("1.5 h shorter than usual", detail.Comparison!.ChangeLabel);
+        Assert.True(detail.Comparison.ChangePercent < 0);
+    }
+
+    /// <summary>With no usual to set it against, the stretch stands alone and the band stays hidden.</summary>
+    [Fact]
+    public void DaytimeInactivityBlock_WithoutAUsual_HasNoBand()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """{"rule":"daytime_inactivity_block","longestSedentaryStretchMinutes":372}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal("Longest still stretch", detail.Comparison!.CurrentLabel);
+        Assert.Equal("6.2 h", detail.Comparison.CurrentValue);
+        Assert.Equal("—", detail.Comparison.NormalValue);
+        Assert.Null(detail.Comparison.ChangeLabel);
+        Assert.Null(detail.Comparison.ChangePercent);
+    }
+
     [Theory]
     [InlineData(14, 0, null, "whether anything kept them in the chair")]
     [InlineData(20, 0, null, "whether they settled early")]

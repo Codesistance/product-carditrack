@@ -179,7 +179,8 @@ public class GoogleHealthApiClientTests
     private static (IGoogleHealthApiClient Sut, RoutedFakeHttpHandler Handler) CreateSut(
         RoutedFakeHttpHandler? handler = null,
         TimeSpan? pageRequestDelay = null,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        ILogger<GoogleHealthApiClient>? logger = null)
     {
         handler ??= new RoutedFakeHttpHandler();
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://health.googleapis.com") };
@@ -192,7 +193,7 @@ public class GoogleHealthApiClientTests
         return (
             new GoogleHealthApiClient(
                 factory,
-                Substitute.For<ILogger<GoogleHealthApiClient>>(),
+                logger ?? Substitute.For<ILogger<GoogleHealthApiClient>>(),
                 pageRequestDelay ?? TimeSpan.Zero,
                 clock),
             handler);
@@ -1101,6 +1102,69 @@ public class GoogleHealthApiClientTests
         await Assert.ThrowsAsync<GoogleHealthApiException>(() => sut.GetSleepAsync("bad_token", Today));
     }
 
+    /// <summary>
+    /// Every sync catch-all logs this exception whole, so its message reaches Datadog. The status
+    /// enum of the error envelope is safe to carry; the provider's free text is not.
+    /// </summary>
+    [Fact]
+    public async Task GetSleepAsync_KeepsTheErrorBodyOutOfTheMessage_OnNon2xxResponse()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sleep/", $$"""
+                { "error": { "code": 503, "message": "{{BodySentinel}}", "status": "UNAVAILABLE" } }
+                """, HttpStatusCode.ServiceUnavailable);
+
+        var (sut, _) = CreateSut(handler);
+
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(() => sut.GetSleepAsync("token", Today));
+        Assert.Equal(503, ex.StatusCode);
+        Assert.Contains("UNAVAILABLE", ex.Message);
+        Assert.DoesNotContain(BodySentinel, ex.Message);
+    }
+
+    /// <summary>
+    /// Only an enum-shaped status is carried. Anything else in that slot, or a body that is not
+    /// an error envelope at all, is the provider's text and stays out.
+    /// </summary>
+    [Theory]
+    [InlineData("""{ "error": { "status": "not an enum provider-free-text-sentinel" } }""")]
+    [InlineData("<html>provider-free-text-sentinel</html>")]
+    public async Task GetSleepAsync_CarriesNoErrorStatus_WhenTheBodyHasNoEnumShapedOne(string body)
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sleep/", body, HttpStatusCode.InternalServerError);
+
+        var (sut, _) = CreateSut(handler);
+
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(() => sut.GetSleepAsync("token", Today));
+        Assert.Contains("no error status", ex.Message);
+        Assert.DoesNotContain(BodySentinel, ex.Message);
+    }
+
+    /// <summary>
+    /// A 200 body that fails to parse is the likeliest to be the wearer's readings: length and
+    /// error positions only, no payload preview. The reader's own error text is left out too (for
+    /// a malformed number it quotes the token, which is a reading), and so is the JSON path, which
+    /// is built from the body's property names.
+    /// </summary>
+    [Theory]
+    [InlineData("""{ "dataPoints": [ { "sleep": provider-free-text-sentinel """, BodySentinel)]
+    [InlineData("""{ "dataPoints": [ { "value": 9876.54.321 } ] }""", "9876.54.321")]
+    [InlineData("""{ "dataPoints": [ { "provider-free-text-sentinel": tru } ] }""", BodySentinel)]
+    public async Task GetSleepAsync_KeepsThePayloadOutOfTheMessage_WhenTheBodyIsNotJson(
+        string body, string mustNotAppear)
+    {
+        var handler = new RoutedFakeHttpHandler().Map("/dataTypes/sleep/", body);
+
+        var (sut, _) = CreateSut(handler);
+
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(() => sut.GetSleepAsync("token", Today));
+        Assert.Contains("not valid JSON", ex.Message);
+        Assert.DoesNotContain(mustNotAppear, ex.Message);
+    }
+
+    private const string BodySentinel = "provider-free-text-sentinel";
+
     // ── Additional metrics ───────────────────────────────────────────────────────
 
     private static string SpO2Samples(string? nextPageToken, params string[] percentages)
@@ -1485,6 +1549,40 @@ public class GoogleHealthApiClientTests
         Assert.Equal(400, snapshot.TotalSleepMinutes);
         // Without tonight's session the evening run is 19:00–midnight.
         Assert.Equal(300, snapshot.LongestSedentaryStretchMinutes);
+    }
+
+    /// <summary>
+    /// The warning for a failed tomorrow's list names the failure by type and status. The
+    /// exception object stays out of it: whatever a provider failure carries is not this log's
+    /// to forward to Datadog.
+    /// </summary>
+    [Fact]
+    public async Task GetHealthSnapshotAsync_LogsTypeAndStatusOnly_WhenTomorrowsSleepListFails()
+    {
+        var date = new DateOnly(2026, 8, 5);
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence(
+                "/dataTypes/sleep/",
+                (SleepSessionList("2026-08-04T23:00:00Z", "2026-08-05T06:30:00Z", asleepMinutes: "400"),
+                    HttpStatusCode.OK),
+                ($$"""{ "error": { "message": "{{BodySentinel}}", "status": "INTERNAL" } }""",
+                    HttpStatusCode.InternalServerError))
+            .Map("/dataTypes/activity-level/", EveningSedentaryRollup);
+        var logger = Substitute.For<ILogger<GoogleHealthApiClient>>();
+
+        var (sut, _) = CreateSut(handler, logger: logger);
+        await ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", date);
+
+        var warning = Assert.Single(
+            logger.ReceivedCalls(),
+            c => c.GetMethodInfo().Name == nameof(ILogger.Log)
+                && (LogLevel)c.GetArguments()[0]! == LogLevel.Warning
+                && c.GetArguments()[2]!.ToString()!.Contains("Tomorrow's sleep list failed"));
+        var message = warning.GetArguments()[2]!.ToString()!;
+        Assert.Null(warning.GetArguments()[3]);
+        Assert.Contains(nameof(GoogleHealthApiException), message);
+        Assert.Contains("500", message);
+        Assert.DoesNotContain(BodySentinel, message);
     }
 
     /// <summary>
