@@ -194,6 +194,11 @@ live in the `IpRateLimiting` section of `appsettings.json`:
 
 - **Global**: 100 requests/minute **and** 1,000 requests/hour per IP (all endpoints)
 - **`/api/v1/auth/resend-verification`**: 5 requests/hour per IP
+- **Member-chat sends** (`POST .../member-chat/members/*/messages` and `.../messages/stream`):
+  6 requests/minute and 30 requests/hour per IP, counted separately for each path
+
+A wildcard rule matches the **whole** path, so `.../messages` does not cover `.../messages/stream`.
+A new route under an existing rule needs a rule of its own.
 
 Throttled requests get `429` with AspNetCoreRateLimit's standard headers:
 
