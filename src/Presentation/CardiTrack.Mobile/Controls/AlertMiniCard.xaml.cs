@@ -15,13 +15,20 @@ public partial class AlertMiniCard : ContentView
         InitializeComponent();
     }
 
-    public void Apply(DashboardAlertSummary alert)
+    /// <param name="memberName">
+    /// Whose alert this is, when the strip holds more than one member's — said on the time line
+    /// ("Pop · 2 hours ago") rather than the title, which is the alert's own. Null when the family
+    /// watches one person and naming them on every card would be saying it again.
+    /// </param>
+    public void Apply(DashboardAlertSummary alert, string? memberName = null)
     {
         _alertId = alert.AlertId;
         TitleLabel.Text = alert.Title;
         MessageLabel.Text = alert.Message;
         MessageLabel.IsVisible = !string.IsNullOrWhiteSpace(alert.Message);
-        TimeLabel.Text = RelativeTime.Format(alert.TriggeredAt);
+        TimeLabel.Text = string.IsNullOrWhiteSpace(memberName)
+            ? RelativeTime.Format(alert.TriggeredAt)
+            : $"{memberName} · {RelativeTime.Format(alert.TriggeredAt)}";
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
 

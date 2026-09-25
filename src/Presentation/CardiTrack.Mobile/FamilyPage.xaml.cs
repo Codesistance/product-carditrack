@@ -567,19 +567,31 @@ public partial class FamilyPage : ContentPage
             },
         };
         row.Add(tile, 0, 0);
-        row.Add(new Label
+        // Named as the product names them, with a line under it saying what adding one means —
+        // the same two-line shape as the member cards above it.
+        const string title = "Add CardiMember";
+        const string description = "Someone else in the family you want to watch over, with their own wearable";
+        row.Add(new VerticalStackLayout
         {
-            Text = "Add someone to watch",
-            Style = Named("Body1SemiBoldDark"),
-            TextColor = MetricStatus.Resource("PrimaryDark", Colors.DarkBlue),
+            Spacing = 1,
             VerticalOptions = LayoutOptions.Center,
+            Children =
+            {
+                new Label
+                {
+                    Text = title,
+                    Style = Named("Body1SemiBoldDark"),
+                    TextColor = MetricStatus.Resource("PrimaryDark", Colors.DarkBlue),
+                },
+                new Label { Text = description, Style = Named("Body2") },
+            },
         }, 1, 0);
 
         var card = Card(row, padding: new Thickness(14, 12));
         var tap = new TapGestureRecognizer();
         tap.Tapped += OnAddMemberTapped;
         card.GestureRecognizers.Add(tap);
-        SemanticProperties.SetDescription(card, "Add someone to watch");
+        SemanticProperties.SetDescription(card, $"{title}. {description}");
         return card;
     }
 

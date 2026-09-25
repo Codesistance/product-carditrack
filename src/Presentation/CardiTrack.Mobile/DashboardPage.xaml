@@ -133,82 +133,6 @@
                              so it is spent here and nowhere else. -->
                         <VerticalStackLayout x:Name="SafetyBannerList" Spacing="10" IsVisible="False"/>
 
-                        <!-- "Complete the picture": the top two open nudges. Two, because a third
-                             makes it a list, and a list is not a prompt. -->
-                        <!-- Every open item now, not the top two: a sideways row, each item a little
-                             narrower than the card so the next one shows at the edge and says the
-                             row scrolls, and a count on the title so "there are others" is said
-                             before anybody swipes. One item fills the card. The horizontal padding
-                             lives on the heading and the row's content rather than on the Border, as
-                             on the Recent Alerts card: Android clips a Border's content to its padded
-                             area, and the row has to slide out under the rounded edge. -->
-                        <Border x:Name="CompleteThePictureCard"
-                                IsVisible="False"
-                                Style="{StaticResource ElevatedCard}"
-                                Padding="0,14,0,17">
-                            <VerticalStackLayout Spacing="12">
-                                <Grid x:Name="NudgeHeader"
-                                      ColumnDefinitions="Auto,Auto,*,Auto"
-                                      Margin="14,0,13,0">
-                                    <Label Grid.Column="0"
-                                           Text="Complete the picture"
-                                           Style="{StaticResource DashboardSectionTitle}"
-                                           VerticalOptions="Center"/>
-                                    <!-- The Key Metrics section's count badge, so a count on a
-                                         section title reads the same everywhere on the screen. -->
-                                    <Border x:Name="NudgeCountBadge"
-                                            Grid.Column="1"
-                                            WidthRequest="20" HeightRequest="20"
-                                            Margin="8,0,0,0"
-                                            Padding="0"
-                                            StrokeThickness="0"
-                                            BackgroundColor="{StaticResource CountBadgeNeutral}"
-                                            VerticalOptions="Center"
-                                            IsVisible="False">
-                                        <Border.StrokeShape>
-                                            <RoundRectangle CornerRadius="10"/>
-                                        </Border.StrokeShape>
-                                        <Label x:Name="NudgeCountLabel"
-                                               FontFamily="QuicksandSemiBold"
-                                               FontSize="11"
-                                               TextColor="{StaticResource White}"
-                                               HorizontalTextAlignment="Center"
-                                               VerticalTextAlignment="Center"/>
-                                    </Border>
-                                    <Label x:Name="CompleteThePictureLink"
-                                           Grid.Column="3"
-                                           Text="See all"
-                                           Style="{StaticResource SectionLink}">
-                                        <Label.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnSeeAllNudgesTapped"/>
-                                        </Label.GestureRecognizers>
-                                    </Label>
-                                </Grid>
-                                <ContentView x:Name="SingleNudgeHost" IsVisible="False" Margin="14,0,13,0"/>
-                                <ScrollView x:Name="NudgeScroller"
-                                            Orientation="Horizontal"
-                                            HorizontalScrollBarVisibility="Never"
-                                            IsVisible="False">
-                                    <HorizontalStackLayout x:Name="NudgeList" Spacing="10" Padding="14,0,13,0"/>
-                                </ScrollView>
-                            </VerticalStackLayout>
-                        </Border>
-
-                        <!-- Monitoring paused (M1-13) — takes precedence over the stale
-                             banner, which would otherwise blame a sync that is paused on purpose. -->
-                        <Border x:Name="PausedBanner"
-                                IsVisible="False"
-                                BackgroundColor="{StaticResource StaleBannerBackground}"
-                                StrokeThickness="0"
-                                Padding="14,10">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="12"/>
-                            </Border.StrokeShape>
-                            <Label x:Name="PausedBannerLabel"
-                                   Style="{StaticResource Body2Medium}"
-                                   TextColor="{StaticResource HeadingText}"/>
-                        </Border>
-
                         <!-- Offline last-known-good (M4-03a, brought forward). Replaces the
                              stale "pull down" copy while the live call cannot reach the API. -->
                         <controls:SavedDataBanner x:Name="SavedBanner"/>
@@ -231,148 +155,13 @@
                         <!-- No device connected (M1-09d) is a modal now — NoDevicePopupPage, opened
                              from the member card's no-device button beside Alerts. -->
 
-                        <!-- CardiMember card: hero, data-freshness/baseline-progress, quick
-                             actions and Key Metrics all in one card so a second/third CardiMember
-                             can be another instance of the same card, stacked, once multi-member
-                             support lands. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="16,15,16,16">
-                            <VerticalStackLayout Spacing="16">
+                        <!-- One card per CardiMember the family watches, primary first, then the
+                             rest by name (MemberDashboardCard) — built in code, since the family
+                             decides how many. -->
+                        <VerticalStackLayout x:Name="MemberCards" Spacing="20"/>
 
-                                <controls:StatusHeroCard x:Name="HeroCard"/>
-
-                                <!-- Data-pipeline freshness (deterministic — see
-                                     MemberInsightsCalculator.ComputeDataFreshness), the baseline
-                                     learning progress while it's still running, and "Updated X
-                                     ago" (issue #188 — it used to sit under the CardiMember's
-                                     name).
-
-                                     One line, not two. The freshness message ("Data updated") and
-                                     the age under it ("Updated 4 minutes ago") were the same fact
-                                     said twice, so the age line is the one that stays — it is the
-                                     specific one — and it carries the freshness in its colour.
-                                     The message itself is not lost: it goes to the label's
-                                     semantic description, so a screen reader still hears the
-                                     state that sighted readers now take from the colour. -->
-                                <VerticalStackLayout x:Name="FreshnessBlock" Spacing="8" Margin="0,-4,0,0">
-                                    <ProgressBar x:Name="LearningProgress"
-                                                 IsVisible="False"
-                                                 HeightRequest="6"/>
-                                    <Label x:Name="LastUpdatedFooterLabel"
-                                           FontFamily="QuicksandSemiBold"
-                                           FontSize="14"/>
-                                </VerticalStackLayout>
-
-                                <!-- SOS / Call / Message / Details. The row, its dim-not-hide
-                                     rules and its "no number yet" offer live in the control so the
-                                     alert detail screen (M1-11) can present the same four actions
-                                     rather than a second set worded differently — see
-                                     Controls/QuickActionRow.xaml. -->
-                                <controls:QuickActionRow x:Name="QuickActions"/>
-
-                                <!-- Poor-sleep nudge (issue #188): points at the real Sleep alert
-                                     StatisticalAlertWorker already raises (AlertType.Sleep) rather
-                                     than re-deriving a second, parallel judgement of its own —
-                                     dismissing this is a local/session convenience, not an
-                                     acknowledgement; the alert itself still lives in Alerts until
-                                     acted on there. -->
-                                <Border x:Name="SleepConcernBanner"
-                                        IsVisible="False"
-                                        BackgroundColor="{StaticResource StaleBannerBackground}"
-                                        StrokeThickness="0"
-                                        Padding="14,10">
-                                    <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="12"/>
-                                    </Border.StrokeShape>
-                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                        <Label Grid.Column="0"
-                                               x:Name="SleepConcernBannerLabel"
-                                               Style="{StaticResource Body2}"
-                                               TextColor="{StaticResource HeadingText}"
-                                               VerticalOptions="Center">
-                                            <Label.GestureRecognizers>
-                                                <TapGestureRecognizer Tapped="OnSleepConcernTapped"/>
-                                            </Label.GestureRecognizers>
-                                        </Label>
-                                        <Button Grid.Column="1"
-                                                Text="✕"
-                                                FontSize="14"
-                                                TextColor="{StaticResource BodyText}"
-                                                BackgroundColor="Transparent"
-                                                Padding="6,0"
-                                                MinimumWidthRequest="32"
-                                                MinimumHeightRequest="32"
-                                                VerticalOptions="Center"
-                                                Clicked="OnDismissSleepConcernClicked"/>
-                                    </Grid>
-                                </Border>
-
-                                <!-- Key metrics: collapsed by default behind AccordionSection, two
-                                     per row instead of full-width so the card has room to stay
-                                     compact once more CardiMember cards can stack below it. The
-                                     tiles sit directly on the CardiMember card — no wash behind
-                                     the grid, so the card carries one surface, not two.
-
-                                     Declared in the order they are read — the night first, then
-                                     the day — which is the order DashboardPage.LayoutMetricCards
-                                     packs them in: the pairing below is what a member whose
-                                     device reports everything sees, and the slots are reassigned
-                                     at render time for one whose device reports less (skin
-                                     temperature, SpO2 and breathing rate are each optional) so no
-                                     tile is left beside a gap. -->
-                                <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics" IconSource="icon_action_details.svg">
-                                    <controls:AccordionSection.Body>
-                                        <Grid ColumnDefinitions="*,*"
-                                              RowDefinitions="Auto,Auto,Auto"
-                                              ColumnSpacing="10" RowSpacing="10">
-                                            <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="0"/>
-                                            <controls:MetricCard x:Name="SleepCard" Grid.Row="0" Grid.Column="1"/>
-                                            <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="0" IsVisible="False"/>
-                                            <controls:MetricCard x:Name="StepsCard" Grid.Row="1" Grid.Column="1"/>
-                                            <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
-                                            <controls:MetricCard x:Name="BreathingRateCard" Grid.Row="2" Grid.Column="1" IsVisible="False"/>
-                                        </Grid>
-                                    </controls:AccordionSection.Body>
-                                </controls:AccordionSection>
-
-                            </VerticalStackLayout>
-                        </Border>
-
-                        <!-- The other half of "Recent alerts": with nothing unresolved the section
-                             above simply disappears, which leaves the screen saying nothing at all
-                             about whether anyone is watching. This card takes that space once the
-                             silence has lasted long enough to mean something — never merely because
-                             the list is empty, which is also true of a paused member and of one
-                             whose watch has stopped syncing. The server decides; see
-                             DashboardResponse.Reassurance. -->
-                        <Border x:Name="ReassuranceCard"
-                                Style="{StaticResource ElevatedCard}"
-                                Padding="16,18,16,18"
-                                IsVisible="False">
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                                <Border Grid.Column="0"
-                                        WidthRequest="44" HeightRequest="44"
-                                        StrokeThickness="0"
-                                        BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                        VerticalOptions="Start">
-                                    <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="14"/>
-                                    </Border.StrokeShape>
-                                    <Image Source="icon_status_check.svg"
-                                           WidthRequest="24" HeightRequest="24"/>
-                                </Border>
-
-                                <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
-                                    <Label x:Name="ReassuranceTitleLabel"
-                                           Style="{StaticResource Heading3}"
-                                           TextColor="{StaticResource StatusGreen}"/>
-                                    <Label x:Name="ReassuranceDetailLabel"
-                                           Style="{StaticResource Body2}"
-                                           TextColor="{StaticResource BodyText}"/>
-                                </VerticalStackLayout>
-                            </Grid>
-                        </Border>
-
-                        <!-- Recent alerts: a card, like "Complete the picture" above it, rather
+                        <!-- Recent alerts, for everyone the family watches, each naming its member
+                             when there is more than one. A card, like "Complete the picture", rather
                              than Figma's bare heading over a row of floating tiles (101:2805) —
                              a section title loose on the background read as a different screen's
                              furniture beside two cards that carry their own. The bell tile is
@@ -435,6 +224,67 @@
                                             Orientation="Horizontal"
                                             HorizontalScrollBarVisibility="Never">
                                     <HorizontalStackLayout x:Name="AlertsStack" Spacing="10" Padding="14,0,13,0"/>
+                                </ScrollView>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- "Complete the picture", below the members and their alerts: it loads
+                             last, and above them it pushed every card down when it arrived.
+                             Every open item: a sideways row, each item a little
+                             narrower than the card so the next one shows at the edge and says the
+                             row scrolls, and a count on the title so "there are others" is said
+                             before anybody swipes. One item fills the card. The horizontal padding
+                             lives on the heading and the row's content rather than on the Border, as
+                             on the Recent Alerts card: Android clips a Border's content to its padded
+                             area, and the row has to slide out under the rounded edge. -->
+                        <Border x:Name="CompleteThePictureCard"
+                                IsVisible="False"
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="0,14,0,17">
+                            <VerticalStackLayout Spacing="12">
+                                <Grid x:Name="NudgeHeader"
+                                      ColumnDefinitions="Auto,Auto,*,Auto"
+                                      Margin="14,0,13,0">
+                                    <Label Grid.Column="0"
+                                           Text="Complete the picture"
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           VerticalOptions="Center"/>
+                                    <!-- The Key Metrics section's count badge, so a count on a
+                                         section title reads the same everywhere on the screen. -->
+                                    <Border x:Name="NudgeCountBadge"
+                                            Grid.Column="1"
+                                            WidthRequest="20" HeightRequest="20"
+                                            Margin="8,0,0,0"
+                                            Padding="0"
+                                            StrokeThickness="0"
+                                            BackgroundColor="{StaticResource CountBadgeNeutral}"
+                                            VerticalOptions="Center"
+                                            IsVisible="False">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10"/>
+                                        </Border.StrokeShape>
+                                        <Label x:Name="NudgeCountLabel"
+                                               FontFamily="QuicksandSemiBold"
+                                               FontSize="11"
+                                               TextColor="{StaticResource White}"
+                                               HorizontalTextAlignment="Center"
+                                               VerticalTextAlignment="Center"/>
+                                    </Border>
+                                    <Label x:Name="CompleteThePictureLink"
+                                           Grid.Column="3"
+                                           Text="See all"
+                                           Style="{StaticResource SectionLink}">
+                                        <Label.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnSeeAllNudgesTapped"/>
+                                        </Label.GestureRecognizers>
+                                    </Label>
+                                </Grid>
+                                <ContentView x:Name="SingleNudgeHost" IsVisible="False" Margin="14,0,13,0"/>
+                                <ScrollView x:Name="NudgeScroller"
+                                            Orientation="Horizontal"
+                                            HorizontalScrollBarVisibility="Never"
+                                            IsVisible="False">
+                                    <HorizontalStackLayout x:Name="NudgeList" Spacing="10" Padding="14,0,13,0"/>
                                 </ScrollView>
                             </VerticalStackLayout>
                         </Border>
