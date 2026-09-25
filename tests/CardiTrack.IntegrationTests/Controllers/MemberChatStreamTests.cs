@@ -242,6 +242,45 @@ public class MemberChatStreamTests
         Assert.Equal(StatusCodes.Status503ServiceUnavailable, status.StatusCode);
     }
 
+    /// <summary>
+    /// A step write that fails on a dead connection lets the send carry on and save — and a
+    /// send that changed the member's alert settings is still named for the audit trail, since
+    /// the change happened whether or not anyone saw the reply.
+    /// </summary>
+    [Fact]
+    public async Task AFailedStepWrite_StillNamesAnAlertChangeForTheAudit()
+    {
+        SendDoes(async (progress, _) =>
+        {
+            progress.Report(MemberChatStep.Understanding);
+            await Task.Delay(50);
+            return new MemberChatMessageResponse
+            {
+                SessionId = Answer.SessionId,
+                Reply = "Done — the alarm is off.",
+                Charts = Array.Empty<ChartSeries>(),
+                GeneratedAt = Answer.GeneratedAt,
+                ChangedAlertSettings = true,
+            };
+        });
+        var sut = CreateSut();
+        sut.HttpContext.Response.Body = new DeadConnection();
+
+        await Assert.ThrowsAsync<IOException>(() => Stream(sut));
+
+        Assert.Equal("ChangeAlertSettingsViaChat",
+            sut.HttpContext.Items[CardiTrack.API.Infrastructure.Auditing.AuditHealthDataAccessAttribute.ActionItemKey]);
+    }
+
+    private sealed class DeadConnection : MemoryStream
+    {
+        public override void Write(byte[] buffer, int offset, int count) => throw new IOException("connection reset");
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            throw new IOException("connection reset");
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            throw new IOException("connection reset");
+    }
+
     [Fact]
     public async Task TheCallerHangingUp_CancelsTheSend_AndIsNotReportedAsAnError()
     {

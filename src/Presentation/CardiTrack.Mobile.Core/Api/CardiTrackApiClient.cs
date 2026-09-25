@@ -414,9 +414,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         message.Headers.Accept.ParseAdd("text/event-stream");
 
         MemberChatMessageResponse? answer = null;
+        var streamStarted = false;
         try
         {
             using var response = await _http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, whole.Token);
+            streamStarted = response.IsSuccessStatusCode;
             if (!response.IsSuccessStatusCode)
                 // Under the whole-send budget too: past the headers the handler's timeout has
                 // stopped, and an error body that stalls would otherwise hold the send open.
@@ -464,6 +466,14 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         {
             throw NetworkError("POST", path, ex, ct);
         }
+        finally
+        {
+            // Once the server accepted the send it may have saved the turn, whatever happened to
+            // the stream after — so the cached thread goes stale on every outcome from there,
+            // not only on an answer, or the next load would hide a reply that exists.
+            if (streamStarted)
+                await EvictAsync(MemberChatKeys(cardiMemberId));
+        }
 
         // An answer that arrived before the connection dropped is still the answer: done is only
         // the terminator, and the reply is already saved server-side.
@@ -474,7 +484,6 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
                 "The reply was cut off on its way here. Pull down to refresh the conversation.");
         }
 
-        await EvictAsync(MemberChatKeys(cardiMemberId));
         return answer;
     }
 

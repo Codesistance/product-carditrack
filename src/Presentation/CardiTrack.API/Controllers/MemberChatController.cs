@@ -156,8 +156,12 @@ public class MemberChatController : BaseApiController
             // linked to theirs, so the send is already being cancelled and rolls back) or a write
             // failed on a dead connection (the send carries on and saves, so the reply is in the
             // history when the app next loads it). Either way, wait for the send so the request
-            // scope it runs in is not disposed under it, then let the failure surface.
+            // scope it runs in is not disposed under it, then let the failure surface — but a
+            // send that saved an alert-settings or journal change is still named for the audit
+            // trail: the change happened whether or not the caller saw the reply.
             await send.ContinueWith(_ => { }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+            if (send.IsCompletedSuccessfully)
+                NameAuditAction(send.Result);
             throw;
         }
 
