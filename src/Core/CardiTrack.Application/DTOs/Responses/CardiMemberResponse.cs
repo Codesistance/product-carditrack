@@ -43,4 +43,19 @@ public class CardiMemberResponse
 
     public bool IsActive { get; set; }
     public DateTime CreatedDate { get; set; }
+
+    /// <summary>
+    /// When this member's device last sent anything (UTC) — the member's own stamp, else the
+    /// newest across their active connections, the same rule as
+    /// <see cref="CardiMemberDetailResponse.LastSyncedAt"/>. Null when nothing has synced yet.
+    /// Filled on the member list (<c>GET onboarding/cardimembers</c>) only, for the Family tab's
+    /// "last heard from" line; other reads leave it null.
+    /// </summary>
+    public DateTime? LastSyncedAt { get; set; }
+
+    /// <summary>
+    /// Active device connections, so a client can tell "no device connected" from "connected but
+    /// nothing synced yet". Filled on the member list only, like <see cref="LastSyncedAt"/>.
+    /// </summary>
+    public int ConnectedDeviceCount { get; set; }
 }

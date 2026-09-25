@@ -394,6 +394,11 @@ public class CardiMemberService : ICardiMemberService
             // relationship to the member, and somebody else's primary-caregiver flag.
             var primaryRelationship = mine;
 
+            // Same rule as the detail screen (BuildDetailAsync): the member's own stamp, falling
+            // back to the newest across its active connections — so a list card and the page it
+            // opens cannot name two different "last heard from" times.
+            var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(cm.Id)).ToList();
+
             responses.Add(new CardiMemberResponse
             {
                 Id = cm.Id,
@@ -412,7 +417,9 @@ public class CardiMemberService : ICardiMemberService
                 CreatedDate = cm.CreatedDate,
                 // Per-member rather than batched: the storage adapter caches signed URLs per
                 // object name, so a list re-signs only what no screen has asked for recently.
-                PhotoUrl = await PhotoUrlOf(cm)
+                PhotoUrl = await PhotoUrlOf(cm),
+                LastSyncedAt = cm.LastSyncDate ?? connections.Max(c => c.LastSyncDate),
+                ConnectedDeviceCount = connections.Count,
             });
         }
 
