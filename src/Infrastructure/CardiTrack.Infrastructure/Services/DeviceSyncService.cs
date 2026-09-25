@@ -134,6 +134,7 @@ public class DeviceSyncService : IDeviceSyncService
             if (scope == SyncScope.WorkerCadence)
             {
                 await IngestGranularWindowAsync(connection, accessToken, lookbackDays, today);
+                await ClassifyRecentNightsAsync(connection, today);
                 await BackfillHistoryAsync(connection, accessToken, providerConfig, today);
             }
         }
@@ -603,6 +604,42 @@ public class DeviceSyncService : IDeviceSyncService
             var granularDay = await _deviceApi.GetGranularDayAsync(accessToken, targetDate);
             if (granularDay is { HasAnyData: true })
                 await _granularIngestion.IngestDayAsync(connection, granularDay);
+        }
+    }
+
+    /// <summary>
+    /// Says what is known about last night and the night before — slept, awake with the watch on,
+    /// no data, or pending — now that the overnight heart rate this pull fetched has landed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// After the granular pass, because the awake rule reads the heart rate that pass stores; and
+    /// every pull rather than once, because a night's status moves as its data arrives — pending
+    /// until the morning's sync, then awake, or slept once a late session lands. Two nights, not
+    /// the repair window: a night older than that has had its morning sync, and the re-merge keeps
+    /// its status (<c>ActivityLogAggregationService.RecomputeAsync</c>).
+    /// </para>
+    /// <para>
+    /// Best-effort, like the rhythm write: the day's figures landed before this runs, and a failed
+    /// heart-rate read costs one pull's worth of freshness on the status, never the day. The next
+    /// pull reads it again. It also must not cost the backfill that runs after it.
+    /// </para>
+    /// </remarks>
+    private async Task ClassifyRecentNightsAsync(DeviceConnection connection, DateOnly today)
+    {
+        try
+        {
+            await _aggregation.ClassifyNightAsync(connection.CardiMemberId, today.AddDays(-1));
+            await _aggregation.ClassifyNightAsync(connection.CardiMemberId, today);
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(
+                ex,
+                "Night sleep classification failed for CardiMember {CardiMemberId}; the day's figures "
+                + "are unaffected and the next pull classifies again.",
+                connection.CardiMemberId);
         }
     }
 

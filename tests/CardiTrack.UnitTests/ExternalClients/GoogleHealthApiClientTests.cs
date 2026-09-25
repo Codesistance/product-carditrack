@@ -969,6 +969,123 @@ public class GoogleHealthApiClientTests
             new DateTime(2026, 8, 5, 6, 30, 0, DateTimeKind.Utc)), result.SessionWindows);
     }
 
+    /// <summary>
+    /// One sleep session with its physical interval and the wearer's own clock for both ends —
+    /// the civil start is what places a session against noon.
+    /// </summary>
+    private static string SleepPoint(
+        string startUtc, string endUtc, (int Y, int M, int D, int H, int Min) civilStart,
+        (int Y, int M, int D, int H, int Min) civilEnd, string summaryJson) => $$"""
+        {
+          "sleep": {
+            "interval": {
+              "startTime": "{{startUtc}}", "endTime": "{{endUtc}}",
+              "civilStartTime": {
+                "date": { "year": {{civilStart.Y}}, "month": {{civilStart.M}}, "day": {{civilStart.D}} },
+                "time": { "hours": {{civilStart.H}}, "minutes": {{civilStart.Min}} }
+              },
+              "civilEndTime": {
+                "date": { "year": {{civilEnd.Y}}, "month": {{civilEnd.M}}, "day": {{civilEnd.D}} },
+                "time": { "hours": {{civilEnd.H}}, "minutes": {{civilEnd.Min}} }
+              }
+            },
+            "summary": {{summaryJson}}
+          }
+        }
+        """;
+
+    private static readonly DateOnly NightOf = new(2026, 8, 5);
+
+    private static string SleepPoints(params string[] points) =>
+        $$"""{ "dataPoints": [ {{string.Join(",\n", points)}} ] }""";
+
+    /// <summary>
+    /// A night the provider split at a long waking is one night, not its longer half — keeping
+    /// only the largest session stored 3h 20m for a night of 5h 50m asleep. Stages add up with it,
+    /// and the bounds run from the first session's start to the last one's end.
+    /// </summary>
+    [Fact]
+    public async Task GetSleepAsync_AddsUpANightTheProviderSplit()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sleep/", SleepPoints(
+                SleepPoint("2026-08-04T22:40:00Z", "2026-08-05T02:10:00Z",
+                    (2026, 8, 4, 22, 40), (2026, 8, 5, 2, 10),
+                    """{ "minutesAsleep": "200", "minutesInSleepPeriod": "210", "stagesSummary": [ { "type": "DEEP", "minutes": "60" } ] }"""),
+                SleepPoint("2026-08-05T03:30:00Z", "2026-08-05T06:20:00Z",
+                    (2026, 8, 5, 3, 30), (2026, 8, 5, 6, 20),
+                    """{ "minutesAsleep": "150", "minutesInSleepPeriod": "170", "stagesSummary": [ { "type": "DEEP", "minutes": "25" } ] }""")));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetSleepAsync("token", NightOf);
+
+        Assert.Equal(350, result.TotalSleepMinutes);
+        Assert.Equal(85, result.DeepSleepMinutes);
+        // 350 asleep over 380 in the two sleep periods.
+        Assert.Equal(92, result.SleepEfficiency);
+        Assert.Equal(new DateTime(2026, 8, 4, 22, 40, 0, DateTimeKind.Utc), result.SleepStartTime);
+        Assert.Equal(new DateTime(2026, 8, 5, 6, 20, 0, DateTimeKind.Utc), result.SleepEndTime);
+    }
+
+    /// <summary>
+    /// A nap that started after noon ends on the same civil day as the night, and is never part
+    /// of it (decision 2026-09-25) — though its window still reaches the sedentary exclusion.
+    /// </summary>
+    [Fact]
+    public async Task GetSleepAsync_LeavesAnAfternoonNapOutOfTheNight()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sleep/", SleepPoints(
+                SleepPoint("2026-08-05T14:30:00Z", "2026-08-05T15:10:00Z",
+                    (2026, 8, 5, 14, 30), (2026, 8, 5, 15, 10), """{ "minutesAsleep": "40" }"""),
+                SleepPoint("2026-08-04T22:30:00Z", "2026-08-05T06:30:00Z",
+                    (2026, 8, 4, 22, 30), (2026, 8, 5, 6, 30), """{ "minutesAsleep": "395" }""")));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetSleepAsync("token", NightOf);
+
+        Assert.Equal(395, result.TotalSleepMinutes);
+        Assert.Equal(2, result.SessionWindows.Count);
+    }
+
+    /// <summary>
+    /// A day with only a nap on it has no night — it used to store the nap as one. Null, so the
+    /// awake rule can decide from the heart rate whether the night was spent awake or never seen.
+    /// </summary>
+    [Fact]
+    public async Task GetSleepAsync_HasNoNight_WhenTheDayHeldOnlyANap()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sleep/", SleepPoints(
+                SleepPoint("2026-08-05T14:30:00Z", "2026-08-05T15:10:00Z",
+                    (2026, 8, 5, 14, 30), (2026, 8, 5, 15, 10), """{ "minutesAsleep": "40" }""")));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetSleepAsync("token", NightOf);
+
+        Assert.Null(result.TotalSleepMinutes);
+        Assert.Null(result.SleepStartTime);
+        Assert.Single(result.SessionWindows);
+    }
+
+    /// <summary>A session that began before noon is the night or a piece of it — the doze after an
+    /// early waking counts toward the night it followed.</summary>
+    [Fact]
+    public async Task GetSleepAsync_CountsAMorningSessionTowardTheNight()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sleep/", SleepPoints(
+                SleepPoint("2026-08-04T23:00:00Z", "2026-08-05T04:00:00Z",
+                    (2026, 8, 4, 23, 0), (2026, 8, 5, 4, 0), """{ "minutesAsleep": "290" }"""),
+                SleepPoint("2026-08-05T08:10:00Z", "2026-08-05T09:00:00Z",
+                    (2026, 8, 5, 8, 10), (2026, 8, 5, 9, 0), """{ "minutesAsleep": "45" }""")));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetSleepAsync("token", NightOf);
+
+        Assert.Equal(335, result.TotalSleepMinutes);
+    }
+
     [Fact]
     public async Task GetSleepAsync_ThrowsGoogleHealthApiException_OnNon2xxResponse()
     {

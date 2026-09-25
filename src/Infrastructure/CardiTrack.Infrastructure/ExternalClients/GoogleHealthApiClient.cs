@@ -234,24 +234,93 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         // today's card. Stretch exclusion asks for both — see ListSleepWindowsStartingOnAsync.
         var sessions = await ListSleepSessionsAsync(accessToken, date);
 
-        // A civil day can carry more than one session — an afternoon nap ends on the same day as
-        // the night before it — and the order dataPoints arrive in is not a contract. The fields
-        // below describe the *night*, so the main session is the one with the most time asleep
-        // (falling back to the longest span when no summary says). Taking dataPoints[0] here made
-        // both the sleep figures and the sedentary-stretch exclusion window describe a forty-minute
-        // nap whenever the API happened to list it first — which is how a wearer's ordinary night
-        // was reported as a six-hour daytime still stretch.
-        var sleep = sessions.OrderByDescending(SessionRankMinutes).FirstOrDefault();
-
-        var startTime = ParseInstantUtc(ReadString(sleep?["interval"], "startTime"));
-        var endTime = ParseInstantUtc(ReadString(sleep?["interval"], "endTime"));
-
         // Every bounded session that ended today, naps included. The night that starts tonight
         // is unioned in at snapshot time so the stretch clip sees bedtime without moving the
         // sleep figures off this row.
         var sessionWindows = SessionWindowsFrom(sessions);
 
-        var summary = sleep?["summary"];
+        // The night's sessions, added together — see NightSessions for which count.
+        var night = NightSessions(sessions, date).Select(SessionFigures).ToList();
+
+        var deep = SumOrNull(night.Select(s => s.Deep));
+        var light = SumOrNull(night.Select(s => s.Light));
+        var rem = SumOrNull(night.Select(s => s.Rem));
+        var awake = SumOrNull(night.Select(s => s.Awake));
+
+        // Null when the night has no session at all, rather than 0: "the wearer logged no sleep
+        // session" and "the wearer slept zero minutes" are different claims, and only the second
+        // is a measurement. A 0 here would enter the sleep baseline as a genuine sleepless night
+        // every time the watch was off the wrist or had not yet synced — whether a night the watch
+        // did see was spent awake is decided later, from the heart rate, not here.
+        var totalMinutes = SumOrNull(night.Select(s => s.Total));
+
+        // The API exposes no efficiency field, so it is derived the way Fitbit defines it: minutes
+        // asleep over minutes in the sleep period, across the night's sessions. Null unless every
+        // session reports both — a fabricated 100% would feed the 1-5 quality bucket a score no
+        // measurement supports, and a ratio over half the night's sessions describes half a night.
+        var efficiency = night.Count > 0 && night.TrueForAll(s => s.Asleep.HasValue && s.Period > 0)
+            ? Math.Clamp(
+                (int)decimal.Round(night.Sum(s => s.Asleep!.Value) * 100m / night.Sum(s => s.Period!.Value)),
+                0, 100)
+            : (int?)null;
+
+        var startTime = night.Where(s => s.Start.HasValue).Select(s => s.Start).Min();
+        var endTime = night.Where(s => s.End.HasValue).Select(s => s.End).Max();
+
+        return new GoogleHealthSleepResult(totalMinutes, efficiency, startTime, endTime, deep, light, rem, awake)
+        {
+            SessionWindows = sessionWindows,
+        };
+    }
+
+    /// <summary>
+    /// The sessions that make up the night ending on <paramref name="date"/>: every one that ended
+    /// that day and started before noon, by the wearer's own clock.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A civil day can carry more than one session, and the order dataPoints arrive in is not a
+    /// contract. This used to keep the single session with the most time asleep, which was right
+    /// about naps — taking dataPoints[0] had made the figures describe a forty-minute nap whenever
+    /// the API listed it first, and a wearer's ordinary night was reported as a six-hour daytime
+    /// still stretch — but wrong about the night itself: a night the provider splits at a long
+    /// waking, which it does, was stored as whichever half was longer.
+    /// </para>
+    /// <para>
+    /// Noon is the line because every member shares it and the provider's own civil time is what
+    /// the day is filed by. A session that ends today and started before noon is the night or a
+    /// piece of it — begun yesterday evening, or in the small hours; one that started after noon
+    /// and ended the same day is a nap, and never the night (decision 2026-09-25). The member's own
+    /// bed and wake times are the awake rule's business (<c>NightSleepStatus</c>), which has them;
+    /// this client does not.
+    /// </para>
+    /// <para>
+    /// A session without a civil start — historical data, whose offsets the schema warns were never
+    /// recorded — cannot be placed against noon, so a day holding one falls back to the single
+    /// longest session, the behaviour this replaced.
+    /// </para>
+    /// </remarks>
+    private List<JToken?> NightSessions(IReadOnlyList<JToken?> sessions, DateOnly date)
+    {
+        if (sessions.Count == 0)
+            return [];
+
+        var starts = sessions
+            .Select(s => ParseCivilDateTime(s?["interval"]?["civilStartTime"]))
+            .ToList();
+        if (starts.Exists(s => s is null))
+            return [sessions.OrderByDescending(SessionRankMinutes).First()];
+
+        var noon = date.ToDateTime(new TimeOnly(12, 0));
+        return sessions.Where((_, i) => starts[i] < noon).ToList();
+    }
+
+    /// <summary>One session's figures, read the way the whole night's used to be read from its main session.</summary>
+    private SleepSessionFigures SessionFigures(JToken? session)
+    {
+        var start = ParseInstantUtc(ReadString(session?["interval"], "startTime"));
+        var end = ParseInstantUtc(ReadString(session?["interval"], "endTime"));
+        var summary = session?["summary"];
 
         var deep = StageMinutes(summary, "DEEP");
         var light = StageMinutes(summary, "LIGHT");
@@ -265,31 +334,39 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var stageTotal = deep.HasValue || light.HasValue || rem.HasValue || asleepStage.HasValue
             ? (deep ?? 0) + (light ?? 0) + (rem ?? 0) + (asleepStage ?? 0)
             : (int?)null;
-        var asleepMinutes = ReadInt(summary, "minutesAsleep") ?? stageTotal;
+        var asleep = ReadInt(summary, "minutesAsleep") ?? stageTotal;
 
-        // Null when no session was returned at all, rather than 0: "the wearer logged no sleep
-        // session" and "the wearer slept zero minutes" are different claims, and only the second
-        // is a measurement. A 0 here would enter the sleep baseline as a genuine sleepless night
-        // every time the watch was off the wrist or had not yet synced.
-        var totalMinutes = asleepMinutes
-            ?? (startTime.HasValue && endTime.HasValue
+        var total = asleep
+            ?? (start.HasValue && end.HasValue
                 // Clamped: a session whose awake minutes exceed its own span is contradictory
                 // input, and a negative sleep total would poison the baseline downstream.
-                ? Math.Max(0, (int)(endTime.Value - startTime.Value).TotalMinutes - (awake ?? 0))
+                ? Math.Max(0, (int)(end.Value - start.Value).TotalMinutes - (awake ?? 0))
                 : (int?)null);
 
-        // The API exposes no efficiency field, so it is derived the way Fitbit defines it: minutes
-        // asleep over minutes in the sleep period. Null unless both are known — a fabricated 100%
-        // would feed the 1-5 quality bucket a score no measurement supports.
-        var sleepPeriodMinutes = ReadInt(summary, "minutesInSleepPeriod");
-        var efficiency = asleepMinutes.HasValue && sleepPeriodMinutes > 0
-            ? Math.Clamp((int)decimal.Round(asleepMinutes.Value * 100m / sleepPeriodMinutes.Value), 0, 100)
-            : (int?)null;
+        return new SleepSessionFigures(
+            total, asleep, ReadInt(summary, "minutesInSleepPeriod"), deep, light, rem, awake, start, end);
+    }
 
-        return new GoogleHealthSleepResult(totalMinutes, efficiency, startTime, endTime, deep, light, rem, awake)
+    /// <summary>
+    /// One session's figures. <see cref="Asleep"/> is the measured time asleep only — the summary
+    /// or the stages — and <see cref="Total"/> adds the span-minus-awake estimate on top, which
+    /// counts toward the night's total but never toward its efficiency.
+    /// </summary>
+    private sealed record SleepSessionFigures(
+        int? Total, int? Asleep, int? Period, int? Deep, int? Light, int? Rem, int? Awake,
+        DateTime? Start, DateTime? End);
+
+    /// <summary>The sum of the values present, or null when none is — a stage no session reported stays unknown, not zero.</summary>
+    private static int? SumOrNull(IEnumerable<int?> values)
+    {
+        int? sum = null;
+        foreach (var value in values)
         {
-            SessionWindows = sessionWindows,
-        };
+            if (value is { } v)
+                sum = (sum ?? 0) + v;
+        }
+
+        return sum;
     }
 
     /// <summary>

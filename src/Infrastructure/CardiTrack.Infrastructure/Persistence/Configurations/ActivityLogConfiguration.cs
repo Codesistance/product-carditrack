@@ -50,6 +50,11 @@ public class ActivityLogConfiguration : IEntityTypeConfiguration<ActivityLog>
         builder.Property(a => a.RemSleepMinutes);
         builder.Property(a => a.AwakeMinutes);
 
+        // By name, like DataSource: a reordered enum must never relabel a night already recorded.
+        builder.Property(a => a.NightStatus)
+            .HasConversion<string>()
+            .HasMaxLength(20);
+
         // Additional Health Metrics
         builder.Property(a => a.SpO2Average).HasColumnType("decimal(5,2)");
         builder.Property(a => a.SpO2Min).HasColumnType("decimal(5,2)");

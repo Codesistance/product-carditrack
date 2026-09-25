@@ -34,6 +34,14 @@ public class ActivityLog : BaseEntity
     public int? RemSleepMinutes { get; set; }
     public int? AwakeMinutes { get; set; }
 
+    /// <summary>
+    /// What is known about the night that ended this day — slept, awake with the watch on, no
+    /// data, or still pending. Set on the merged row only, by the aggregation recompute; null on a
+    /// row no recompute has classified yet. An awake night also carries a <see cref="SleepMinutes"/>
+    /// of 0, so everything that averages nights counts it without knowing this field exists.
+    /// </summary>
+    public NightSleepStatus? NightStatus { get; set; }
+
     // Additional Health Metrics
     public decimal? SpO2Average { get; set; } // Blood oxygen saturation
     public decimal? SpO2Min { get; set; }

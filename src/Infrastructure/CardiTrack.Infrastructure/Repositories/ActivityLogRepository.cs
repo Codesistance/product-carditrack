@@ -51,6 +51,7 @@ public class ActivityLogRepository : Repository<ActivityLog>, IActivityLogReposi
             existing.LightSleepMinutes = log.LightSleepMinutes;
             existing.RemSleepMinutes = log.RemSleepMinutes;
             existing.AwakeMinutes = log.AwakeMinutes;
+            existing.NightStatus = log.NightStatus;
             existing.SpO2Average = log.SpO2Average;
             existing.SpO2Min = log.SpO2Min;
             existing.SpO2Max = log.SpO2Max;

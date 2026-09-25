@@ -26,7 +26,9 @@ public record GoogleHealthHeartRateResult(
 // Sleep: Google Health API v4 `sleep` Session type via list with a civil-time filter.
 // TotalSleepMinutes is null when no session was recorded for the day — an unworn or unsynced
 // device, not a sleepless night. See GoogleHealthActivitiesResult for why that distinction is kept.
-// The named fields describe the day's main session — the night, not a nap.
+// The named fields describe the night: every session that ended on the day and started before
+// noon by the wearer's clock, added together — never an afternoon nap (see
+// GoogleHealthApiClient.NightSessions).
 public record GoogleHealthSleepResult(
     int? TotalSleepMinutes,
     int? SleepEfficiency,
@@ -39,9 +41,9 @@ public record GoogleHealthSleepResult(
 {
     /// <summary>
     /// The physical bounds of <em>every</em> sleep session that ended on the day, naps included,
-    /// for the sedentary-stretch exclusion. The named fields above only describe the main session,
-    /// and subtracting only that one window left any other session's sleep counting as an unbroken
-    /// daytime rest. Empty when the day recorded no bounded session.
+    /// for the sedentary-stretch exclusion. The named fields above describe only the night, and
+    /// subtracting only its window left a nap's sleep counting as an unbroken daytime rest. Empty
+    /// when the day recorded no bounded session.
     /// </summary>
     public IReadOnlyList<(DateTime Start, DateTime End)> SessionWindows { get; init; } =
         Array.Empty<(DateTime, DateTime)>();

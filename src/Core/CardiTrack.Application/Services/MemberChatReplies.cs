@@ -263,13 +263,20 @@ public static partial class MemberChatReplies
         }
 
         var latest = dated[^1];
-        var reply = $"{whose} latest {name} is {Figure(metric, latest)}, from "
-            + When(metric, latest.Date, today);
+
+        // An awake night is not a length of sleep, and "latest sleep is awake all night" reads as
+        // one pretending to be. Said as what happened to the person instead, with the comparison
+        // after a semicolon — the sentence already carries its dash.
+        var awake = metric == StatusMetric.Sleep && latest.NightStatus == NightSleepStatus.Awake;
+        var reply = awake
+            ? $"{(string.IsNullOrWhiteSpace(firstName) ? "They were" : $"{firstName} was")} awake through "
+                + $"{When(metric, latest.Date, today)} — the watch was worn all night and recorded no sleep"
+            : $"{whose} latest {name} is {Figure(metric, latest)}, from " + When(metric, latest.Date, today);
 
         if (dated.Count > 1)
         {
             var previous = dated[^2];
-            reply += $" — {When(metric, previous.Date, today)} it was {Figure(metric, previous)}";
+            reply += $"{(awake ? ";" : " —")} {When(metric, previous.Date, today)} it was {Figure(metric, previous)}";
         }
 
         return reply + ".";
@@ -314,7 +321,7 @@ public static partial class MemberChatReplies
         var days = summary.Readings
             .OrderByDescending(r => r.Day)
             .Select(r => $"{(overnight ? NightLabel(r.Day, today) : DayLabel(r.Day, today))} "
-                + ReadingWindowSummaries.Figure(summary.Metric, r.Value));
+                + ReadingWindowSummaries.DayFigure(summary.Metric, r.Value));
 
         return $"Only {summary.Readings.Count} of {stretch} have a {name} reading that reached us — "
             + $"too few to give an average for that stretch. The {unit} that did: {string.Join(", ", days)}.";
@@ -356,7 +363,7 @@ public static partial class MemberChatReplies
         // that records nothing overnight gets the honest empty case instead.
         StatusMetric.BreathingRate => log.OvernightBreathingRate is { } br
             ? $"{br.ToString("0.#", CultureInfo.InvariantCulture)} breaths a minute" : null,
-        StatusMetric.Sleep => log.SleepMinutes is { } sleep ? ReadingFigures.SleepFigure(sleep) : null,
+        StatusMetric.Sleep => log.SleepMinutes is not null ? ReadingFigures.NightFigure(log.SleepMinutes, log.NightStatus) : null,
         _ => log.Steps is { } steps ? $"{steps:#,##0} steps" : null,
     };
 
@@ -403,7 +410,9 @@ public static partial class MemberChatReplies
             parts.Add($"{steps:#,##0} steps");
         if (latest.RestingHeartRate is { } hr)
             parts.Add($"a resting heart rate of {hr} bpm");
-        if (latest.SleepMinutes is { } sleep)
+        if (latest.NightStatus == NightSleepStatus.Awake)
+            parts.Add($"{ReadingFigures.AwakeNight} the night before");
+        else if (latest.SleepMinutes is { } sleep)
             parts.Add($"{ReadingFigures.SleepFigure(sleep)} of sleep the night before");
         if (latest.HeartRateVariabilityMs is { } hrv)
             parts.Add($"an overnight heart rate variability of {hrv.ToString("0", CultureInfo.InvariantCulture)} ms");

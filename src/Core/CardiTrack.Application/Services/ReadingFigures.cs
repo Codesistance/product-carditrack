@@ -1,3 +1,5 @@
+using CardiTrack.Domain.Enums;
+
 namespace CardiTrack.Application.Services;
 
 /// <summary>
@@ -26,5 +28,29 @@ public static class ReadingFigures
         null => "not measured",
         < 60 => $"{minutes}m",
         _ => minutes % 60 == 0 ? $"{minutes / 60}h" : $"{minutes / 60}h {minutes % 60}m",
+    };
+
+    /// <summary>What an awake night is called wherever a night is named.</summary>
+    public const string AwakeNight = "awake all night (watch worn, no sleep recorded)";
+
+    /// <summary>What a night still waiting on its morning sync is called.</summary>
+    public const string PendingNight = "not arrived yet";
+
+    /// <summary>
+    /// A night as a person says it, knowing what is known about it: <see cref="AwakeNight"/> for a
+    /// night the watch was worn through with no sleep, <see cref="PendingNight"/> for one that may
+    /// still arrive, and otherwise <see cref="SleepFigure"/>.
+    /// </summary>
+    /// <remarks>
+    /// An awake night is stored as 0 minutes so every average counts it, and "0m" is the one
+    /// rendering of it that must never reach a reader: it reads as a figure missing its digits,
+    /// or as a watch that measured nothing — the opposite of what the status establishes
+    /// (decision 2026-09-25: worn with no sleep is awake, "no ambiguity").
+    /// </remarks>
+    public static string NightFigure(int? minutes, NightSleepStatus? status) => status switch
+    {
+        NightSleepStatus.Awake => AwakeNight,
+        NightSleepStatus.Pending when minutes is null => PendingNight,
+        _ => SleepFigure(minutes),
     };
 }
