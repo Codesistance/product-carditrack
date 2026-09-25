@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**126 icons**, **39 distinct colours**, **5 referenced nowhere**.
+**131 icons**, **40 distinct colours**, **5 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -26,17 +26,17 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#FFFFFF` | 41 | White |
 | `#153D66` | 29 | icons.json brand outer stroke |
 | `#3175B9` | 23 | icons.json brand and activity fill, steel blue |
-| `#939DAA` | 16 | MutedText |
-| `#C42F2F` | 13 | DangerRed |
+| `#939DAA` | 17 | MutedText |
+| `#C42F2F` | 14 | DangerRed |
 | `#1884DC` | 11 | Primary |
+| `#1F8A72` | 8 | MetricTemperatureInk / DatasetBodyText |
 | `#174E86` | 7 | PrimaryDark |
 | `#36C09B` | 7 | StatusGreen |
 | `#727272` | 7 | Body / Body2 ink |
 | `#FBE4E4` | 7 | derived: StatusRed at 14% over white |
-| `#1F8A72` | 6 | MetricTemperatureInk / DatasetBodyText |
 | `#D9DCE1` | 5 | — |
 | `#10659F` | 4 | DatasetActivityText |
-| `#B45309` | 3 | severity orange ink |
+| `#B45309` | 4 | severity orange ink |
 | `#5A3300` | 2 | — |
 | `#861B1B` | 2 | — |
 | `#A9741A` | 2 | DatasetWarningText |
@@ -58,6 +58,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#E53E3E` | 1 | ErrorRed |
 | `#EA4335` | 1 | — |
 | `#EEF1F5` | 1 | DatasetOtherBackground |
+| `#EF9F27` | 1 | — |
 | `#F0A92E` | 1 | warning amber |
 | `#FBBC05` | 1 | — |
 | `#FCEDE2` | 1 | derived: StatusOrange at 14% over white |
@@ -100,7 +101,7 @@ icon can be staged ahead of a screen that has not shipped.
 | Icon | Colours | Used by |
 | --- | --- | --- |
 | `icon_caution_danger.svg` | `#FBE4E4` `#C42F2F` | **nothing** |
-| `icon_status_check.svg` | `#E4F6F2` `#1F8A72` | ConnectionSuccessPage, MemberDashboardCard |
+| `icon_status_check.svg` | `#E4F6F2` `#1F8A72` | ConnectionSuccessPage, MemberChatPage, MemberDashboardCard |
 | `icon_status_critical.svg` | `#FBE4E4` `#C42F2F` | **nothing** |
 | `icon_status_info_green.svg` | `#1F8A72` | StatusHeroCard |
 | `icon_status_info_orange.svg` | `#B45309` | StatusHeroCard |
@@ -152,8 +153,8 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_back_white.svg` | `#FFFFFF` | AcceptInvitePage, AlertDetailPage, AlertRespondPage, AlertSettingsPage, AlertsPage, ApproveJoinRequestPage, CardiMemberDetailPage, CaregiverInvitesPage, DeviceManagementPage, EditCardiMemberPage, ExportConsentsPage, ExportHealthDataPage, FamilyPage, JoinFamilyPage, JournalEntryPage, JournalPage, JournalTimingPage, LegalDocumentPage, MedicalInformationPage, MemberChatPage, MetricAlarmEditPage, MetricAlarmsPage, MetricTrendPage, NotificationPreferencesPage, NotificationsPage, QuestionnairesPage, SettingsPage, StartFamilyPage, TransferFamilyAdminPage, WizardHeader |
 | `icon_caret_down.svg` | `#343434` | FilterChipBar |
 | `icon_caret_down_white.svg` | `#FFFFFF` | FamilyPage, FilterChipBar, MemberChatPage |
-| `icon_chevron.svg` | `#939DAA` | AlertDetailPage, CardiMemberDetailPage, DeviceCard, FamilyPage, MemberChatPage |
-| `icon_chevron_down.svg` | `#939DAA` | AccordionSection, AlertListCard, ChoiceField, DeviceCard, DeviceManagementPage, MedicalInformationPage, MemberDashboardCard |
+| `icon_chevron.svg` | `#939DAA` | AlertDetailPage, CardiMemberDetailPage, DashboardPage, FamilyPage, MemberChatPage |
+| `icon_chevron_down.svg` | `#939DAA` | AccordionSection, AlertListCard, ChoiceField, DeviceManagementPage, MedicalInformationPage, MemberDashboardCard |
 | `icon_chevron_down_white.svg` | `#FFFFFF` | MemberChatPage |
 
 ### Brand and third party
@@ -170,6 +171,9 @@ icon can be staged ahead of a screen that has not shipped.
 | `gradient_splash_bg.svg` | `#1A6CB0` `#1884DC` `#174E86` `#36C09B` `#2FA6C4` `#FFFFFF` | SplashPage |
 | `icon_advise.svg` | `#939DAA` | CardiMemberDetailPage, StatusHeroCard |
 | `icon_advise_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | StatusHeroCard |
+| `icon_battery_full.svg` | `#1F8A72` | DeviceCard |
+| `icon_battery_half.svg` | `#1F8A72` | DeviceCard |
+| `icon_battery_low.svg` | `#C42F2F` | DeviceCard |
 | `icon_bell.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, DashboardHeader, DashboardPage |
 | `icon_bell_cog.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
@@ -238,6 +242,8 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_save.svg` | `#3175B9` `#153D66` `#C9E1FF` `#FFFFFF` | ExportDeliveryPopupPage |
 | `icon_share.svg` | `#153D66` | ExportDeliveryPopupPage, InviteWaitPage |
 | `icon_star.svg` | `#939DAA` | StarRatingView |
+| `icon_star_off.svg` | `#939DAA` | DeviceCard |
+| `icon_star_on.svg` | `#EF9F27` `#B45309` | DeviceCard |
 | `icon_trash.svg` | `#FBE4E4` `#C42F2F` | AlertListCard, MetricAlarmEditPage, QuestionCard |
 | `icon_user_bell.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_watch.svg` | `#D9DCE1` `#727272` `#FFFFFF` | CardiMemberDetailPage |

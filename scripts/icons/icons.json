@@ -355,6 +355,22 @@
    "tokens": [
     "ActionTintBlueInk"
    ]
+  },
+  "primaryStar": {
+   "title": "Primary device star · amber",
+   "style": "Multicolor",
+   "slots": [
+    "#B45309",
+    "#EF9F27",
+    "#FFFFFF",
+    "#EF9F27"
+   ],
+   "tokens": [
+    "CautionAmber",
+    "derived, StatusYellow warmed",
+    "White",
+    "derived, StatusYellow warmed"
+   ]
   }
  },
  "icons": [
@@ -1127,6 +1143,41 @@
    "name": "delete",
    "group": "actionTintRed",
    "size": 16
+  },
+  {
+   "file": "icon_battery_full.svg",
+   "source": "iconpark",
+   "name": "battery-full",
+   "group": "infoGreen",
+   "size": 24
+  },
+  {
+   "file": "icon_battery_half.svg",
+   "source": "iconpark",
+   "name": "battery-working",
+   "group": "infoGreen",
+   "size": 24
+  },
+  {
+   "file": "icon_battery_low.svg",
+   "source": "iconpark",
+   "name": "battery-empty",
+   "group": "infoRed",
+   "size": 24
+  },
+  {
+   "file": "icon_star_on.svg",
+   "source": "iconpark",
+   "name": "star",
+   "group": "primaryStar",
+   "size": 24
+  },
+  {
+   "file": "icon_star_off.svg",
+   "source": "iconpark",
+   "name": "star",
+   "group": "muted",
+   "size": 24
   }
  ]
 }

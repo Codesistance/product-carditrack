@@ -26,6 +26,9 @@ public partial class DeviceCard : ContentView
 
     private Guid _deviceId;
 
+    /// <summary>This card's device is the member's primary one — its star only reports.</summary>
+    private bool _isPrimary;
+
     /// <summary>Guards the Toggled handler while <see cref="Apply"/> sets the switch itself.</summary>
     private bool _applying;
 
@@ -73,7 +76,6 @@ public partial class DeviceCard : ContentView
             ReconnectButton.IsVisible = needsReconnect;
             RefreshButton.IsVisible = !needsReconnect;
             RepullButton.IsVisible = !needsReconnect;
-            PrimaryRow.IsVisible = !needsReconnect;
             SemanticProperties.SetDescription(ReconnectButton,
                 $"Reconnect {device.DisplayName}. Opens sign-in to restore the connection.");
 
@@ -88,21 +90,19 @@ public partial class DeviceCard : ContentView
 
             ApplyDatasets(device.Scopes);
 
-            TodayValue.Text = device.TodayUpdateCount switch
-            {
-                0 => "No updates",
-                1 => "1 update",
-                var n => $"{n} updates",
-            };
-
             ApplyBattery(device);
             ApplyHistoryRepull(device.HistoryRepull);
 
-            PrimaryPill.IsVisible = device.IsPrimary;
-            PrimarySwitch.IsToggled = device.IsPrimary;
-            // Turning the only primary off would leave the member without one; promotion
-            // happens by switching a different device on.
-            PrimarySwitch.IsEnabled = !device.IsPrimary;
+            // Filled on the primary; outlined, and a way to promote, on the others. Turning the
+            // primary off would leave the member without one, so its star only reports. A
+            // connection that needs reconnecting is offered no promotion: it is sending nothing.
+            _isPrimary = device.IsPrimary;
+            PrimaryStar.IsVisible = device.IsPrimary || !needsReconnect;
+            PrimaryStarIcon.Source = device.IsPrimary ? "icon_star_on.svg" : "icon_star_off.svg";
+            SemanticProperties.SetDescription(PrimaryStar, device.IsPrimary ? "Primary device" : "Make primary device");
+            SemanticProperties.SetHint(PrimaryStar, device.IsPrimary
+                ? "Its readings are used when two devices overlap"
+                : "Double tap to use this device's readings when two overlap");
         }
         finally
         {
@@ -111,37 +111,31 @@ public partial class DeviceCard : ContentView
     }
 
     /// <summary>
-    /// Shows the battery tile, but only when the server sent a reading. It withholds one whenever
-    /// the connection never granted the settings scope, the hardware has no battery, or the last
-    /// reading has aged out — so "no battery field" means "nothing trustworthy to say", and an
-    /// empty or guessed tile is never drawn in its place.
+    /// Shows the battery beside the device name, but only when the server sent a reading. It
+    /// withholds one whenever the connection never granted the settings scope, the hardware has
+    /// no battery, or the last reading has aged out — so "no battery field" means "nothing
+    /// trustworthy to say", and an empty or guessed badge is never drawn in its place.
     /// </summary>
-    /// <remarks>
-    /// A hidden child does not release its grid column, so the column width is collapsed alongside
-    /// it; otherwise the three remaining tiles would sit in three quarters of the row with a gap
-    /// where the fourth belongs.
-    /// </remarks>
     private void ApplyBattery(DeviceResponse device)
     {
         var text = device.BatteryLevel is { } level
             ? $"{level}%"
             : device.BatteryStatus;
 
-        var hasReading = !string.IsNullOrWhiteSpace(text);
-
-        BatteryTile.IsVisible = hasReading;
-        BatteryColumn.Width = hasReading ? GridLength.Star : new GridLength(0);
-
-        if (!hasReading)
+        BatteryBadge.IsVisible = !string.IsNullOrWhiteSpace(text);
+        if (!BatteryBadge.IsVisible)
             return;
 
         BatteryValue.Text = text;
 
-        // Red at the same threshold DEVICE_BATTERY_LOW fires at, so the tile and the notification
+        // Red at the same threshold DEVICE_BATTERY_LOW fires at, so the badge and the notification
         // a caregiver may already have received agree about what counts as low.
-        BatteryValue.TextColor = DeviceBattery.IsLow(device.BatteryLevel, device.BatteryStatus)
-            ? Color.FromArgb("#C42F2F")
-            : Color.FromArgb("#1E8C6E");
+        var low = DeviceBattery.IsLow(device.BatteryLevel, device.BatteryStatus);
+        BatteryValue.TextColor = low ? Color.FromArgb("#C42F2F") : Color.FromArgb("#1E8C6E");
+        BatteryIcon.Source = low
+            ? "icon_battery_low.svg"
+            : device.BatteryLevel is >= 60 ? "icon_battery_full.svg" : "icon_battery_half.svg";
+        SemanticProperties.SetDescription(BatteryBadge, $"Battery {text}{(low ? ", low" : string.Empty)}");
     }
 
     /// <summary>
@@ -412,9 +406,9 @@ public partial class DeviceCard : ContentView
     private void OnRemoveClicked(object? sender, EventArgs e) =>
         RemoveRequested?.Invoke(this, _deviceId);
 
-    private void OnPrimaryToggled(object? sender, ToggledEventArgs e)
+    private void OnPrimaryStarTapped(object? sender, TappedEventArgs e)
     {
-        if (_applying || !e.Value)
+        if (_applying || _isPrimary)
             return;
         SetPrimaryRequested?.Invoke(this, _deviceId);
     }

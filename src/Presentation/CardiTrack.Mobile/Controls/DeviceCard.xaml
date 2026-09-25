@@ -14,7 +14,7 @@
             <VerticalStackLayout x:Name="DeviceInfoSection" Spacing="12">
 
             <!-- Identity -->
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                 <Border Grid.Column="0"
                         WidthRequest="44" HeightRequest="44"
                         StrokeThickness="0"
@@ -43,24 +43,43 @@
                                    FontFamily="QuicksandSemiBold"
                                    FontSize="10"/>
                         </Border>
-                        <!-- Primary as a word beside the status, rather than a star in the
-                             corner that said the same thing as the switch further down. -->
-                        <Border x:Name="PrimaryPill"
-                                IsVisible="False"
-                                StrokeThickness="0"
-                                Padding="8,2"
-                                BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                VerticalOptions="Center">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="8"/>
-                            </Border.StrokeShape>
-                            <Label Text="PRIMARY"
-                                   FontFamily="QuicksandSemiBold"
-                                   FontSize="10"
-                                   TextColor="{StaticResource PrimaryDark}"/>
-                        </Border>
                     </HorizontalStackLayout>
                 </VerticalStackLayout>
+
+                <!-- The battery, top right, as a glyph filled to its level and the reading beside
+                     it — where a phone shows its own. It was a tile beside "Today's data" lower
+                     down, which spent a row of the card on two numbers. Hidden when the server
+                     sends no reading (see ApplyBattery). -->
+                <HorizontalStackLayout Grid.Column="2" Spacing="10" VerticalOptions="Start">
+                <HorizontalStackLayout x:Name="BatteryBadge"
+                                       Spacing="4"
+                                       VerticalOptions="Center"
+                                       IsVisible="False">
+                    <Image x:Name="BatteryIcon"
+                           WidthRequest="18" HeightRequest="18"
+                           VerticalOptions="Center"/>
+                    <Label x:Name="BatteryValue"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="13"
+                           VerticalOptions="Center"/>
+                </HorizontalStackLayout>
+
+                <!-- Primary as a star beside the battery: filled on the member's primary device,
+                     outlined on the others, where a tap makes that one primary — as the dashboard's
+                     pin works. It replaces a PRIMARY pill and a "Use as primary device" switch row
+                     that said the same thing twice. The tap area is the 32 box, not the glyph. -->
+                <Grid x:Name="PrimaryStar"
+                      WidthRequest="32" HeightRequest="32"
+                      Margin="0,-6,-6,0"
+                      VerticalOptions="Center">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnPrimaryStarTapped"/>
+                    </Grid.GestureRecognizers>
+                    <Image x:Name="PrimaryStarIcon"
+                           WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Grid>
+                </HorizontalStackLayout>
             </Grid>
 
             <!-- When it last sent and when it next will, as one sentence. These were a "synced"
@@ -104,45 +123,12 @@
                 </Border>
             </VerticalStackLayout>
 
-            <!-- Stats. The battery column collapses to zero width when the provider reports no
-                 reading — a hidden child does not release its column, so the width is driven from
-                 code-behind rather than by IsVisible alone. -->
-            <Grid ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition x:Name="BatteryColumn" Width="0"/>
-                </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" StrokeThickness="0" Padding="10,8"
-                        BackgroundColor="{StaticResource SelectedOptionBackground}">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="10"/>
-                    </Border.StrokeShape>
-                    <VerticalStackLayout Spacing="2">
-                        <Label Text="TODAY'S DATA" FontFamily="QuicksandSemiBold" FontSize="9"
-                               TextColor="{StaticResource MutedText}"/>
-                        <Label x:Name="TodayValue" Style="{StaticResource Body2Medium}" FontSize="12"/>
-                    </VerticalStackLayout>
-                </Border>
-                <Border x:Name="BatteryTile" Grid.Column="1" StrokeThickness="0" Padding="10,8"
-                        IsVisible="False"
-                        BackgroundColor="{StaticResource SelectedOptionBackground}">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="10"/>
-                    </Border.StrokeShape>
-                    <VerticalStackLayout Spacing="2">
-                        <Label Text="BATTERY" FontFamily="QuicksandSemiBold" FontSize="9"
-                               TextColor="{StaticResource MutedText}"/>
-                        <Label x:Name="BatteryValue" Style="{StaticResource Body2Medium}" FontSize="12"/>
-                    </VerticalStackLayout>
-                </Border>
-            </Grid>
-
             </VerticalStackLayout>
 
             <BoxView Style="{StaticResource DividerLine}"/>
 
             <!-- Actions, as small tinted buttons (CompactActionButton) a size down from the app's
-                 ActionButton, so they sit in proportion with the pills and tiles above: the ones
+                 ActionButton, so they sit in proportion with the pills above: the ones
                  that do something in blue, Remove in red at the far end. The row's negative
                  margin gives back the tap band each button carries around its pill. Reconnect takes Refresh's place when the provider
                  itself broke the token — retrying Refresh would repeat the same failure, so there
@@ -177,16 +163,6 @@
                    FontSize="12"
                    TextColor="{StaticResource MutedText}"
                    IsVisible="False"/>
-
-            <Grid x:Name="PrimaryRow" ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="40">
-                <Label Text="Use as primary device"
-                       Style="{StaticResource Body2Medium}" VerticalTextAlignment="Center"/>
-                <Switch x:Name="PrimarySwitch"
-                        Grid.Column="1"
-                        OnColor="{StaticResource Primary}"
-                        VerticalOptions="Center"
-                        Toggled="OnPrimaryToggled"/>
-            </Grid>
 
         </VerticalStackLayout>
     </Border>
