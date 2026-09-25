@@ -209,7 +209,8 @@
          page ground rather than sitting on it, and echoes the pill's gradient. -->
     <LinearGradientBrush x:Key="TabBarBrush" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Color="#FFFFFF" Offset="0"/>
-        <GradientStop Color="#EEF4FB" Offset="1"/>
+        <GradientStop Color="#E6F0FB" Offset="0.3"/>
+        <GradientStop Color="#D9E7F8" Offset="1"/>
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="TabPillBrush" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Color="#D8E9FC" Offset="0"/>

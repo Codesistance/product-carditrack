@@ -507,11 +507,11 @@ public partial class DashboardPage : ContentPage
             // after them: a family of three used to open as a one-member dashboard — full-size
             // buttons, no pins — and rearrange itself once the others arrived.
             if (_lastData is null)
-                await ShowSavedMembersAsync(id);
+                await ShowSavedMembersAsync(id, ticket);
 
             // The others' live reads start now, beside the first member's, not after it: each
             // card is filled as its own answer lands, and one slow read holds up no other.
-            var others = LoadOtherMembersAsync(id);
+            var others = LoadOtherMembersAsync(id, ticket);
 
             var outcome = await SnapshotRefresh.RunAsync(
                 _api, _gate, ticket,
@@ -783,22 +783,24 @@ public partial class DashboardPage : ContentPage
     /// cards the screen is laid out for, and each other member's saved dashboard fills theirs.
     /// Local reads only, so this costs the first frame nothing it would notice.
     /// </summary>
-    private async Task ShowSavedMembersAsync(Guid primaryId)
+    private async Task ShowSavedMembersAsync(Guid primaryId, LoadTicket ticket)
     {
         try
         {
-            if (await _api.PeekCardiMembersAsync() is not { Count: > 0 } saved)
+            if (await _api.PeekCardiMembersAsync() is not { Count: > 0 } saved || !_gate.IsCurrent(ticket))
                 return;
 
             _expectedMembers = saved.Select(m => m.Id).ToList();
             foreach (var member in saved.Where(m => m.Id != primaryId))
             {
                 var card = CardFor(member.Id);
-                if (card.Data is null && await _api.PeekDashboardAsync(member.Id) is { } dashboard)
+                if (card.Data is null && await _api.PeekDashboardAsync(member.Id) is { } dashboard
+                    && _gate.IsCurrent(ticket))
                     card.Apply(dashboard, _popups);
             }
 
-            ArrangeCards();
+            if (_gate.IsCurrent(ticket))
+                ArrangeCards();
         }
         catch (Exception ex)
         {
@@ -814,18 +816,20 @@ public partial class DashboardPage : ContentPage
     /// </summary>
     /// <remarks>
     /// Never faults: it runs beside the primary member's load and is awaited after it, and a
-    /// failure here must not take down a dashboard the first member already filled.
+    /// failure here must not take down a dashboard the first member already filled. Tied to the
+    /// load that started it: once a newer load supersedes <paramref name="ticket"/>, nothing this
+    /// one reads is applied — the newer load's own fan-out owns the cards from then on.
     /// </remarks>
-    private async Task LoadOtherMembersAsync(Guid primaryId)
+    private async Task LoadOtherMembersAsync(Guid primaryId, LoadTicket ticket)
     {
         try
         {
             List<CardiMemberResponse> members;
             try
             {
-                members = await _api.GetCardiMembersAsync();
+                members = await _api.GetCardiMembersAsync(ticket.Token);
             }
-            catch (ApiException)
+            catch (ApiException) when (_gate.IsCurrent(ticket))
             {
                 // The list is what says who else there is. Without it the cards already on screen
                 // stay as they are, but a placeholder for somebody the saved list promised has
@@ -834,6 +838,9 @@ public partial class DashboardPage : ContentPage
                 ArrangeCards();
                 return;
             }
+
+            if (!_gate.IsCurrent(ticket))
+                return;
 
             _expectedMembers = members.Select(m => m.Id).ToList();
             var others = members
@@ -847,7 +854,9 @@ public partial class DashboardPage : ContentPage
                 _cards.Remove(gone);
             ArrangeCards();
 
-            await Task.WhenAll(others.Select(m => LoadOtherMemberAsync(m.Id)));
+            await Task.WhenAll(others.Select(m => LoadOtherMemberAsync(m.Id, ticket)));
+            if (!_gate.IsCurrent(ticket))
+                return;
 
             // Anyone still without a card to draw (unreachable, with nothing saved) is left out
             // rather than left as a placeholder that nothing is coming to fill.
@@ -857,29 +866,44 @@ public partial class DashboardPage : ContentPage
             ArrangeCards();
             ApplyAlerts();
         }
+        catch (OperationCanceledException) when (!_gate.IsCurrent(ticket))
+        {
+            // Superseded: the newer load's fan-out has the cards.
+        }
+        catch (ApiException) when (!_gate.IsCurrent(ticket))
+        {
+            // Superseded while the list was being read.
+        }
         catch (Exception ex)
         {
             ScreenRefresh.LogFailure(ex, this, "while loading the other members");
         }
     }
 
-    private async Task LoadOtherMemberAsync(Guid memberId)
+    private async Task LoadOtherMemberAsync(Guid memberId, LoadTicket ticket)
     {
         var card = CardFor(memberId);
         try
         {
-            if (card.Data is null && await _api.PeekDashboardAsync(memberId) is { } saved)
+            if (card.Data is null && await _api.PeekDashboardAsync(memberId) is { } saved
+                && _gate.IsCurrent(ticket))
             {
                 card.Apply(saved, _popups);
                 ArrangeCards();
             }
 
-            var live = await _api.GetDashboardAsync(memberId);
+            var live = await _api.GetDashboardAsync(memberId, ticket.Token);
+            if (!_gate.IsCurrent(ticket))
+                return;
             card.Apply(live, _popups);
             ArrangeCards();
             _ = LoadCurrentStatusAsync(card, live);
         }
-        catch (ApiException ex) when (ex.IsNotFound)
+        catch (OperationCanceledException) when (!_gate.IsCurrent(ticket))
+        {
+            // Superseded: the newer load reads this member again.
+        }
+        catch (ApiException ex) when (ex.IsNotFound && _gate.IsCurrent(ticket))
         {
             // Gone between the list and the read: their saved dashboard must not stand in for them.
             _cards.Remove(memberId);

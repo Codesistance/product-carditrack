@@ -13,7 +13,8 @@ namespace CardiTrack.Mobile.Services;
 /// In the app's private cache directory: out of backups and other apps' reach, and the OS may
 /// reclaim it under storage pressure, which costs no more than one download. A full-face photo is
 /// sensitive, so <see cref="Clear"/> runs at sign-out and account deletion with the rest of what a
-/// session leaves behind.
+/// session leaves behind — and each session has its own folder, so a file the delete cannot
+/// remove is never shown to the next account (see <see cref="SessionKey"/>).
 /// </para>
 /// <para>
 /// One download per photo at a time: the dashboard, the Family tab and Alert Details can all ask
@@ -47,7 +48,70 @@ public static class MemberPhotoCache
     /// </summary>
     private static readonly ConcurrentDictionary<string, string> Latest = new();
 
-    private static string Root => Path.Combine(FileSystem.CacheDirectory, "member-photos");
+    private static string Base => Path.Combine(FileSystem.CacheDirectory, "member-photos");
+
+    /// <summary>
+    /// Which session's folder under <see cref="Base"/> is in use. Photos only ever go into, and
+    /// are only ever read from, the current session's folder; <see cref="Clear"/> starts a new one.
+    /// A folder the delete could not remove (a file still held open by an image being drawn) is
+    /// therefore never served to the next account, and is swept on the next start or sign-out.
+    /// </summary>
+    private const string SessionKey = "MemberPhotoCacheSession";
+
+    private static string? _session;
+    private static int _swept;
+
+    private static string Root
+    {
+        get
+        {
+            var session = _session ??= Preferences.Default.Get(SessionKey, string.Empty) is { Length: > 0 } saved
+                ? saved
+                : NewSession();
+            // Once per run: anything an earlier sign-out could not delete goes now, while nothing
+            // from those sessions is being drawn.
+            if (Interlocked.Exchange(ref _swept, 1) == 0)
+                SweepOtherSessions(session);
+            return Path.Combine(Base, session);
+        }
+    }
+
+    private static string NewSession()
+    {
+        var session = Guid.NewGuid().ToString("N");
+        Preferences.Default.Set(SessionKey, session);
+        return session;
+    }
+
+    private static void SweepOtherSessions(string keep)
+    {
+        try
+        {
+            if (!Directory.Exists(Base))
+                return;
+            foreach (var folder in Directory.EnumerateDirectories(Base))
+            {
+                if (!string.Equals(Path.GetFileName(folder), keep, StringComparison.Ordinal))
+                    TryDeleteFolder(folder);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Retried at the next start or sign-out; none of it can be served meanwhile.
+        }
+    }
+
+    private static void TryDeleteFolder(string folder)
+    {
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Held open; the next sweep takes it.
+        }
+    }
 
     /// <summary>The saved file for this photo, if it is already on the phone.</summary>
     public static string? Cached(MemberPhotoCacheKey key)
@@ -137,17 +201,12 @@ public static class MemberPhotoCache
             _generation++;
             // Which photo is whose is the old session's knowledge too.
             Latest.Clear();
-            try
-            {
-                if (Directory.Exists(Root))
-                    Directory.Delete(Root, recursive: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // Never the reason a sign-out stops. The generation has moved, so nothing from the
-                // old session is written from here on; what is left sits in the app's private cache
-                // directory, which the OS reclaims under pressure.
-            }
+
+            // A new folder before the old one is deleted, so whatever the delete cannot remove is
+            // already out of reach: nothing reads from, or writes to, any folder but the current
+            // session's. Never the reason a sign-out stops.
+            _session = NewSession();
+            SweepOtherSessions(_session);
         }
     }
 

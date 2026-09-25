@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
@@ -139,8 +140,9 @@ public partial class MedicalInformationPage : ContentPage
     /// <remarks>
     /// The new lines go on first and the block comes off last, so a failure part-way leaves the
     /// block where it was rather than half the notes nowhere current. The one exception is a block
-    /// too long for the list to hold twice — the server caps the whole list at the single note's
-    /// 2,000 characters — which comes off first; the history still has every word of it.
+    /// too long for the list to hold alongside its own lines — the server caps the whole list at
+    /// the single note's 2,000 characters — which comes off first; the history still has every
+    /// word of it. Both are measured before anything is written (see the check in the body).
     /// </remarks>
     private async Task SortAsync()
     {
@@ -161,7 +163,22 @@ public partial class MedicalInformationPage : ContentPage
             return;
         }
 
-        var tooLongForBoth = (block.Text.Length * 2) + (lines.Count * 16) > 2000;
+        // Measured with the server's own composer, so the check is the cap itself rather than a
+        // guess at it. Where the list ends up has to fit, or nothing is written: refusing after
+        // the first line is filed would leave the sort half done. Whether the block can stay on
+        // while the lines go on decides the order — removing it first is always safe once the
+        // end state fits, since every step on the way holds a subset of it.
+        var others = _ledger!.Current.Where(e => e.Id != block.Id).Select(e => (e.Kind, e.Text)).ToList();
+        var sorted = lines.Select(l => (l.Kind, l.Text)).ToList();
+        if (ComposedLength([.. others, .. sorted]) > MedicalLedger.MaxSummaryLength)
+        {
+            await _popups.ShowWarningAsync(
+                "Sorted into lines, these notes would be longer than the medical information can hold. Shorten or skip some parts, or remove a line first.",
+                "Too long to sort");
+            return;
+        }
+
+        var tooLongForBoth = ComposedLength([.. others, (block.Kind, block.Text), .. sorted]) > MedicalLedger.MaxSummaryLength;
         await WriteAsync(async id =>
         {
             MedicalEntriesResponse ledger = _ledger!;
@@ -176,6 +193,9 @@ public partial class MedicalInformationPage : ContentPage
             return ledger;
         }, "Couldn't sort these notes");
     }
+
+    private static int ComposedLength(IEnumerable<(MedicalEntryKind Kind, string Text)> lines) =>
+        MedicalLedger.Compose(lines)?.Length ?? 0;
 
     private void OnHistoryToggled(object? sender, TappedEventArgs e)
     {

@@ -676,6 +676,10 @@
         <Setter Property="HorizontalOptions" Value="Center"/>
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="CharacterSpacing" Value="0"/>
+        <!-- One line box whichever size the label is drawn at (the selected tab's is a size up),
+             so selecting a tab never changes the bar's height. -->
+        <Setter Property="HeightRequest" Value="17"/>
+        <Setter Property="VerticalTextAlignment" Value="Center"/>
     </Style>
 
 </ResourceDictionary>
