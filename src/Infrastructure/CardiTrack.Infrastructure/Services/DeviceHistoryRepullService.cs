@@ -64,6 +64,13 @@ public class DeviceHistoryRepullService : IDeviceHistoryRepullService
         var connection = connections.FirstOrDefault(c => c.Id == deviceId)
             ?? throw new KeyNotFoundException("Device not found");
 
+        if (connection.SuspendedAt is not null)
+        {
+            throw new HistoryRepullUnavailableException(
+                HistoryRepullUnavailableException.DeviceNotSyncable,
+                "This device is suspended — resume it first.");
+        }
+
         var config = _providers.ConfigFor(connection.DeviceType);
         if (!IsSyncable(connection) || config is null)
         {

@@ -113,7 +113,8 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                 c.BatteryUpdatedAt,
                 c.IrnEnrolled,
                 c.IrnOnboarded,
-                c.IsActive
+                c.IsActive,
+                c.SuspendedAt
             })
             .ToListAsync(ct);
 
@@ -262,8 +263,10 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                     },
                     Connections =
                     [
+                        // Suspended devices are left out: a caregiver who suspended one should
+                        // not then be nudged that it has stopped syncing or its battery is low.
                         .. memberConnections
-                            .Where(c => c.IsActive)
+                            .Where(c => c.IsActive && c.SuspendedAt == null)
                             .Select(c => new NudgeConnectionSnapshot
                             {
                                 Id = c.Id,

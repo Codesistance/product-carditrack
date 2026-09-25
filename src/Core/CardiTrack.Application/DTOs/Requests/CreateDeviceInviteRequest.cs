@@ -25,4 +25,11 @@ public class CreateDeviceInviteRequest
     /// a shared link for a day because it has to survive an unread inbox.
     /// </summary>
     public string Channel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The member's connection the wearer's device is to replace (M1-15 "Change Device"), or null
+    /// to add a device alongside the others. The old connection is only removed once the wearer
+    /// has granted consent for the new one.
+    /// </summary>
+    public Guid? ReplacesDeviceId { get; set; }
 }

@@ -220,6 +220,21 @@ public class InactivityDetectionServiceTests
         await _deviceSync.Received(1).SyncCardiMemberAsync(Arg.Any<DeviceConnection>(), Arg.Any<SyncScope>());
     }
 
+    [Fact]
+    public async Task AMemberWhoseDevicesAreAllSuspended_IsNeitherProbedNorAlerted()
+    {
+        // Collection stopped because a caregiver stopped it; "the watch has gone quiet" would be
+        // telling them something they did themselves.
+        var device = SetupConnectedDevice();
+        device.SuspendedAt = UtcNow.AddHours(-3);
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(0, raised);
+        await _deviceSync.DidNotReceiveWithAnyArgs().SyncCardiMemberAsync(default!, default);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
     /// <summary>A pull that runs and still finds nothing is what makes the alert trustworthy.</summary>
     [Fact]
     public async Task AProbePullThatFindsNothing_StillRaisesTheAlert()

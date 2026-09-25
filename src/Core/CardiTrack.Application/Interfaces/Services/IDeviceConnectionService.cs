@@ -45,7 +45,17 @@ public interface IDeviceConnectionService
         Guid creatingUserId,
         Guid cardiMemberId,
         DeviceType deviceType,
+        Guid? replacesConnectionId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Checks that <paramref name="requestingUserId"/> may replace <paramref name="deviceId"/> on
+    /// this member — the same primary-caregiver rule as removing it, since a replacement removes
+    /// it — so an invitation to replace a device fails when it is created rather than after the
+    /// wearer has already given consent.
+    /// </summary>
+    Task EnsureCanReplaceAsync(
+        Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default);
 
     /// <summary>
     /// The invitation a pending wearer state was minted for, without consuming the state. Null when
@@ -102,5 +112,22 @@ public interface IDeviceConnectionService
     /// sync worker's job, per the background-job rule in CLAUDE.md.
     /// </summary>
     Task<DeviceResponse> RefreshConnectionAsync(
+        Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// M1-15 "Suspend": stops the connection collecting — no syncs, webhook pulls, auth recovery
+    /// or device nudges — while keeping its tokens and history, until it is resumed. Open-ended,
+    /// because the member's other devices go on collecting; for the same reason it is refused
+    /// for the member's only collecting device, where Pause Monitoring (bounded) is the tool.
+    /// A suspended primary hands the flag to another collecting device.
+    /// </summary>
+    Task<DeviceResponse> SuspendAsync(
+        Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// M1-15 "Resume": the connection collects again from the sync worker's next pass. Takes the
+    /// primary flag back only when the member has no primary.
+    /// </summary>
+    Task<DeviceResponse> ResumeAsync(
         Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default);
 }

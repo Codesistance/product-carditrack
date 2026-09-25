@@ -27,6 +27,10 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// must not be collected by any path, and an audit is still collection.
     /// </summary>
     Task<IEnumerable<DeviceConnection>> GetRandomSyncableSampleAsync(int count);
+    /// <summary>
+    /// Stores refreshed tokens and marks the connection connected — unless it has been removed since
+    /// the refresh read it, in which case nothing is written.
+    /// </summary>
     Task UpdateTokenAsync(Guid id, string encryptedAccessToken, string encryptedRefreshToken, DateTime tokenExpiry);
     Task UpdateStatusAsync(Guid id, ConnectionStatus status);
 
@@ -103,5 +107,40 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// must never resurrect collection for a paused or removed member.
     /// </summary>
     Task<IEnumerable<DeviceConnection>> GetSyncableByHealthUserIdAsync(string healthUserId);
+
+    /// <summary>
+    /// Whether any live connection other than <paramref name="excludingId"/> — on any member, and
+    /// suspended ones included, since they keep their tokens — reads through this provider account.
+    /// Such a connection shares the provider grant, so revoking the grant would cut it off too.
+    /// </summary>
+    Task<bool> AnyOtherActiveWithHealthUserIdAsync(Guid excludingId, string healthUserId);
+
+    /// <summary>
+    /// Serializes changes to one member's set of devices until the current transaction ends, and
+    /// reports whether the member still exists and is active, read under the lock. Must be called
+    /// inside a transaction, before the member's connections are read.
+    /// </summary>
+    /// <remarks>
+    /// The rules over a member's devices span rows, not one row: one primary, one connection per
+    /// provider account, never the last collecting device suspended. Each is a read of the whole
+    /// set followed by a write. Two such changes interleaving can each pass their check and
+    /// together break the rule — two replacements each promoting their new device, two
+    /// suspensions each seeing the other device still collecting. Holding this across read and
+    /// write makes the second change read what the first committed.
+    /// <para>
+    /// Member erasure takes the same lock, so the answer is what a change must act on: a change
+    /// that waited behind an erasure finds the member gone, and must not recreate a connection or
+    /// a queued revocation for someone whose every row has just been deleted.
+    /// </para>
+    /// </remarks>
+    Task<bool> LockMemberDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether the connection is suspended right now, read from the database rather than from an
+    /// entity loaded earlier. The collection queries leave suspended connections out, but a batch
+    /// selected before a suspension committed still holds them; this is the check each pull makes
+    /// when it actually runs.
+    /// </summary>
+    Task<bool> IsSuspendedAsync(Guid id);
 
 }

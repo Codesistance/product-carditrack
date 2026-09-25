@@ -32,4 +32,12 @@ public static class DeviceProviderResolver
     public static HealthApi? ApiFor(
         this IEnumerable<DeviceProviderSettings> providers, DeviceType deviceType) =>
         providers.ConfigFor(deviceType)?.Api();
+
+    /// <summary>
+    /// Whether two brands sync through the same configured <see cref="HealthApi"/>. False when
+    /// either is unmapped — an unmapped brand shares an API with nothing, itself included.
+    /// </summary>
+    public static bool SameApi(
+        this IEnumerable<DeviceProviderSettings> providers, DeviceType left, DeviceType right) =>
+        providers.ApiFor(left) is { } api && api == providers.ApiFor(right);
 }

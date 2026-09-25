@@ -39,4 +39,7 @@ public class DeviceInviteResponse
 
     /// <summary>The connection the wearer's consent produced, once <c>completed</c>.</summary>
     public Guid? DeviceId { get; set; }
+
+    /// <summary>The connection this invitation replaces once completed; null when it adds a device.</summary>
+    public Guid? ReplacesDeviceId { get; set; }
 }

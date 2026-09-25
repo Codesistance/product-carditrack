@@ -154,7 +154,8 @@ public class HistoryRepullWorker : CronBackgroundService
             return Outcome.Skipped;
 
         var connection = await unitOfWork.DeviceConnections.GetByIdAsync(repull.DeviceConnectionId);
-        if (connection is null || !connection.IsActive
+        // A device suspended after the request was queued is out of collection like any other.
+        if (connection is null || !connection.IsActive || connection.SuspendedAt is not null
             || connection.ConnectionStatus is not (ConnectionStatus.Connected or ConnectionStatus.SyncError))
         {
             return await CloseAsync(unitOfWork, repull, HistoryRepullStatus.Cancelled,

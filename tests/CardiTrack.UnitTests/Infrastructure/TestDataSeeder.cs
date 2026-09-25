@@ -60,7 +60,9 @@ public static class TestDataSeeder
         DateTime? lastSyncDate = null,
         int syncFrequencyMinutes = 30,
         bool isPrimary = false,
-        DateTime? connectedDate = null)
+        DateTime? connectedDate = null,
+        DateTime? suspendedAt = null,
+        string? healthUserId = null)
     {
         var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -78,7 +80,9 @@ public static class TestDataSeeder
             LastSyncDate = lastSyncDate,
             SyncFrequencyMinutes = syncFrequencyMinutes,
             IsPrimary = isPrimary,
-            ConnectedDate = connectedDate
+            ConnectedDate = connectedDate,
+            SuspendedAt = suspendedAt,
+            HealthUserId = healthUserId,
         };
 
         await repo.AddAsync(connection);

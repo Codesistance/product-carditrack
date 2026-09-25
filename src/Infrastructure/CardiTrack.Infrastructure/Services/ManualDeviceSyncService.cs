@@ -74,7 +74,9 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
                 "Monitoring is paused, so we're not collecting new data right now.");
         }
 
+        // Suspended devices are out of collection, on demand as much as on schedule.
         var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(cardiMemberId))
+            .Where(c => c.SuspendedAt is null)
             .ToList();
         if (connections.Count == 0)
         {
@@ -104,6 +106,7 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
         // Re-read rather than trusting DateTime.UtcNow: SyncCardiMemberAsync only stamps
         // LastSyncDate once the whole window landed, so a failed pull must not advance this.
         var synced = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(cardiMemberId))
+            .Where(c => c.SuspendedAt is null)
             .Select(c => c.LastSyncDate)
             .Where(d => d is not null)
             .ToList();
