@@ -529,6 +529,35 @@ public class MemberChatRoutedDispatchTests
         Assert.Empty(_medicalAi.ReceivedCalls());
     }
 
+    /// <summary>
+    /// Rows are dated on the member's own clock. Far east of Greenwich the local day runs ahead
+    /// of UTC's, and a new member's first sync, dated today local, would sit past a UTC-only
+    /// window's end — so the check reads through whichever today is later, from a week before
+    /// the earlier one.
+    /// </summary>
+    [Fact]
+    public async Task TheNoReadingsCheck_ReadsTheMembersLocalWeek_AsWellAsUtcs()
+    {
+        const string zoneId = "Pacific/Kiritimati"; // UTC+14
+        var caregiverId = Guid.NewGuid();
+        _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(_memberId).Returns(
+        [
+            new UserCardiMember { UserId = caregiverId, CardiMemberId = _memberId, IsActive = true, CreatedDate = DateTime.UtcNow },
+        ]);
+        _unitOfWork.Users.GetByIdAsync(caregiverId).Returns(new User { Id = caregiverId, TimeZoneId = zoneId });
+        SendsNoReadings();
+
+        await CreateSut().GetSuggestionsAsync(_userId, _memberId);
+
+        var utcNow = DateTime.UtcNow;
+        var utcToday = DateOnly.FromDateTime(utcNow);
+        var localToday = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTimeFromUtc(utcNow, TimeZoneInfo.FindSystemTimeZoneById(zoneId)));
+        var expectedTo = localToday > utcToday ? localToday : utcToday;
+        var expectedFrom = (localToday < utcToday ? localToday : utcToday).AddDays(-6);
+        await _unitOfWork.ActivityLogs.Received().GetByCardiMemberAndDateRangeAsync(_memberId, expectedFrom, expectedTo);
+    }
+
     /// <summary>An open alert is something to talk about even with no reading this week, so the
     /// verdict still runs — the gate is for a member with nothing at all.</summary>
     [Fact]

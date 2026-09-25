@@ -1741,12 +1741,12 @@ public class MemberChatService : IMemberChatService
     /// </para>
     /// </remarks>
     private async Task<IReadOnlyList<ActivityLog>> ReadStatusActivityAsync(
-        Guid cardiMemberId, DateTime utcNow, CancellationToken ct, int days = StatusWindowDays)
+        Guid cardiMemberId, DateTime utcNow, CancellationToken ct)
     {
         var plan = new DataQueryPlan
         {
             Sources = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Status)!.AllowedDatasets,
-            RecentActivityDays = days,
+            RecentActivityDays = StatusWindowDays,
             ChartMetrics = [],
         };
 
@@ -1756,11 +1756,29 @@ public class MemberChatService : IMemberChatService
 
     /// <summary>
     /// Whether no daily reading reached us in the last
-    /// <see cref="MemberChatReplies.NoReadingsWindowDays"/> days — the status rung's own
-    /// whitelisted read, a week wide.
+    /// <see cref="MemberChatReplies.NoReadingsWindowDays"/> days, counted on the member's own
+    /// calendar as well as UTC's.
     /// </summary>
-    private async Task<bool> HasNoRecentReadingsAsync(Guid cardiMemberId, DateTime utcNow, CancellationToken ct) =>
-        (await ReadStatusActivityAsync(cardiMemberId, utcNow, ct, MemberChatReplies.NoReadingsWindowDays)).Count == 0;
+    /// <remarks>
+    /// Rows are dated on the member's anchor clock (ingestion and the dashboard both read it), and
+    /// the whitelist's windows are UTC days. East of Greenwich the local day runs ahead, so a new
+    /// member's first sync — dated today, local — sits past the UTC window's end for hours (up to
+    /// ten in Sydney), and a UTC-only read would tell the family nothing had arrived while the
+    /// dashboard showed it. So the window runs from a week before the earlier of the two todays to
+    /// the later one: this answers "has anything arrived at all", and a day of overlap can only
+    /// find a reading, never invent one. Read directly rather than through the whitelist, whose
+    /// clamp exists for model-planned windows; this one is fixed in code.
+    /// </remarks>
+    private async Task<bool> HasNoRecentReadingsAsync(Guid cardiMemberId, DateTime utcNow, CancellationToken ct)
+    {
+        var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var utcToday = DateOnly.FromDateTime(utcNow);
+        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, zone));
+        var from = (localToday < utcToday ? localToday : utcToday).AddDays(-(MemberChatReplies.NoReadingsWindowDays - 1));
+        var to = localToday > utcToday ? localToday : utcToday;
+
+        return !(await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(cardiMemberId, from, to)).Any();
+    }
 
     /// <summary>
     /// Whether this member has nothing a reading question could be answered from: no recent
