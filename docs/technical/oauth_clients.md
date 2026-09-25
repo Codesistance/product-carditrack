@@ -238,10 +238,10 @@ calls `location.replace()` rather than a `Location:` header, since a redirect
 naming a custom scheme is dropped by browsers and proxies that only forward
 http(s). `prompt=consent select_account` (`FirstConsentAuthorizationParams`)
 is sent on every **add** and **replace**, and on a **reconnect** of a
-connection that holds no refresh token. Google re-issues a refresh token only
+connection that holds no refresh token or whose grant has failed. Google re-issues a refresh token only
 when consent is shown again, and each of a member's devices can be a different
 account. The account chooser is how the caregiver picks which one. Only a
-reconnect of a connection that still banks a token skips it, because there
+reconnect of a healthy connection that still banks a token skips it, because there
 re-showing consent looks like a failed connect. See
 [devices.md](../execution/backend/api/devices.md).
 

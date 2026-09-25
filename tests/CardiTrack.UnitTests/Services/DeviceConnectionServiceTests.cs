@@ -508,6 +508,10 @@ public class DeviceConnectionServiceTests
     // get a usable one back. Connected but tokenless: there is nothing to preserve.
     [InlineData(ConnectionStatus.Disconnected, "enc(refresh)")]
     [InlineData(ConnectionStatus.Connected, null)]
+    // Failed grants: the stored token is the one that stopped working, and without consent Google
+    // sends no replacement — the reconnect would keep the dead token and fail again.
+    [InlineData(ConnectionStatus.TokenExpired, "enc(refresh)")]
+    [InlineData(ConnectionStatus.AuthError, "enc(refresh)")]
     public async Task InitiateConnection_AddsFirstConsentParams_WhenReconnectingADeviceThatCannotRefresh(
         ConnectionStatus status, string? refreshToken)
     {

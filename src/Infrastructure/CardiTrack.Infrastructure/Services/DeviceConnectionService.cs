@@ -1048,16 +1048,20 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// and the account chooser), which is what makes the provider issue a refresh token.
     /// </summary>
     /// <remarks>
-    /// Skipped only for a reconnect of a connection that still banks a refresh token: re-showing
-    /// consent there buys nothing and reads as the connection having failed. Adding or replacing a
-    /// device always asks — the grant may be for an account we have never held a token for, and
-    /// the account chooser is how the caregiver picks which one. A sibling connection's token says
-    /// nothing about this one's any more: each device can be a different account.
+    /// Skipped only for a reconnect of a healthy connection that still banks a refresh token:
+    /// re-showing consent there buys nothing and reads as the connection having failed. A
+    /// connection whose grant has failed (<c>TokenExpired</c>, <c>AuthError</c>) is asked again even
+    /// with a token stored — that token is the one that stopped working, and without consent Google
+    /// sends no replacement, so the reconnect would keep the dead token and fail again within the
+    /// hour. Adding or replacing a device always asks — the grant may be for an account we have
+    /// never held a token for, and the account chooser is how the caregiver picks which one. A
+    /// sibling connection's token says nothing about this one's: each device can be a different
+    /// account.
     /// </remarks>
     private static bool NeedsFirstConsent(ConnectIntent intent, DeviceConnection? target) =>
         intent != ConnectIntent.Reconnect
         || target is null
-        || target.ConnectionStatus == ConnectionStatus.Disconnected
+        || target.ConnectionStatus is not (ConnectionStatus.Connected or ConnectionStatus.SyncError)
         || string.IsNullOrEmpty(target.RefreshToken);
 
     private static ConnectIntent ParseIntent(string? mode) => mode?.ToLowerInvariant() switch
