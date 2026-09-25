@@ -389,10 +389,12 @@ public partial class EditCardiMemberPage : ContentPage
                 Phone = NullIfEmpty(PhoneEntry.Text),
                 EmergencyContactName = NullIfEmpty(EmergencyNameEntry.Text),
                 EmergencyContactPhone = NullIfEmpty(EmergencyPhoneEntry.Text),
-                // Echoed back exactly as loaded. The medical information is a ledger of lines
-                // kept on its own page, and this is only the server's summary of them: a changed
-                // value here would replace every line with one block of text.
+                // Not ours to touch. The medical information is a ledger of lines kept on its own
+                // page, and the summary this form loaded may be stale by the time it saves — so
+                // the server is told to leave the notes alone rather than handed an echo it would
+                // read as a whole-note edit. The echo stays for a server that predates the flag.
                 MedicalNotes = _member.MedicalNotes,
+                LeaveMedicalNotes = true,
                 AlertSensitivity = SelectedSensitivity(),
             };
             photoEdit.ApplyTo(request);

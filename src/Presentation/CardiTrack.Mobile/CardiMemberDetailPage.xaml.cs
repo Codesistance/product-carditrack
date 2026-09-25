@@ -1698,7 +1698,10 @@ public partial class CardiMemberDetailPage : ContentPage
                 Phone = editingEmergency ? _member.Phone : edit.Phone,
                 EmergencyContactName = editingEmergency ? edit.Name : _member.EmergencyContactName,
                 EmergencyContactPhone = editingEmergency ? edit.Phone : _member.EmergencyContactPhone,
+                // A contact edit: the notes are left alone, not echoed back as an edit — see
+                // EditCardiMemberPage.
                 MedicalNotes = _member.MedicalNotes,
+                LeaveMedicalNotes = true,
                 AlertSensitivity = _member.AlertSensitivity,
             };
 
