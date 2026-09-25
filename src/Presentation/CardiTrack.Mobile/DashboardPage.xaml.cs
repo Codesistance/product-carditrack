@@ -1297,11 +1297,16 @@ public partial class DashboardPage : ContentPage
             {
                 var open = await _api.GetNotificationsAsync(state: nameof(NotificationState.Open), owned: true);
                 var shown = summary.DashboardCards.Select(card => card.Id).ToHashSet();
+                // The list's total, not the summary's count, is how many are waiting: the summary
+                // counts only the top items it projects, and the list is one page of the inbox, so
+                // either can stop short of the real number. Safety items are in the total and not
+                // in this row.
                 RenderNudges(summary,
                 [
                     .. summary.DashboardCards,
                     .. open.Items.Where(n => n.Category != NotificationCategory.Safety && !shown.Contains(n.Id)),
-                ]);
+                ],
+                waiting: Math.Max(0, open.TotalCount - summary.SafetyBanners.Count));
             }
         }
         catch (ApiException)
@@ -1320,7 +1325,12 @@ public partial class DashboardPage : ContentPage
     private static int WaitingNudges(NotificationSummaryResponse summary) =>
         Math.Max(0, summary.OpenCount - summary.SafetyBanners.Count);
 
-    private void RenderNudges(NotificationSummaryResponse summary, IReadOnlyList<NotificationResponse> cards)
+    /// <param name="waiting">
+    /// How many items are open for this card in all, when known better than the summary knows it —
+    /// see <see cref="LoadNudgesAsync"/>. Defaults to the summary's own count.
+    /// </param>
+    private void RenderNudges(
+        NotificationSummaryResponse summary, IReadOnlyList<NotificationResponse> cards, int? waiting = null)
     {
         SafetyBannerList.Clear();
         NudgeList.Clear();
@@ -1353,13 +1363,13 @@ public partial class DashboardPage : ContentPage
 
         // How many are waiting, on the title, so a caregiver knows there is more than the one in
         // view before they swipe. Not on a lone item — "1" beside a single card is the card again.
-        var waiting = Math.Max(WaitingNudges(summary), cards.Count);
-        NudgeCountBadge.IsVisible = waiting > 1;
-        NudgeCountLabel.Text = waiting > 9 ? "9+" : waiting.ToString(CultureInfo.CurrentCulture);
-        SemanticProperties.SetDescription(NudgeCountBadge, $"{waiting} to complete");
+        var total = Math.Max(waiting ?? WaitingNudges(summary), cards.Count);
+        NudgeCountBadge.IsVisible = total > 1;
+        NudgeCountLabel.Text = total > 9 ? "9+" : total.ToString(CultureInfo.CurrentCulture);
+        SemanticProperties.SetDescription(NudgeCountBadge, $"{total} to complete");
 
         // The link is only worth offering when there is more behind it than the row can show.
-        CompleteThePictureLink.IsVisible = WaitingNudges(summary) > cards.Count;
+        CompleteThePictureLink.IsVisible = total > cards.Count;
     }
 
     /// <summary>

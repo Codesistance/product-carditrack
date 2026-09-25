@@ -23,7 +23,21 @@ namespace CardiTrack.Mobile.Services;
 public static class MemberPhotoCache
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
-    private static readonly ConcurrentDictionary<string, Task<string?>> InFlight = new();
+
+    /// <summary>
+    /// Lazy so only one download can start per photo: <c>GetOrAdd</c> may run its factory more than
+    /// once when two avatars ask at the same moment, and a factory that started the fetch itself
+    /// would have both racing into the same file. Only the stored Lazy's value is ever run.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, Lazy<Task<string?>>> InFlight = new();
+
+    /// <summary>
+    /// Moves on at every <see cref="Clear"/>. A download that started before a sign-out must not
+    /// land after it and leave the last account's photo on the phone, so the move into place
+    /// happens under <see cref="Gate"/> and only while the generation it started in still holds.
+    /// </summary>
+    private static int _generation;
+    private static readonly object Gate = new();
 
     private static string Root => Path.Combine(FileSystem.CacheDirectory, "member-photos");
 
@@ -39,13 +53,14 @@ public static class MemberPhotoCache
     /// Null when it could not be fetched — the avatar keeps its initials rather than failing.
     /// </summary>
     public static Task<string?> FetchAsync(Uri url, MemberPhotoCacheKey key) =>
-        InFlight.GetOrAdd(PathFor(key), _ => FetchCoreAsync(url, key));
+        InFlight.GetOrAdd(PathFor(key), _ => new Lazy<Task<string?>>(() => FetchCoreAsync(url, key))).Value;
 
     private static async Task<string?> FetchCoreAsync(Uri url, MemberPhotoCacheKey key)
     {
         var path = PathFor(key);
         var folder = Path.GetDirectoryName(path)!;
         var temp = path + ".part";
+        var generation = Volatile.Read(ref _generation);
         try
         {
             Directory.CreateDirectory(folder);
@@ -58,15 +73,26 @@ public static class MemberPhotoCache
                 await response.Content.CopyToAsync(file);
             }
 
-            // Written aside and moved into place, so a half-finished download is never read as
-            // the photo.
-            File.Move(temp, path, overwrite: true);
-
-            // The member has one photo: anything else in their folder is the one this replaced.
-            if (key.Folder != MemberPhotoCacheKey.SharedFolder)
+            lock (Gate)
             {
-                foreach (var stale in Directory.EnumerateFiles(folder).Where(f => f != path))
-                    TryDelete(stale);
+                // Signed out while this was downloading: the photo belongs to a session that has
+                // ended, so it is thrown away rather than kept for whoever signs in next.
+                if (generation != _generation)
+                {
+                    TryDelete(temp);
+                    return null;
+                }
+
+                // Written aside and moved into place, so a half-finished download is never read
+                // as the photo.
+                File.Move(temp, path, overwrite: true);
+
+                // The member has one photo: anything else in their folder is the one this replaced.
+                if (key.Folder != MemberPhotoCacheKey.SharedFolder)
+                {
+                    foreach (var stale in Directory.EnumerateFiles(folder).Where(f => f != path))
+                        TryDelete(stale);
+                }
             }
 
             return path;
@@ -87,8 +113,23 @@ public static class MemberPhotoCache
     /// <summary>Deletes every saved photo. Run at sign-out and at account deletion.</summary>
     public static void Clear()
     {
-        if (Directory.Exists(Root))
-            Directory.Delete(Root, recursive: true);
+        lock (Gate)
+        {
+            // First, so a download finishing while the folder is being deleted is discarded
+            // rather than moved into a folder it would recreate.
+            _generation++;
+            try
+            {
+                if (Directory.Exists(Root))
+                    Directory.Delete(Root, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Never the reason a sign-out stops. The generation has moved, so nothing from the
+                // old session is written from here on; what is left sits in the app's private cache
+                // directory, which the OS reclaims under pressure.
+            }
+        }
     }
 
     private static string PathFor(MemberPhotoCacheKey key) => Path.Combine(Root, key.Folder, key.FileName);
