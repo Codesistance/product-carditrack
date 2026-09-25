@@ -84,7 +84,12 @@ public class MemberChatStreamClientTests
     private sealed class DraftRecorder : IProgress<MemberChatMessageResponse>
     {
         public List<string> Replies { get; } = [];
-        public void Report(MemberChatMessageResponse value) => Replies.Add(value.Reply);
+        public MemberChatMessageResponse? Last { get; private set; }
+        public void Report(MemberChatMessageResponse value)
+        {
+            Replies.Add(value.Reply);
+            Last = value;
+        }
     }
 
     [Fact]
@@ -110,6 +115,7 @@ public class MemberChatStreamClientTests
 
         Assert.Equal(["Steady night."], drafts.Replies);
         Assert.Equal("No single night stood out.", answer.Reply);
+        Assert.NotSame(drafts.Last, answer);
     }
 
     [Fact]
@@ -129,6 +135,8 @@ public class MemberChatStreamClientTests
 
         Assert.Equal("Steady night.", answer.Reply);
         Assert.Equal(["Steady night."], drafts.Replies);
+        // The page tells a replaced draft by reference: an unreplaced one is the same instance.
+        Assert.Same(drafts.Last, answer);
     }
 
     [Fact]

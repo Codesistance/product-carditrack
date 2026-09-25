@@ -307,8 +307,10 @@ public interface ICardiTrackApiClient
     /// <see cref="SendMemberChatMessageAsync"/> as a stream: each stage of the pipeline is
     /// reported to <paramref name="onStep"/> as it starts, so the pending bubble can say what is
     /// actually happening. A reply the server goes on to check arrives first as a draft through
-    /// <paramref name="onDraft"/>, to show at once; the result is the reply as saved, which
-    /// differs from the draft only when the check replaced it. Fails with the same
+    /// <paramref name="onDraft"/>, to show at once; the result is the reply as saved. When the
+    /// server sent no <c>answer.updated</c>, the result is the very instance handed to
+    /// <paramref name="onDraft"/>, so a caller can tell a replaced draft by reference, whatever
+    /// part of it changed. Fails with the same
     /// <see cref="ApiException"/> statuses and messages as the plain send.
     /// </summary>
     Task<MemberChatMessageResponse> StreamMemberChatMessageAsync(

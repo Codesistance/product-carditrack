@@ -945,8 +945,10 @@ public partial class MemberChatPage : ContentView
             {
                 _turns.Add(ChatTurnItem.FromReply(response, _memberFirstName));
             }
-            else if (response.Reply != draft!.Reply)
+            else if (!ReferenceEquals(response, draft))
             {
+                // The client hands back the draft itself when nothing replaced it, so anything
+                // else is an answer.updated — new words, or the same words over new charts.
                 // In place, and labelled: the caregiver may already have read the first version,
                 // and a bubble that silently changed under them would read as a glitch.
                 var index = _turns.IndexOf(draftItem);
