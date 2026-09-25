@@ -951,8 +951,8 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         catch (Exception ex) when (IsEnrichmentFailure(ex))
         {
             // The stretch is enrichment: a failed worn check costs this reading, not the day.
-            // Type and status only — never the exception: EnsureSuccessAsync puts the provider's
-            // response body in its message, and that body can carry the wearer's health data.
+            // Type and status only — never the exception: a provider failure's message is not
+            // this log's to carry, and the heart-rate rollup is the wearer's health data.
             _logger.LogWarning(
                 "Heart-rate rollup for the worn check failed ({Failure}, status {StatusCode}); "
                 + "reporting no sedentary stretch for {Date}.",
