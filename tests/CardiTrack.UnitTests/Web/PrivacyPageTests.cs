@@ -65,6 +65,10 @@ public class PrivacyPageTests : BunitContext
         Assert.Contains("60–100 beats per minute", text);
         Assert.Contains("94%", text);
         Assert.Contains("can raise an alert from the first week", text);
+        // Days with a reading, as the rules count them — a member with three readings in the window can alert.
+        Assert.Contains("three of the last five days with a reading", text);
+        // The age-dependent sleep range is named as the exception to "the same thresholds for everyone".
+        Assert.Contains("Apart from the recommended sleep hours, which depend on the person's age", text);
         Assert.Contains("once for each stretch", text);
         Assert.DoesNotContain("not a population average", text);
     }

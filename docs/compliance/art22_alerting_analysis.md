@@ -69,7 +69,7 @@ moment push/SMS dispatch lands (a notification that wakes a family at 3am moves 
 > is now enabled and the boundary analysis in §2 was written against a system that no longer
 > exists. **Re-run drafted 2026-09-23 — see §2.1.** SMS remains absent.
 
-### 2.1 Re-run — 2026-09-23, against the as-built system
+### 2.1 Re-run — 2026-09-23, against the as-built system (item 5 added 2026-09-25)
 
 Drafted alongside the [AI Act classification](ai_act_classification.md), which reuses this
 section's facts under a different test. Five things changed since §2 was written against the
