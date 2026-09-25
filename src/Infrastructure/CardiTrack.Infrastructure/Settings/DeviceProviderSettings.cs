@@ -104,7 +104,8 @@ public class DeviceProviderSettings
     /// re-pulled again. A re-pull re-reads up to 90 days at up to 25 requests a day (the snapshot
     /// and the five granular series, one page each) — up to 2,250 in all, more where series page —
     /// so this is the guard on a caregiver spending the wearer's per-user quota by tapping the
-    /// action twice in an afternoon. 0 disables the cooldown. Failed and cancelled re-pulls do not start one.
+    /// action twice in an afternoon. 0 disables the cooldown. Failed and cancelled re-pulls do not
+    /// start one.
     /// </summary>
     public int HistoryRepullCooldownHours { get; set; } = 48;
 
