@@ -91,19 +91,6 @@
                            TextColor="{StaticResource White}"
                            Opacity="0.85"
                            LineBreakMode="TailTruncation"/>
-                    <!-- EU AI Act Art. 50(1): a caregiver talking to this sheet is interacting with
-                         an AI system and must be told so (#1244). Fixed copy in the page, never
-                         model output, and in the header so it stays on screen in every mode —
-                         thread, history list and a reopened conversation alike. Worded as the
-                         PDF report and transcript export already put it. -->
-                    <Label x:Name="AiDisclosureLabel"
-                           Text="Answers are written by CardiTrack's AI assistant, not a clinician."
-                           FontFamily="Quicksand"
-                           FontSize="11"
-                           TextColor="{StaticResource White}"
-                           Opacity="0.85"
-                           LineBreakMode="WordWrap"
-                           MaxLines="2"/>
                 </VerticalStackLayout>
 
                 <!-- Past conversations. A toggle as much as a door: from the thread it opens the
@@ -171,10 +158,10 @@
                          and an EmptyView is torn down the instant the first turn lands. -->
                     <CollectionView.EmptyView>
                         <VerticalStackLayout Padding="20,60,20,20" Spacing="8">
-                            <Label Text="Ask anything about their readings"
+                            <Label Text="I'm here to help"
                                    Style="{StaticResource Heading3}"
                                    HorizontalTextAlignment="Center"/>
-                            <Label Text="Recent activity, alerts, and how things compare to their usual pattern."
+                            <Label Text="Ask how they've been sleeping and moving, what's behind an alert, or for a look at their journal. I can switch alerts on or off and set alarms for you, too."
                                    Style="{StaticResource Body2}"
                                    TextColor="{StaticResource BodyText}"
                                    HorizontalTextAlignment="Center"/>
@@ -444,7 +431,9 @@
 
             <!-- The reply-in-progress bubble: the bot mark breathing while the model chain works,
                  beside the step the server reports as each one starts (streamed, see
-                 MemberChatStep). A pinned row below the
+                 MemberChatStep). Once the route is known, a step bar and "Step n of N" sit under
+                 it; once a step has been on screen for a few seconds, lines written for this
+                 question rotate beneath the step (see SendAsync). A pinned row below the
                  conversation rather than a CollectionView item, because its text changes as
                  the steps arrive and its animation must run continuously — an immutable ChatTurnItem
                  would have to be swapped out per tick, recreating the bubble and restarting the
@@ -459,15 +448,37 @@
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="20"/>
                     </Border.StrokeShape>
-                    <HorizontalStackLayout Spacing="6">
-                        <controls:PendingBotIndicator VerticalOptions="Center"/>
+                    <Grid ColumnDefinitions="Auto,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="6">
+                        <controls:PendingBotIndicator Grid.RowSpan="3" VerticalOptions="Center"/>
                         <Label x:Name="PendingTextLabel"
+                               Grid.Column="1"
                                Style="{StaticResource Body2}"
                                TextColor="{StaticResource BodyText}"
                                VerticalOptions="Center"
                                MaximumWidthRequest="210"
                                LineBreakMode="WordWrap"/>
-                    </HorizontalStackLayout>
+                        <Label x:Name="PendingDetailLabel"
+                               Grid.Column="1" Grid.Row="1"
+                               Style="{StaticResource Caption}"
+                               TextColor="{StaticResource MutedText}"
+                               FontAttributes="Italic"
+                               MaximumWidthRequest="210"
+                               LineBreakMode="WordWrap"
+                               IsVisible="False"/>
+                        <HorizontalStackLayout x:Name="PendingProgressRow"
+                                               Grid.Column="1" Grid.Row="2"
+                                               Spacing="8" Margin="0,4,0,2"
+                                               IsVisible="False">
+                            <!-- One segment per step, filled up to the current one; rebuilt when the
+                                 total changes (a second look or a retry adds steps). -->
+                            <Grid x:Name="PendingStepBar" WidthRequest="120" HeightRequest="4"
+                                  ColumnSpacing="3" VerticalOptions="Center"/>
+                            <Label x:Name="PendingStepLabel"
+                                   Style="{StaticResource Caption}"
+                                   TextColor="{StaticResource MutedText}"
+                                   VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+                    </Grid>
                 </Border>
             </Grid>
 
