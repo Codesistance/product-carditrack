@@ -676,7 +676,7 @@ public class TrendInterpretationService
         // No name, nothing to redact against, and NamePlaceholder.Redact would hand the read
         // straight back — see CanRedactAgainst. Nothing stored, like every other refusal on this
         // path: the previous narrative stands and ages out of InsightServability on its own.
-        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        if (!NamePlaceholder.CanRedactAgainst(member.FullName))
         {
             _logger.LogWarning(
                 "Trend rewrite for CardiMember {CardiMemberId} was not attempted: no name on file "
@@ -691,10 +691,10 @@ public class TrendInterpretationService
         // findings are generated prose within the 2,000-character insight budget, and the note
         // cap would rewrite a quarter's narrative as if the omitted findings did not exist.
         var flattenedRead = MedicalPromptBlocks.FlattenWhole(read.Summary);
-        var redactedRead = NamePlaceholder.Redact(flattenedRead, member.Name) ?? flattenedRead;
+        var redactedRead = NamePlaceholder.Redact(flattenedRead, member.FullName) ?? flattenedRead;
         var redactedFindings = read.KeyFindings
             .Select(finding => MedicalPromptBlocks.FlattenWhole(finding))
-            .Select(finding => NamePlaceholder.Redact(finding, member.Name) ?? finding)
+            .Select(finding => NamePlaceholder.Redact(finding, member.FullName) ?? finding)
             .ToList();
 
         TrendAiResponse reply;

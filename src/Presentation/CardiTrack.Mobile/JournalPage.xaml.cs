@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Export;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
@@ -292,7 +293,7 @@ public partial class JournalPage : ContentPage
     private async void OnMemberChipTapped(object? sender, TappedEventArgs e)
     {
         var options = _members
-            .Select(m => NameFormatting.FirstName(m.Name) ?? "Unnamed")
+            .Select(m => m.DisplayFirstName() ?? "Unnamed")
             .ToArray();
 
         var choice = await _popups.ChooseAsync("Whose journal", "Cancel", options);
@@ -304,7 +305,7 @@ public partial class JournalPage : ContentPage
             return;
 
         _memberId = _members[index].Id;
-        _memberFirstName = NameFormatting.FirstName(_members[index].Name);
+        _memberFirstName = _members[index].DisplayFirstName();
         ChatBot.MemberId = _memberId;
         ChatBot.MemberFirstName = _memberFirstName;
         MemberChipLabel.Text = choice;
@@ -358,7 +359,7 @@ public partial class JournalPage : ContentPage
                 if (_members.FirstOrDefault(m => m.Id == pending) is { } chosen)
                 {
                     _memberId = chosen.Id;
-                    _memberFirstName = NameFormatting.FirstName(chosen.Name);
+                    _memberFirstName = chosen.DisplayFirstName();
                     ChatBot.MemberId = _memberId;
                     ChatBot.MemberFirstName = _memberFirstName;
                     MemberChipLabel.Text = _memberFirstName ?? "Member";
@@ -385,7 +386,7 @@ public partial class JournalPage : ContentPage
                 }
 
                 _memberId = member.Id;
-                _memberFirstName = NameFormatting.FirstName(member.Name);
+                _memberFirstName = member.DisplayFirstName();
                 MemberChipLabel.Text = _memberFirstName ?? "Member";
                 MemberChip.IsVisible = _members.Count > 1;
             }

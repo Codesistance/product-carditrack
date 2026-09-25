@@ -11,7 +11,8 @@ namespace CardiTrack.Application.DTOs.Responses;
 /// </param>
 /// <param name="MemberCount">How many people are in the family.</param>
 /// <param name="WatchedMemberNames">
-/// The CardiMembers in this family the caller can actually see, by name. Not every member of the
+/// The CardiMembers in this family the caller can actually see, by first name — the name the app
+/// labels a member by. Not every member of the
 /// family — only what this caller was granted, because the list is what they are able to open.
 /// </param>
 /// <param name="FamilyId">

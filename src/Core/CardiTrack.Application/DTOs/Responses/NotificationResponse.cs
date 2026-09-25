@@ -28,6 +28,9 @@ public class NotificationResponse
     public Guid? CardiMemberId { get; set; }
     public string? CardiMemberName { get; set; }
 
+    /// <summary>The member's first name — what the app labels them by. <see cref="CardiMemberName"/> stays the full name.</summary>
+    public string? CardiMemberFirstName { get; set; }
+
     public string ActionDeepLink { get; set; } = string.Empty;
 
     /// <summary>False for Safety rules — the client must not offer "don't ask again" for those.</summary>
@@ -80,6 +83,9 @@ public class NotificationMuteResponse
     public NotificationCategory? Category { get; set; }
     public Guid? CardiMemberId { get; set; }
     public string? CardiMemberName { get; set; }
+
+    /// <summary>The member's first name — what the app labels them by. <see cref="CardiMemberName"/> stays the full name.</summary>
+    public string? CardiMemberFirstName { get; set; }
     public DateTime MutedDate { get; set; }
     public DateTime? MutedUntil { get; set; }
 }

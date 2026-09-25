@@ -33,7 +33,7 @@ internal readonly record struct MemberVoice(Gender Gender, string? FirstName)
     /// <see cref="IsUnresolvedIn"/> to catch.
     /// </summary>
     internal static MemberVoice For(CardiMember? member) =>
-        new(member?.Gender ?? Gender.PreferNotToSay, NamePlaceholder.FirstName(member?.Name));
+        new(member?.Gender ?? Gender.PreferNotToSay, NamePlaceholder.FirstNameOf(member));
 
     /// <summary>
     /// Puts this member's pronouns and name back into <paramref name="text"/>, pronouns first.

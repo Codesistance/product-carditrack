@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using CardiTrack.Application.Reports;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.Reports;
@@ -44,7 +45,8 @@ public class ReportRendererTests
                     new CardiMember
                     {
                         Id = MemberId,
-                        Name = memberName,
+                        FirstName = PersonName.Split(memberName).FirstName,
+                        LastName = PersonName.Split(memberName).LastName,
                         DateOfBirth = new DateOnly(1948, 4, 12),
                         Gender = Gender.Female,
                         MedicalNotes = "Takes warfarin; history of AF"
@@ -693,7 +695,8 @@ public class ReportRendererTests
                     new CardiMember
                     {
                         Id = MemberId,
-                        Name = "Margaret Doe",
+                        FirstName = "Margaret",
+                        LastName = "Doe",
                         DateOfBirth = new DateOnly(1948, 4, 12),
                         Gender = Gender.Female
                     },
@@ -801,7 +804,8 @@ public class ReportRendererTests
                     new CardiMember
                     {
                         Id = MemberId,
-                        Name = "Margaret Doe",
+                        FirstName = "Margaret",
+                        LastName = "Doe",
                         DateOfBirth = new DateOnly(1948, 4, 12),
                         Gender = Gender.Female
                     },

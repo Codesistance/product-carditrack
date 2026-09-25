@@ -20,7 +20,9 @@ Creates a CardiMember in the caller's organization (organization comes from the 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | **Yes** | 2–100 chars |
+| `firstName` | string | **Yes** | ≤ 100 chars. What the family calls them — the name the app greets and labels them by |
+| `lastName` | string | No | ≤ 100 chars. Omit for someone known by a single name; blank is stored as none |
+| `name` | string | No | **Legacy.** Single full name, from app builds that predate `firstName`/`lastName`. Ignored whenever `firstName` is sent; otherwise split at the first whitespace — first word → `firstName`, the rest → `lastName` — and held to the same rules. Current app builds send it too, restating the full name, so they keep working against an API from before the split |
 | `dateOfBirth` | date (`DateOnly`) | **Yes** | Member must validate as 18–120 years old |
 | `gender` | integer enum | **Yes** | `[Required]` — sex is captured at onboarding (M1-04), a deliberate divergence from the Figma comps, because the reference ranges the prompt layer reads depend on it |
 | `email` | string | No | Validated for email format |
@@ -47,6 +49,8 @@ Returns **200** with a plain list of the organization's CardiMembers — **no so
 ```json
 {
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "firstName": "Margaret",
+  "lastName": "Doe",
   "name": "Margaret Doe",
   "dateOfBirth": "1945-06-15",
   "age": 80,
@@ -62,6 +66,7 @@ Returns **200** with a plain list of the organization's CardiMembers — **no so
 ```
 
 - `id` is a **raw GUID** — no `cm_` prefix.
+- **Names.** `firstName` (always present) is what the app greets and labels the member by — and the only name it shows. `lastName` is `null` for someone known by a single name. `name` is the two joined with a space: the full name, for the places one is genuinely needed (reports and exports, the FHIR `Patient`, the alert detail's emergency context) and for app builds that predate the split, which read only `name`. It is derived, never stored, so it cannot drift from its parts. Members created before the split were backfilled by the `SplitCardiMemberName` migration — first word → `firstName`, the rest → `lastName` — so a multi-word first name ("Mary Ann Smith") comes out as `Mary` / `Ann Smith` until a caregiver corrects it on the edit form. The same pair (`cardiMemberFirstName` beside the full `cardiMemberName`) rides on alert list and detail items, notifications and notification mutes; the dashboard carries `firstName`/`lastName` beside `name`.
 - `gender` and `relationship` are **integer enums** (`Gender`: Male=1, Female=2, PreferNotToSay=4; `RelationshipType`: Self=1, Parent=2, Spouse=3, Grandparent=4, Sibling=5, Child=6, Other=99). **3 is retired** — it was `Other`, and is now rejected by both validators; the members holding it were migrated to `PreferNotToSay` by the `RetireOtherGender` migration. The mobile form offers only Male and Female; `PreferNotToSay` remains readable because it is the stored value for every member created before M1-04 asked.
 - The **list** response deliberately carries no `medicalNotes` or emergency contact. Those are PHI and are served only by the single-member GET below, so a "which members do I have?" call never broadcasts them.
 - `photoUrl` is a **short-lived signed URL** (see the detail response notes below), or `null` when no photo is set.
@@ -73,6 +78,8 @@ Full detail for one CardiMember — the payload behind mobile M1-13. Requires **
 ```json
 {
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "firstName": "Margaret",
+  "lastName": "Doe",
   "name": "Margaret Doe",
   "dateOfBirth": "1945-06-15",
   "age": 80,
@@ -113,7 +120,7 @@ Full detail for one CardiMember — the payload behind mobile M1-13. Requires **
 
 Saves the M1-14 edit form. Requires **manage** access (as above, plus `IsPrimaryCaregiver`). A **full replacement**, not a patch: omitting a field clears it. Returns the updated detail object, **400** with field errors, or **404**.
 
-Body: `name`, `dateOfBirth`, `gender`, `relationshipType`, `email`, `phone`, `emergencyContactName`, `emergencyContactPhone`, `medicalNotes`, `alertSensitivity`, `photoBase64`, `removePhoto`. `relationshipType` updates the caller's own link only, so it cannot rewrite what other caregivers call this person.
+Body: `firstName`, `lastName`, `dateOfBirth`, `gender`, `relationshipType`, `email`, `phone`, `emergencyContactName`, `emergencyContactPhone`, `medicalNotes`, `alertSensitivity`, `photoBase64`, `removePhoto`. `relationshipType` updates the caller's own link only, so it cannot rewrite what other caregivers call this person.
 
 `gender` is one of **two exceptions to full replacement**: it is nullable, and omitting it leaves the stored value alone rather than clearing it. This is what lets a caller that does not render the sex picker — an older build, or any edit to a phone number — save the form without silently discarding a stated sex and the reference range the prompt layer reads from it. Sending an explicit `0` is a client bug and is rejected; to say "not recorded", send `4`.
 
@@ -161,7 +168,7 @@ List all CardiMembers associated with the authenticated user's account.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `sort` | string | `"name"` or `"status"` (default: `"status"`) |
+| `sort` | string | `"name"` (first name, then last) or `"status"` (default: `"status"`) |
 | `filter` | string | `"alerts"` — show only members with active alerts |
 
 ### Response `200 OK`
@@ -171,6 +178,8 @@ List all CardiMembers associated with the authenticated user's account.
   "cardimembers": [
     {
       "id": "cm_01J8K2...",
+      "firstName": "Margaret",
+      "lastName": "Doe",
       "name": "Margaret Doe",
       "dateOfBirth": "1945-06-15",
       "relationship": "Mother",
@@ -197,7 +206,8 @@ Create a new CardiMember. Uses progressive disclosure — only required fields n
 
 ```json
 {
-  "name": "Margaret Doe",
+  "firstName": "Margaret",
+  "lastName": "Doe",
   "dateOfBirth": "1945-06-15",
   "relationship": "Mother",
   "photoBase64": "data:image/jpeg;base64,/9j/4AAQ...",
@@ -214,7 +224,8 @@ Create a new CardiMember. Uses progressive disclosure — only required fields n
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | Yes | Full name |
+| `firstName` | string | Yes | What the family calls them |
+| `lastName` | string | No | Omitted for a single-name member |
 | `dateOfBirth` | string (ISO 8601) | Yes | Date of birth |
 | `relationship` | string | Yes | Caregiver's relationship to member |
 | `photoBase64` | string | No | Profile photo (JPEG/PNG, max 5MB) |
@@ -226,6 +237,8 @@ Create a new CardiMember. Uses progressive disclosure — only required fields n
 ```json
 {
   "id": "cm_01J8K2...",
+  "firstName": "Margaret",
+  "lastName": "Doe",
   "name": "Margaret Doe",
   "dateOfBirth": "1945-06-15",
   "relationship": "Mother",
@@ -268,6 +281,8 @@ Get full details for a single CardiMember.
 ```json
 {
   "id": "cm_01J8K2...",
+  "firstName": "Margaret",
+  "lastName": "Doe",
   "name": "Margaret Doe",
   "dateOfBirth": "1945-06-15",
   "relationship": "Mother",
@@ -311,7 +326,7 @@ Update CardiMember details.
 
 ```json
 {
-  "name": "Margaret A. Doe",
+  "firstName": "Maggie",
   "medicalNotes": "Type 2 diabetes, takes metformin. Now also on lisinopril.",
   "photoBase64": "data:image/jpeg;base64,/9j/4AAQ..."
 }

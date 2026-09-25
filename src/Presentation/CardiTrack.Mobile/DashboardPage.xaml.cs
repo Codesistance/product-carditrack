@@ -6,6 +6,7 @@ using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Diagnostics;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
@@ -626,18 +627,18 @@ public partial class DashboardPage : ContentPage
     private void Apply(DashboardResponse data)
     {
         _memberId = data.CardiMemberId;
-        _memberName = data.Name;
+        _memberName = data.DisplayFirstName();
         ChatBot.MemberId = data.CardiMemberId;
-        ChatBot.MemberFirstName = NameFormatting.FirstName(data.Name);
+        ChatBot.MemberFirstName = data.DisplayFirstName();
         HeroCard.Apply(data);
 
         Header.SetUnreadCount(data.UnreadAlertCount);
 
-        var firstName = NameFormatting.FirstName(data.Name);
+        var firstName = data.DisplayFirstName();
         QuickActions.Apply(
             new QuickActionTarget(
                 data.CardiMemberId,
-                data.Name,
+                firstName,
                 data.Phone,
                 data.EmergencyContactPhone,
                 data.EmergencyContactName),
@@ -924,7 +925,7 @@ public partial class DashboardPage : ContentPage
             return;
         }
 
-        var name = NameFormatting.FirstName(_memberName ?? string.Empty);
+        var name = _memberName ?? string.Empty;
         var route = $"{AppShell.AlertsRoute}?memberId={_memberId}";
         if (!string.IsNullOrWhiteSpace(name))
             route += $"&memberName={Uri.EscapeDataString(name)}";
@@ -968,7 +969,7 @@ public partial class DashboardPage : ContentPage
         }
 
         var result = await _popups.ShowPendingQuestionAsync(
-            verified, NameFormatting.FirstName(_lastData.Name));
+            verified, _lastData.DisplayFirstName());
 
         switch (result.Outcome)
         {

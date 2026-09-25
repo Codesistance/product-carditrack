@@ -61,7 +61,8 @@ public class AlertServiceTests
         SetupMember(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             EmergencyContactName = "Lorri Warf",
             EmergencyContactPhone = "+441234567891",
             IsActive = true,
@@ -212,8 +213,8 @@ public class AlertServiceTests
             MakeAlert(),
         ]);
         SetupMember(
-            new CardiMember { Id = _memberId, Name = "Margaret Doe", IsActive = true },
-            new CardiMember { Id = second, Name = "Albert Doe", IsActive = true });
+            new CardiMember { Id = _memberId, FirstName = "Margaret", LastName = "Doe", IsActive = true },
+            new CardiMember { Id = second, FirstName = "Albert", LastName = "Doe", IsActive = true });
 
         var result = await CreateSut().GetAlertsAsync(_userId);
 
@@ -524,7 +525,7 @@ public class AlertServiceTests
         var alert = MakeAlert(type: AlertType.Inactivity);
         alert.MetricValues = """{"rule":"activity_decline","steps":2500,"baselineAvgSteps":5000}""";
         _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
-        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, FirstName = "Margaret", LastName = "Doe" });
         _logs.GetByCardiMemberAndDateRangeAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
 
@@ -558,7 +559,7 @@ public class AlertServiceTests
         var alert = MakeAlert(type: AlertType.Inactivity);
         alert.MetricValues = """{"rule":"activity_decline","steps":2500,"baselineAvgSteps":5000}""";
         _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
-        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, FirstName = "Margaret", LastName = "Doe" });
         _logs.GetByCardiMemberAndDateRangeAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
 
@@ -583,7 +584,7 @@ public class AlertServiceTests
         var alert = MakeAlert(type: AlertType.Sleep);
         alert.MetricValues = """{"rule":"irregular_sleep","sleepMinutes":240,"baselineAvgSleepMinutes":420}""";
         _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
-        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, FirstName = "Margaret", LastName = "Doe" });
         _logs.GetByCardiMemberAndDateRangeAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
 
@@ -602,7 +603,7 @@ public class AlertServiceTests
         var alert = MakeAlert(type: AlertType.Inactivity);
         alert.MetricValues = """{"rule":"device_silence","lastDataUtc":"2026-08-14T08:00:00Z"}""";
         _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
-        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, FirstName = "Margaret", LastName = "Doe" });
 
         var detail = await CreateSut().GetByIdAsync(_userId, alert.Id);
 
@@ -622,7 +623,7 @@ public class AlertServiceTests
         alert.MetricValues =
             """{"rule":"realtime_hr","hrTrendLast":90,"windowStartUtc":"2026-08-14T10:00:00Z","windowEndUtc":"2026-08-14T11:00:00Z"}""";
         _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
-        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, FirstName = "Margaret", LastName = "Doe" });
         _granular.GetWindowAsync(_memberId, start, start.AddHours(1), Arg.Any<CancellationToken>())
             .Returns(new GranularWindow
             {

@@ -380,7 +380,8 @@ public class CaregiverInviteTests : IAsyncLifetime
         var member = new CardiMember
         {
             OrganizationId = organization.Id,
-            Name = "Margaret Okafor",
+            FirstName = "Margaret",
+            LastName = "Okafor",
             DateOfBirth = new DateOnly(1943, 4, 2),
             IsActive = true,
         };

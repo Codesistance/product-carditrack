@@ -285,7 +285,8 @@ public class AlertAnswerTests : IAsyncLifetime
         {
             Id = _memberId,
             OrganizationId = _organizationId,
-            Name = "Margaret Okafor",
+            FirstName = "Margaret",
+            LastName = "Okafor",
             DateOfBirth = new DateOnly(1948, 3, 2),
             IsActive = true,
         });

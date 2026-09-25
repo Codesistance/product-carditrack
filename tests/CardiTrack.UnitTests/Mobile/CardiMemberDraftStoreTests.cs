@@ -14,7 +14,8 @@ public class CardiMemberDraftStoreTests
 
     private static CardiMemberDraft Filled() => new()
     {
-        Name = "Margaret",
+        FirstName = "Margaret",
+        LastName = "Doe",
         DateOfBirth = new DateTime(1948, 3, 2),
         RelationshipIndex = 0,
         SexIndex = 1,
@@ -40,7 +41,8 @@ public class CardiMemberDraftStoreTests
         var restored = await sut.LoadAsync();
 
         Assert.NotNull(restored);
-        Assert.Equal("Margaret", restored!.Name);
+        Assert.Equal("Margaret", restored!.FirstName);
+        Assert.Equal("Doe", restored.LastName);
         Assert.Equal(new DateTime(1948, 3, 2), restored.DateOfBirth);
         Assert.Equal(0, restored.RelationshipIndex);
         Assert.Equal(1, restored.SexIndex);
@@ -116,7 +118,7 @@ public class CardiMemberDraftStoreTests
 
         Assert.NotNull(restored);
         Assert.Null(restored!.PhotoPath);
-        Assert.Equal("Margaret", restored.Name); // the rest of the draft survives
+        Assert.Equal("Margaret", restored.FirstName); // the rest of the draft survives
     }
 
     [Fact]
@@ -247,6 +249,8 @@ public class CardiMemberDraftStoreTests
     }
 
     [Theory]
+    [InlineData(nameof(CardiMemberDraft.FirstName))]
+    [InlineData(nameof(CardiMemberDraft.LastName))]
     [InlineData(nameof(CardiMemberDraft.Name))]
     [InlineData(nameof(CardiMemberDraft.DateOfBirth))]
     [InlineData(nameof(CardiMemberDraft.RelationshipIndex))]
@@ -260,6 +264,8 @@ public class CardiMemberDraftStoreTests
         var draft = new CardiMemberDraft();
         switch (field)
         {
+            case nameof(CardiMemberDraft.FirstName): draft.FirstName = "Margaret"; break;
+            case nameof(CardiMemberDraft.LastName): draft.LastName = "Doe"; break;
             case nameof(CardiMemberDraft.Name): draft.Name = "Margaret"; break;
             case nameof(CardiMemberDraft.DateOfBirth): draft.DateOfBirth = new DateTime(1948, 3, 2); break;
             case nameof(CardiMemberDraft.RelationshipIndex): draft.RelationshipIndex = 0; break;
@@ -278,7 +284,7 @@ public class CardiMemberDraftStoreTests
     {
         // -1 is "no relationship picked"; whitespace is not input.
         Assert.False(new CardiMemberDraft().HasContent);
-        Assert.False(new CardiMemberDraft { DetailsExpanded = true, Name = "   " }.HasContent);
+        Assert.False(new CardiMemberDraft { DetailsExpanded = true, FirstName = "   ", LastName = " " }.HasContent);
     }
 
     private sealed class FakeSecureStore : ISecureKeyValueStore
@@ -351,4 +357,28 @@ public class CardiMemberDraftStoreTests
 
         public override DateTimeOffset GetUtcNow() => _now;
     }
+
+    [Fact]
+    public void RestoredNames_ReturnsTheTwoFieldsAsTyped()
+    {
+        var draft = new CardiMemberDraft { FirstName = "Mary Ann", LastName = "Smith", Name = "ignored" };
+
+        Assert.Equal(("Mary Ann", "Smith"), draft.RestoredNames());
+    }
+
+    /// <summary>
+    /// A draft saved by a build with one name field must not lose what was typed when the app
+    /// updates mid-onboarding: it comes back split the way the server splits it.
+    /// </summary>
+    [Fact]
+    public void RestoredNames_SplitsADraftSavedBeforeTheFormHadTwoNameFields()
+    {
+        var draft = new CardiMemberDraft { Name = "Mary Ann Smith" };
+
+        Assert.Equal(("Mary", "Ann Smith"), draft.RestoredNames());
+    }
+
+    [Fact]
+    public void RestoredNames_IsEmptyForADraftWithNoName() =>
+        Assert.Equal(((string?)null, (string?)null), new CardiMemberDraft().RestoredNames());
 }

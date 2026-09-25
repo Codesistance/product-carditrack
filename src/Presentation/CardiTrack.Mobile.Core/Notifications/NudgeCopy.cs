@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Members;
 
 namespace CardiTrack.Mobile.Core.Notifications;
 
@@ -168,7 +169,7 @@ public static class NudgeCopy
     }
 
     /// <summary>
-    /// Fills <c>{name}</c> from the response's separately-resolved member name, and every other
+    /// Fills <c>{name}</c> with the member's first name — resolved separately, see remarks — and every other
     /// placeholder from the stored template data.
     /// </summary>
     /// <remarks>
@@ -178,7 +179,7 @@ public static class NudgeCopy
     /// </remarks>
     private static string Substitute(string template, NotificationResponse n)
     {
-        var result = template.Replace("{name}", n.CardiMemberName ?? "your family member",
+        var result = template.Replace("{name}", n.MemberFirstName() ?? "your family member",
             StringComparison.Ordinal);
 
         if (!result.Contains('{') || string.IsNullOrWhiteSpace(n.TemplateData))

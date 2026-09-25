@@ -165,9 +165,10 @@ public class OnboardingController : BaseApiController
             return Error($"Idempotency-Key must be {MaxIdempotencyKeyLength} characters or fewer.", 400);
         }
 
+        // No name in the log line: a member's name is an identifier, and nothing about diagnosing
+        // a failed create needs it.
         Logger.LogInformation(
-            "Creating CardiMember {Name} for organization {OrgId}",
-            request.Name,
+            "Creating CardiMember for organization {OrgId}",
             organizationId);
 
         CardiMemberResponse response;
@@ -200,7 +201,7 @@ public class OnboardingController : BaseApiController
 
         HttpContext.Items[AuditHealthDataAccessAttribute.CardiMemberIdItemKey] = response.Id;
 
-        return Created(response, $"{response.Name} has been added to your care circle!");
+        return Created(response, $"{response.FirstName} has been added to your care circle!");
     }
 
     /// <summary>

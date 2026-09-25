@@ -166,7 +166,8 @@ public class NotificationService : INotificationService
                 RuleCode = m.RuleCode,
                 Category = m.Category,
                 CardiMemberId = m.CardiMemberId,
-                CardiMemberName = Lookup(names, m.CardiMemberId),
+                CardiMemberName = Lookup(names, m.CardiMemberId)?.FullName,
+                CardiMemberFirstName = Lookup(names, m.CardiMemberId)?.FirstName,
                 MutedDate = m.MutedDate,
                 MutedUntil = m.MutedUntil
             })
@@ -242,7 +243,8 @@ public class NotificationService : INotificationService
                     BenefitKey = r.BenefitKey,
                     TemplateData = r.TemplateData,
                     CardiMemberId = r.CardiMemberId,
-                    CardiMemberName = Lookup(names, r.CardiMemberId),
+                    CardiMemberName = Lookup(names, r.CardiMemberId)?.FullName,
+                    CardiMemberFirstName = Lookup(names, r.CardiMemberId)?.FirstName,
                     ActionDeepLink = r.ActionDeepLink,
                     CanMute = rule?.Spec.CanMute ?? true,
                     MaxSnoozeHours = (int)(rule?.Spec.MaxSnooze ?? TimeSpan.FromDays(30)).TotalHours,
@@ -255,16 +257,16 @@ public class NotificationService : INotificationService
         ];
     }
 
-    private async Task<Dictionary<Guid, string>> ResolveNamesAsync(IEnumerable<Guid?> memberIds)
+    private async Task<Dictionary<Guid, CardiMember>> ResolveNamesAsync(IEnumerable<Guid?> memberIds)
     {
         var ids = memberIds.Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
         if (ids.Count == 0)
             return [];
 
         var members = await _unitOfWork.CardiMembers.FindAsync(m => ids.Contains(m.Id));
-        return members.ToDictionary(m => m.Id, m => m.Name);
+        return members.ToDictionary(m => m.Id);
     }
 
-    private static string? Lookup(Dictionary<Guid, string> names, Guid? id) =>
-        id.HasValue && names.TryGetValue(id.Value, out var name) ? name : null;
+    private static CardiMember? Lookup(Dictionary<Guid, CardiMember> members, Guid? id) =>
+        id.HasValue && members.TryGetValue(id.Value, out var member) ? member : null;
 }

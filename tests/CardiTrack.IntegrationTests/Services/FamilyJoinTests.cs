@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
@@ -388,7 +389,8 @@ public class FamilyJoinTests : IAsyncLifetime
     private static CardiMember NewMember(Guid organizationId, string name) => new()
     {
         OrganizationId = organizationId,
-        Name = name,
+        FirstName = PersonName.Split(name).FirstName,
+        LastName = PersonName.Split(name).LastName,
         DateOfBirth = new DateOnly(1943, 4, 2),
         IsActive = true,
     };

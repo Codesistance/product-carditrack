@@ -40,7 +40,8 @@ public class ManualDeviceSyncServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             IsActive = true,
         });
     }

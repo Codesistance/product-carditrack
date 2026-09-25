@@ -90,7 +90,7 @@ public class CardiMembersController : BaseApiController
         try
         {
             var updated = await _cardiMembers.UpdateAsync(UserContext.UserId, cardiMemberId, request, ct);
-            return Success(updated, $"{updated.Name}'s details are saved.");
+            return Success(updated, $"{updated.FirstName}'s details are saved.");
         }
         catch (KeyNotFoundException ex)
         {

@@ -52,7 +52,8 @@ public class MemberChatAlertSettingsRungTests
         _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Moses Doe",
+            FirstName = "Moses",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 3, 15),
             IsActive = true,
         });

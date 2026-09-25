@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
@@ -221,7 +222,7 @@ public partial class MetricTrendPage : ContentPage
             return;
         }
 
-        var firstName = NameFormatting.FirstName(member.Name);
+        var firstName = member.DisplayFirstName();
         ChatBot.MemberId = _route.Id;
         ChatBot.MemberFirstName = firstName;
         var reading = entry.Select(metrics);

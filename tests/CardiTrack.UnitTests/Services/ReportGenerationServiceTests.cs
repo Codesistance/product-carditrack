@@ -7,6 +7,7 @@ using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Reports;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
@@ -51,7 +52,7 @@ public class ReportGenerationServiceTests
         _unitOfWork.Reports.Returns(_reports);
 
         // Defaults: known member, no logs, no alerts, AI returns a fixed narrative.
-        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, FirstName = "Margaret", LastName = "Doe" });
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
         _alerts.GetByCardiMemberAsync(_memberId, false).Returns([]);
@@ -399,7 +400,7 @@ public class ReportGenerationServiceTests
     {
         // The filename reaches a Content-Disposition header, so a name carrying a quote or a path
         // separator must not carry through to it.
-        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = memberName });
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, FirstName = PersonName.Split(memberName).FirstName, LastName = PersonName.Split(memberName).LastName });
         var sut = CreateSut();
 
         var queued = await sut.GenerateAsync(_userId, BuildRequest());
@@ -1335,7 +1336,7 @@ public class ReportGenerationServiceTests
 
     private void SetUpMember(Guid id, string name)
     {
-        _members.GetByIdAsync(id).Returns(new CardiMember { Id = id, Name = name });
+        _members.GetByIdAsync(id).Returns(new CardiMember { Id = id, FirstName = PersonName.Split(name).FirstName, LastName = PersonName.Split(name).LastName });
         _activityLogs.GetByCardiMemberAndDateRangeAsync(id, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
         _alerts.GetByCardiMemberAsync(id, false).Returns([]);

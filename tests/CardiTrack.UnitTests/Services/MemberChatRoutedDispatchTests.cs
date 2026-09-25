@@ -4,6 +4,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Diagnostics;
@@ -48,7 +49,8 @@ public class MemberChatRoutedDispatchTests
         _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Moses Doe",
+            FirstName = "Moses",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 3, 15),
             IsActive = true,
         });
@@ -467,7 +469,8 @@ public class MemberChatRoutedDispatchTests
         _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Moses Doe",
+            FirstName = "Moses",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 3, 15),
             Gender = Gender.Male,
             IsActive = true,
@@ -836,7 +839,7 @@ public class MemberChatRoutedDispatchTests
     public async Task AMemberWithNoNameOnFile_IsRefused_BeforeAnythingReachesTheRewriteSlot(string? name)
     {
         _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(
-            name is null ? null : new CardiMember { Id = _memberId, Name = name, IsActive = true });
+            name is null ? null : new CardiMember { Id = _memberId, FirstName = PersonName.Split(name).FirstName, LastName = PersonName.Split(name).LastName, IsActive = true });
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSut().SendMessageAsync(_userId, _memberId, "how is Moses sleeping?"));
@@ -876,7 +879,7 @@ public class MemberChatRoutedDispatchTests
     public async Task WaitingSentences_WithNoNameOnFile_FallBackWithoutCallingTheRewriteSlot(string? name)
     {
         _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(
-            name is null ? null : new CardiMember { Id = _memberId, Name = name, IsActive = true });
+            name is null ? null : new CardiMember { Id = _memberId, FirstName = PersonName.Split(name).FirstName, LastName = PersonName.Split(name).LastName, IsActive = true });
 
         var sentences = await CreateSut().GetWaitingSentencesAsync(_userId, _memberId, "how is Moses sleeping?");
 

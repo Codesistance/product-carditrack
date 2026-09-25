@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Devices;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 using Microsoft.Extensions.Logging;
 
@@ -108,7 +109,7 @@ public partial class InviteWaitPage : ContentPage
     /// </summary>
     private void Present()
     {
-        var name = NameFormatting.FirstName(_member.Name);
+        var name = _member.DisplayFirstName();
 
         QrPlate.IsVisible = _isQr && !_watch.IsFinished;
         LinkPlate.IsVisible = !_isQr && !_watch.IsFinished;
@@ -482,7 +483,7 @@ public partial class InviteWaitPage : ContentPage
     public static Task ShareLinkAsync(
         string? url, CardiMemberResponse member, ConnectableDevice device)
     {
-        var name = NameFormatting.FirstName(member.Name);
+        var name = member.DisplayFirstName();
 
         return Share.Default.RequestAsync(new ShareTextRequest
         {

@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
@@ -118,7 +119,7 @@ public partial class MedicalInformationPage : ContentPage
             return;
 
         var edited = await _popups.EditMedicalNotesAsync(
-            NameFormatting.FirstName(_member.Name), _member.MedicalNotes);
+            _member.DisplayFirstName(), _member.MedicalNotes);
 
         // Null is "cancelled"; an empty string is a background the caregiver deliberately cleared.
         if (edited is null)
@@ -185,6 +186,10 @@ public partial class MedicalInformationPage : ContentPage
     private static UpdateCardiMemberRequest RequestFor(CardiMemberDetailResponse member, string notes) =>
         new()
         {
+            FirstName = member.FirstName,
+            LastName = member.LastName,
+            // Restated for an API from before the first/last split, which reads only this; a
+            // current API ignores it whenever FirstName is sent.
             Name = member.Name,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = member.Relationship,
@@ -279,7 +284,7 @@ public partial class MedicalInformationPage : ContentPage
     private void Apply(CardiMemberDetailResponse member)
     {
         var hasNotes = !string.IsNullOrWhiteSpace(member.MedicalNotes);
-        var firstName = NameFormatting.FirstName(member.Name);
+        var firstName = member.DisplayFirstName();
         ChatBot.MemberId = _route.Id;
         ChatBot.MemberFirstName = firstName;
 

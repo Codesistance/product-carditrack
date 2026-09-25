@@ -66,7 +66,8 @@ public class MetricAlarmEngineTests
         {
             Id = _memberId,
             OrganizationId = _organizationId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             IsActive = true,
         });
         _states.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
@@ -198,7 +199,8 @@ public class MetricAlarmEngineTests
         {
             Id = _memberId,
             OrganizationId = _organizationId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             IsActive = true,
             MonitoringPausedUntil = UtcNow.AddDays(3),
         });
@@ -356,7 +358,8 @@ public class MetricAlarmEngineTests
         {
             Id = _memberId,
             OrganizationId = _organizationId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             IsActive = true,
             MonitoringPausedUntil = UtcNow.AddDays(3),
         });
@@ -379,7 +382,8 @@ public class MetricAlarmEngineTests
         {
             Id = failingId,
             OrganizationId = _organizationId,
-            Name = "Arthur Doe",
+            FirstName = "Arthur",
+            LastName = "Doe",
             IsActive = true,
         });
         _alarms.GetForMemberAsync(_organizationId, failingId, Arg.Any<CancellationToken>()).Returns([_alarm]);

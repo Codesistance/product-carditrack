@@ -68,7 +68,7 @@ public class AlertPreferenceServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret",
+            FirstName = "Margaret",
             DateOfBirth = new DateOnly(1948, 3, 2),
             IsActive = true,
         });

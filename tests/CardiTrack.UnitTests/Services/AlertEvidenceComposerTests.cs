@@ -293,7 +293,7 @@ public class AlertEvidenceComposerTests
 
         return AlertDetailComposer.Compose(
             alert,
-            new CardiMember { Id = _memberId, Name = "Test Member" },
+            new CardiMember { Id = _memberId, FirstName = "Test", LastName = "Member" },
             null,
             [],
             _today,

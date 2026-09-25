@@ -7,7 +7,26 @@ namespace CardiTrack.Domain.Entities;
 public class CardiMember : BaseEntity, ISoftDeletable
 {
     public Guid OrganizationId { get; set; }
-    public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// What the family calls this person — the name the app greets and labels them by. Required:
+    /// every member has at least one name.
+    /// </summary>
+    public string FirstName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Surname, or null for someone known by a single name. Optional rather than defaulted to an
+    /// empty string so "has no surname" and "surname not captured" read the same way everywhere.
+    /// </summary>
+    public string? LastName { get; set; }
+
+    /// <summary>
+    /// First and last name joined, for the places a full name is genuinely needed — reports,
+    /// exports, the emergency-contact and clinical contexts where "Arthur" alone is ambiguous.
+    /// Derived, never stored, so it cannot drift from its parts. Not mapped to a column: EF cannot
+    /// translate it, so queries filter and sort on <see cref="FirstName"/>/<see cref="LastName"/>.
+    /// </summary>
+    public string FullName => PersonName.Join(FirstName, LastName);
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public DateOnly DateOfBirth { get; set; }

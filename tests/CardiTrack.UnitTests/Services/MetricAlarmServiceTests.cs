@@ -36,7 +36,7 @@ public class MetricAlarmServiceTests
         {
             Id = _memberId,
             OrganizationId = _organizationId,
-            Name = "Margaret",
+            FirstName = "Margaret",
             IsActive = true,
         });
         _states.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns([]);

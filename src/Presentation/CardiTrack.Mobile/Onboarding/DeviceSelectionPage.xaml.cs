@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Devices;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Onboarding;
@@ -19,7 +20,7 @@ public partial class DeviceSelectionPage : ContentPage
         InitializeComponent();
         _ctx = ctx;
         _member = ctx.RequireMember();
-        TitleLabel.Text = $"What does {_member.Name} wear?";
+        TitleLabel.Text = $"What does {_member.DisplayFirstName()} wear?";
 
         if (ctx.Origin == WizardOrigin.Modal)
         {

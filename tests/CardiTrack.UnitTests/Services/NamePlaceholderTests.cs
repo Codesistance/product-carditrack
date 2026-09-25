@@ -90,6 +90,17 @@ public class NamePlaceholderTests
     /// Word-bounded: a name that happens to sit inside a longer word is not the member being
     /// named, and replacing it would corrupt the sentence the model has to read.
     /// </summary>
+    /// <summary>
+    /// A stored first name can be more than one word, and it is what chat replies now resolve to —
+    /// so recalled history holds "Mary Ann" verbatim. Every leading run of the full name is
+    /// matched, so no half of it ("Ann") reaches the model.
+    /// </summary>
+    [Fact]
+    public void Redact_TakesAMultiWordFirstNameWhole() =>
+        Assert.Equal(
+            $"{NamePlaceholder.Token} slept well. {NamePlaceholder.Token} walked. {NamePlaceholder.Token} rested.",
+            NamePlaceholder.Redact("Mary Ann Smith slept well. Mary Ann walked. Mary rested.", "Mary Ann Smith"));
+
     [Fact]
     public void Redact_DoesNotMatchInsideALongerWord() =>
         Assert.Equal("Marginal changes only.", NamePlaceholder.Redact("Marginal changes only.", "Mar"));

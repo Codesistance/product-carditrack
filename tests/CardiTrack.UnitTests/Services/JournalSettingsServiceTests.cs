@@ -26,7 +26,7 @@ public class JournalSettingsServiceTests
 
     public JournalSettingsServiceTests()
     {
-        _member = new CardiMember { Id = _memberId, Name = "Ada" };
+        _member = new CardiMember { Id = _memberId, FirstName = "Ada" };
 
         _unitOfWork.CardiMembers.Returns(_members);
         _unitOfWork.UserCardiMembers.Returns(_links);

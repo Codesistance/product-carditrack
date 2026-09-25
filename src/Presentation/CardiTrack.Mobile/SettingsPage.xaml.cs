@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
@@ -445,7 +446,7 @@ public partial class SettingsPage : ContentPage
             _ => "A reminder"
         };
 
-        return mute.CardiMemberName is { Length: > 0 } name
+        return mute.MemberFirstName() is { Length: > 0 } name
             ? $"{subject} — {name}"
             : subject;
     }

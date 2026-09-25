@@ -37,7 +37,7 @@ public class DeviceConnectionServiceTests
     {
         SetupCaregiverLink(isPrimaryCaregiver: true);
         _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(
-            new CardiMember { Id = _memberId, Name = "Dad", IsActive = true });
+            new CardiMember { Id = _memberId, FirstName = "Dad", IsActive = true });
         _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([]);
         _unitOfWork.DeviceHistoryRepulls
             .GetLatestByConnectionIdsAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())

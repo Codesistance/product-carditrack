@@ -10,7 +10,7 @@ namespace CardiTrack.Mobile.Controls;
 /// </remarks>
 public sealed record QuickActionTarget(
     Guid CardiMemberId,
-    string? Name,
+    string? FirstName,
     string? Phone,
     string? EmergencyContactPhone,
     string? EmergencyContactName);
@@ -55,7 +55,7 @@ public partial class QuickActionRow : ContentView
         _target = target;
         _popups = popups;
 
-        var firstName = NameFormatting.FirstName(target.Name);
+        var firstName = target.FirstName ?? string.Empty;
         var hasPhone = !string.IsNullOrWhiteSpace(target.Phone);
         var hasEmergency = !string.IsNullOrWhiteSpace(target.EmergencyContactPhone);
 
@@ -109,7 +109,7 @@ public partial class QuickActionRow : ContentView
         if (string.IsNullOrWhiteSpace(target.Phone))
         {
             await OfferToAddNumberAsync(
-                AddPhonePrompt(NameFormatting.FirstName(target.Name)),
+                AddPhonePrompt(target.FirstName ?? string.Empty),
                 EditCardiMemberPage.FocusPhone);
             return;
         }
@@ -132,7 +132,7 @@ public partial class QuickActionRow : ContentView
         if (string.IsNullOrWhiteSpace(target.Phone))
         {
             await OfferToAddNumberAsync(
-                AddPhonePrompt(NameFormatting.FirstName(target.Name)),
+                AddPhonePrompt(target.FirstName ?? string.Empty),
                 EditCardiMemberPage.FocusPhone);
             return;
         }
@@ -163,7 +163,7 @@ public partial class QuickActionRow : ContentView
         if (string.IsNullOrWhiteSpace(target.EmergencyContactPhone))
         {
             await OfferToAddNumberAsync(
-                AddEmergencyContactPrompt(NameFormatting.FirstName(target.Name)),
+                AddEmergencyContactPrompt(target.FirstName ?? string.Empty),
                 EditCardiMemberPage.FocusEmergencyPhone);
             return;
         }

@@ -320,8 +320,8 @@ internal static class ChatTranscriptDocument
         };
 
         return sex is null
-            ? $"About {member.Name} · {age}"
-            : $"About {member.Name} · {age} · {sex}";
+            ? $"About {member.FullName} · {age}"
+            : $"About {member.FullName} · {age} · {sex}";
     }
 
     private static string Summary(ChatTranscript transcript)

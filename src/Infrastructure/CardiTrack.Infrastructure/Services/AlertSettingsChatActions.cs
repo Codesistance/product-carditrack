@@ -59,30 +59,30 @@ public sealed class AlertSettingsChatActions
         CancellationToken ct)
     {
         var canManage = await MemberChatAccess.CanManageAsync(_access, userId, cardiMemberId, ct);
-        var snapshot = await ReadAlertSettingsAsync(userId, cardiMemberId, member?.Name, ct);
+        var snapshot = await ReadAlertSettingsAsync(userId, cardiMemberId, member?.FullName, ct);
 
         if (!canManage)
         {
             return new MemberChatWorkflowResult
             {
                 Workflow = MemberChatWorkflow.AlertSettings,
-                Reply = AlertSettingsComposer.ReadOnlyReply(snapshot, NamePlaceholder.FirstName(member?.Name)),
+                Reply = AlertSettingsComposer.ReadOnlyReply(snapshot, NamePlaceholder.FirstNameOf(member)),
                 Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
             };
         }
 
         var planned = await _alertPlanner.PlanAsync(
-            NamePlaceholder.RedactMessageOrRefuse(flattened, member?.Name), questionsOnlyHistory, snapshot, ct);
+            NamePlaceholder.RedactMessageOrRefuse(flattened, member?.FullName), questionsOnlyHistory, snapshot, ct);
 
         var plan = planned.Result;
         if (plan.Name is { } givenName)
         {
-            var resolvedName = NamePlaceholder.Resolve(givenName, NamePlaceholder.FirstName(member?.Name));
+            var resolvedName = NamePlaceholder.Resolve(givenName, NamePlaceholder.FirstNameOf(member));
             plan = plan with { Name = NamePlaceholder.IsPresentIn(resolvedName) ? null : resolvedName };
         }
 
         var composed = AlertSettingsComposer.Compose(
-            plan, snapshot, canManage, NamePlaceholder.FirstName(member?.Name), utcNow);
+            plan, snapshot, canManage, NamePlaceholder.FirstNameOf(member), utcNow);
 
         if (composed.Pending is not null && session.PendingAction is not null)
         {

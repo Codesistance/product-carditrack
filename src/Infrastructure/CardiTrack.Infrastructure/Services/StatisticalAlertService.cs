@@ -767,7 +767,7 @@ public class StatisticalAlertService : IStatisticalAlertService
         // straight back — see CanRedactAgainst. Refused before the reads are assembled, so the
         // clinical text never reaches the prompt at all. Counted per finding like every other
         // exit here, and fail-closed like them: nothing was persisted, so the next pass re-judges.
-        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        if (!NamePlaceholder.CanRedactAgainst(member.FullName))
         {
             foreach (var judgedFinding in judged)
                 CountVerdict(JudgementTelemetry.OutcomeMessageRejected, judgedFinding.Finding.Rule);
@@ -791,7 +791,7 @@ public class StatisticalAlertService : IStatisticalAlertService
                 // words, which is well inside the note cap — but a brief is a request and not a
                 // guarantee, and this is the one boundary where exceeding it would be silent.
                 var flattened = MedicalPromptBlocks.FlattenWhole(j.Read);
-                var redacted = NamePlaceholder.Redact(flattened, member.Name) ?? flattened;
+                var redacted = NamePlaceholder.Redact(flattened, member.FullName) ?? flattened;
                 return $"rule: {j.Finding.Rule}\nseriousness: {j.SeverityWord}\nfinding: {redacted}";
             }));
 

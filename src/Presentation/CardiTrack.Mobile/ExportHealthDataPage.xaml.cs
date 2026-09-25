@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
@@ -209,7 +210,7 @@ public partial class ExportHealthDataPage : ContentPage
             && MemberPicker.SelectedIndex < _members.Count
                 ? _members[MemberPicker.SelectedIndex].Id
                 : _route.Id;
-        MemberPicker.ItemsSource = _members.Select(m => m.Name).ToList();
+        MemberPicker.ItemsSource = _members.Select(m => m.DisplayFirstName()).ToList();
         var index = _members.FindIndex(m => m.Id == selectedId);
         MemberPicker.SelectedIndex = index >= 0 ? index : 0;
     }
@@ -240,7 +241,7 @@ public partial class ExportHealthDataPage : ContentPage
 
     private void PopulateForm()
     {
-        MemberPicker.ItemsSource = _members.Select(m => m.Name).ToList();
+        MemberPicker.ItemsSource = _members.Select(m => m.DisplayFirstName()).ToList();
         SelectRoutedMember();
 
         HeaderSubtitleLabel.Text = "For a doctor's visit, or your own records";

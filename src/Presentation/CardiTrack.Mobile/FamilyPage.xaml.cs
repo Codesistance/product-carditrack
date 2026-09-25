@@ -6,6 +6,7 @@ using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Family;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 using Microsoft.Extensions.Logging;
@@ -453,7 +454,7 @@ public partial class FamilyPage : ContentPage
 
         foreach (var member in members)
         {
-            var name = member.Name;
+            var name = member.DisplayFirstName();
             var alert = _openAlerts
                 .Where(a => a.CardiMemberId == member.Id)
                 .OrderByDescending(a => FamilyAlertState.SeverityRank(a.Severity))
@@ -468,7 +469,7 @@ public partial class FamilyPage : ContentPage
             };
 
             var avatar = new MemberAvatar { BoxWidth = 40, VerticalOptions = LayoutOptions.Center };
-            avatar.Apply(name, member.PhotoUrl);
+            avatar.Apply(member.Name, member.PhotoUrl);
             row.Add(avatar, 0, 0);
 
             var text = new VerticalStackLayout { Spacing = 1, VerticalOptions = LayoutOptions.Center };

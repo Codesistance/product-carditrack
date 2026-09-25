@@ -17,7 +17,8 @@ public class JournalDueCheckTests
         new()
         {
             Id = Guid.NewGuid(),
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             JournalWeekStartsOn = weekStart,
             WeekbookLocalTime = weekbookTime,
             MonthbookLocalTime = monthbookTime,

@@ -56,7 +56,8 @@ public class HealthInsightServiceAdviseTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 3, 15),
             IsActive = true,
         });
@@ -204,7 +205,8 @@ public class HealthInsightServiceAdviseTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             IsActive = true,
             MonitoringPausedUntil = DateTime.UtcNow.AddHours(4),
         });
@@ -220,7 +222,8 @@ public class HealthInsightServiceAdviseTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             IsActive = false,
         });
 

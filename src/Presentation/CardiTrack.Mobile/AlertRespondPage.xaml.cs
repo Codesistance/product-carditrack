@@ -4,6 +4,7 @@ using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls.Shapes;
@@ -139,7 +140,7 @@ public partial class AlertRespondPage : ContentPage
 
     private void Apply(AlertDetailResponse alert)
     {
-        var first = NameFormatting.FirstName(alert.CardiMemberName);
+        var first = alert.MemberFirstName();
         HeaderSubtitle.Text = string.IsNullOrWhiteSpace(first) ? alert.Title : $"{first} · {alert.Title}";
         PromptLabel.Text = AlertAnswerKinds.Prompt(_kind);
 

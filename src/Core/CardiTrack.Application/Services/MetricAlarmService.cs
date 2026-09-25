@@ -431,7 +431,7 @@ public class MetricAlarmService : IMetricAlarmService
         if (othersEnabled + 1 > MetricAlarmValidation.MaxEnabledAlarmsPerMember)
         {
             throw new InvalidOperationException(
-                $"{member.Name} already has {MetricAlarmValidation.MaxEnabledAlarmsPerMember} alarms switched on. "
+                $"{member.FirstName} already has {MetricAlarmValidation.MaxEnabledAlarmsPerMember} alarms switched on. "
                 + "Turn one off before adding another.");
         }
     }

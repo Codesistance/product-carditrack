@@ -11,6 +11,17 @@ namespace CardiTrack.Application.DTOs.Responses;
 public class DashboardResponse
 {
     public Guid CardiMemberId { get; set; }
+
+    /// <summary>What the hero card greets the member by.</summary>
+    public string FirstName { get; set; } = string.Empty;
+
+    /// <summary>Surname, or null for someone known by a single name.</summary>
+    public string? LastName { get; set; }
+
+    /// <summary>
+    /// Full name — see <see cref="CardiMemberResponse.Name"/>. Kept so app builds from before the
+    /// first/last split keep rendering.
+    /// </summary>
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
 

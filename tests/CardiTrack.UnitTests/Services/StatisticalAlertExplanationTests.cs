@@ -47,7 +47,8 @@ public class StatisticalAlertExplanationTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 3, 15),
             IsActive = true,
         });
@@ -283,7 +284,8 @@ public class StatisticalAlertExplanationTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 3, 15),
             IsActive = true,
             MonitoringPausedUntil = UtcNow.AddDays(3),

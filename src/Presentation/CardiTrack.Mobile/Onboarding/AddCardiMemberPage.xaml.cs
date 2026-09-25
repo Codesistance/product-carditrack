@@ -1,10 +1,12 @@
 using System.Globalization;
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Localization;
 using CardiTrack.Mobile.Core.Media;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
 
@@ -126,7 +128,8 @@ public partial class AddCardiMemberPage : ContentPage
 
     private CardiMemberDraft CurrentDraft() => new()
     {
-        Name = NameEntry.Text,
+        FirstName = FirstNameEntry.Text,
+        LastName = LastNameEntry.Text,
         // Only a date the user actually chose counts as content — whatever the picker
         // reads back on an untouched form must not make an empty draft look filled in.
         DateOfBirth = _dobTouched ? DobPicker.Date : null,
@@ -152,7 +155,8 @@ public partial class AddCardiMemberPage : ContentPage
         if (!string.IsNullOrWhiteSpace(draft.CreationKey))
             _creationKey = draft.CreationKey;
 
-        NameEntry.Text = draft.Name;
+        // RestoredNames also reads a draft saved before the form had two name fields.
+        (FirstNameEntry.Text, LastNameEntry.Text) = draft.RestoredNames();
         if (draft.DateOfBirth is { } dob)
         {
             DobPicker.Date = dob;
@@ -281,10 +285,9 @@ public partial class AddCardiMemberPage : ContentPage
         // Date of birth is gated the same way: the field used to stand in today's date for one
         // that was never chosen, which created a member born this morning. An unset DateField
         // is null, not today, and Continue stays off until they pick a day.
-        var name = NameEntry.Text?.Trim();
         ContinueBtn.IsEnabled =
-            !string.IsNullOrWhiteSpace(name)
-            && name.Length >= 2
+            MemberNameRules.FirstNameError(FirstNameEntry.Text) is null
+            && MemberNameRules.LastNameError(LastNameEntry.Text) is null
             && SexPicker.SelectedIndex >= 0
             && DobPicker.Date is not null;
     }
@@ -307,7 +310,12 @@ public partial class AddCardiMemberPage : ContentPage
             var member = await _api.CreateCardiMemberAsync(
                 new CreateCardiMemberRequest
                 {
-                    Name = NameEntry.Text!.Trim(),
+                    // Continue stays off without a valid first name.
+                    FirstName = FirstNameEntry.Text!.Trim(),
+                    LastName = MemberNameRules.LastNameOrNull(LastNameEntry.Text),
+                    // Restated whole for an API from before the first/last split, which reads
+                    // only this; a current API ignores it whenever FirstName is sent.
+                    Name = PersonName.Join(FirstNameEntry.Text!.Trim(), MemberNameRules.LastNameOrNull(LastNameEntry.Text)),
                     // ValidateDob refused a missing date a moment ago.
                     DateOfBirth = DateOnly.FromDateTime(DobPicker.Date!.Value),
                     Gender = SelectedSex(),

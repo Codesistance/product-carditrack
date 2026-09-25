@@ -74,7 +74,8 @@ public class InactivityDetectionServiceTests
     private CardiMember Member() => new()
     {
         Id = _memberId,
-        Name = "Margaret Doe",
+        FirstName = "Margaret",
+        LastName = "Doe",
         DateOfBirth = new DateOnly(1948, 3, 2),
         IsActive = true,
     };

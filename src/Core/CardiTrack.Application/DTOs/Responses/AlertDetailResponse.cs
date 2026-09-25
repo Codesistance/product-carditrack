@@ -25,6 +25,10 @@ public class AlertDetailResponse
     public Guid AlertId { get; set; }
     public Guid CardiMemberId { get; set; }
     public string CardiMemberName { get; set; } = string.Empty;
+
+    /// <summary>The member's first name — what the app labels them by. <see cref="CardiMemberName"/> stays the full name.</summary>
+    public string CardiMemberFirstName { get; set; } = string.Empty;
+
     public string? CardiMemberPhotoUrl { get; set; }
     public string? Phone { get; set; }
     public string? EmergencyContactPhone { get; set; }

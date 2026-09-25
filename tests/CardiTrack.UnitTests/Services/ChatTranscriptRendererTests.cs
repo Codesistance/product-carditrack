@@ -63,7 +63,8 @@ public class ChatTranscriptRendererTests
                     new CardiMember
                     {
                         Id = MemberId,
-                        Name = "Margaret Doe",
+                        FirstName = "Margaret",
+                        LastName = "Doe",
                         DateOfBirth = new DateOnly(1948, 4, 12),
                         Gender = Gender.Female,
                         MedicalNotes = "Takes warfarin; history of AF"

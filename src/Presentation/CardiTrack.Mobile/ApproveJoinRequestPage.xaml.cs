@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -142,7 +143,7 @@ public partial class ApproveJoinRequestPage : ContentPage
         {
             var check = new CheckField
             {
-                Text = $"{member.Name} · {member.Age}",
+                Text = $"{member.DisplayFirstName()} · {member.Age}",
                 IsChecked = false,
             };
             _checks[member.Id] = check;

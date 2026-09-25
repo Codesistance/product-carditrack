@@ -1,12 +1,14 @@
 using System.Globalization;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Localization;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Media;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -155,7 +157,7 @@ public partial class EditCardiMemberPage : ContentPage
             {
                 _member = saved;
                 ChatBot.MemberId = _route.Id;
-                ChatBot.MemberFirstName = NameFormatting.FirstName(saved.Name);
+                ChatBot.MemberFirstName = saved.DisplayFirstName();
                 Fill(saved);
                 SetState(form: true);
                 await ApplyFocusAsync();
@@ -178,7 +180,7 @@ public partial class EditCardiMemberPage : ContentPage
 
             _member = member;
             ChatBot.MemberId = _route.Id;
-            ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
+            ChatBot.MemberFirstName = member.DisplayFirstName();
             Fill(member);
             SetState(form: true);
             await ApplyFocusAsync();
@@ -209,7 +211,8 @@ public partial class EditCardiMemberPage : ContentPage
         var hasPhoto = Uri.TryCreate(member.PhotoUrl, UriKind.Absolute, out var photoUri);
         PhotoImage.Source = hasPhoto ? ImageSource.FromUri(photoUri!) : null;
         PhotoImage.IsVisible = hasPhoto;
-        NameEntry.Text = member.Name;
+        FirstNameEntry.Text = member.DisplayFirstName();
+        LastNameEntry.Text = member.DisplayLastName();
         DobPicker.Date = member.DateOfBirth.ToDateTime(TimeOnly.MinValue);
         MedicalNotesEditor.Text = member.MedicalNotes;
         EmergencyNameEntry.Text = member.EmergencyContactName;
@@ -277,7 +280,7 @@ public partial class EditCardiMemberPage : ContentPage
 
     /// <summary>Keeps the avatar in step with the name as it is typed.</summary>
     private void OnNameChanged(object? sender, TextChangedEventArgs e) =>
-        InitialsLabel.Text = NameFormatting.Initials(NameEntry.Text);
+        InitialsLabel.Text = NameFormatting.Initials($"{FirstNameEntry.Text} {LastNameEntry.Text}");
 
     private async void OnChangePhotoTapped(object? sender, EventArgs e)
     {
@@ -350,7 +353,8 @@ public partial class EditCardiMemberPage : ContentPage
 
         return _pendingPhotoBytes is not null
             || _removePhoto
-            || NameEntry.Text?.Trim() != _member.Name
+            || FirstNameEntry.Text?.Trim() != _member.DisplayFirstName()
+            || MemberNameRules.LastNameOrNull(LastNameEntry.Text) != MemberNameRules.LastNameOrNull(_member.DisplayLastName())
             // A cleared date is a change too — Validate will refuse it, but it is not what loaded.
             || DobPicker.Date is not { } dob || DateOnly.FromDateTime(dob) != _member.DateOfBirth
             // Only a picked sex can be a change. An untouched picker on a member with no sex
@@ -385,7 +389,12 @@ public partial class EditCardiMemberPage : ContentPage
 
             var request = new UpdateCardiMemberRequest
             {
-                Name = NameEntry.Text!.Trim(),
+                // Validate refused a blank first name a moment ago.
+                FirstName = FirstNameEntry.Text!.Trim(),
+                LastName = MemberNameRules.LastNameOrNull(LastNameEntry.Text),
+                // Restated whole for an API from before the first/last split, which reads only
+                // this; a current API ignores it whenever FirstName is sent.
+                Name = PersonName.Join(FirstNameEntry.Text!.Trim(), MemberNameRules.LastNameOrNull(LastNameEntry.Text)),
                 // Validate refused a missing date a moment ago.
                 DateOfBirth = DateOnly.FromDateTime(DobPicker.Date!.Value),
                 Gender = SelectedSex(),
@@ -449,7 +458,8 @@ public partial class EditCardiMemberPage : ContentPage
 
     private bool Validate()
     {
-        NameError.IsVisible = false;
+        FirstNameError.IsVisible = false;
+        LastNameError.IsVisible = false;
         DobError.IsVisible = false;
         MedicalNotesError.IsVisible = false;
         EmergencyPhoneError.IsVisible = false;
@@ -457,11 +467,17 @@ public partial class EditCardiMemberPage : ContentPage
 
         var valid = true;
 
-        var name = NameEntry.Text?.Trim();
-        if (string.IsNullOrWhiteSpace(name) || name.Length is < 2 or > 100)
+        if (MemberNameRules.FirstNameError(FirstNameEntry.Text) is { } firstNameError)
         {
-            NameError.Text = "Name must be between 2 and 100 characters";
-            NameError.IsVisible = true;
+            FirstNameError.Text = firstNameError;
+            FirstNameError.IsVisible = true;
+            valid = false;
+        }
+
+        if (MemberNameRules.LastNameError(LastNameEntry.Text) is { } lastNameError)
+        {
+            LastNameError.Text = lastNameError;
+            LastNameError.IsVisible = true;
             valid = false;
         }
 

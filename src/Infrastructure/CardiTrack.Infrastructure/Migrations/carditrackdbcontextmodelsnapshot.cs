@@ -529,6 +529,11 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Gender")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -542,6 +547,10 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<string>("JournalWeekStartsOn")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime?>("LastSyncDate")
                         .HasColumnType("timestamp with time zone");
@@ -561,11 +570,6 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.Property<TimeOnly?>("MonthbookLocalTime")
                         .HasColumnType("time without time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
 
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid");

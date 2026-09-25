@@ -7,6 +7,7 @@ using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Family;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Questionnaires;
@@ -439,7 +440,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 {
                     _member = member;
                     ChatBot.MemberId = memberId;
-                    ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
+                    ChatBot.MemberFirstName = member.DisplayFirstName();
                     Apply(member);
                     SetState(loaded: true);
                     _ = RestoreScrollAnchorAsync(anchor, focusAdvise);
@@ -739,7 +740,7 @@ public partial class CardiMemberDetailPage : ContentPage
     {
         _ = ApplyWhoCanSeeAsync(member.OrganizationId);
         Avatar.Apply(member.Name, member.PhotoUrl);
-        NameLabel.Text = member.Name;
+        NameLabel.Text = member.DisplayFirstName();
         AgeRelationshipLabel.Text = $"{member.Age} years old • {member.Relationship.GetDisplayName()}";
 
         ApplyInsight(member.Insight);
@@ -810,7 +811,7 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             SummaryTitleLabel.Text = "Still getting to know them";
             SummaryGeneratedLabel.IsVisible = false;
-            SummaryLabel.Text = $"We'll summarise how {NameFormatting.FirstName(member.Name)} is doing here as soon as there's enough data to say something useful.";
+            SummaryLabel.Text = $"We'll summarise how {member.DisplayFirstName()} is doing here as soon as there's enough data to say something useful.";
         }
 
         // Both read the member as well as the digest, so they belong to every pass that lands new
@@ -1109,7 +1110,7 @@ public partial class CardiMemberDetailPage : ContentPage
             return;
 
         var route = $"{MetricAlarmEditPage.Route}?memberId={_route.Id}"
-            + $"&name={Uri.EscapeDataString(_member?.Name ?? string.Empty)}"
+            + $"&name={Uri.EscapeDataString(_member?.DisplayFirstName() ?? string.Empty)}"
             + $"&metric={Uri.EscapeDataString(metric)}";
 
         if (movement.SuggestedThresholdPercent is { } threshold)
@@ -1269,7 +1270,7 @@ public partial class CardiMemberDetailPage : ContentPage
         var alreadyShowing = PendingQuestionCard.IsVisible
                              && PendingQuestionCard.Questionnaire?.Id == pending.Id;
 
-        PendingQuestionCard.Apply(pending, NameFormatting.FirstName(_member?.Name));
+        PendingQuestionCard.Apply(pending, (_member?.DisplayFirstName() ?? string.Empty));
         PendingQuestionCard.IsVisible = true;
 
         if (alreadyShowing)
@@ -1410,7 +1411,7 @@ public partial class CardiMemberDetailPage : ContentPage
     private void ApplyTrends(DashboardMetrics? metrics)
     {
         var position = TrendsCarousel.Position;
-        var firstName = NameFormatting.FirstName(_member?.Name);
+        var firstName = (_member?.DisplayFirstName() ?? string.Empty);
 
         var reported = TrendCards
             .Where(card => metrics is not null && card.Select(metrics).Value is not null)
@@ -1575,7 +1576,7 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </summary>
     private async void OnAlertSettingsTapped(object? sender, TappedEventArgs e)
     {
-        var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
+        var name = Uri.EscapeDataString(_member?.DisplayFirstName() ?? string.Empty);
         var canManage = _member?.IsPrimaryCaregiver == true;
         await Shell.Current.GoToAsync(
             $"{AlertSettingsPage.Route}?memberId={_route.Id}&name={name}&canManage={canManage}");
@@ -1583,7 +1584,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private async void OnMetricAlarmsTapped(object? sender, TappedEventArgs e)
     {
-        var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
+        var name = Uri.EscapeDataString(_member?.DisplayFirstName() ?? string.Empty);
         var canManage = _member?.IsPrimaryCaregiver == true;
         await Shell.Current.GoToAsync(
             $"{MetricAlarmsPage.Route}?memberId={_route.Id}&name={name}&canManage={canManage}");
@@ -1685,6 +1686,10 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             var request = new UpdateCardiMemberRequest
             {
+                FirstName = _member.FirstName,
+                LastName = _member.LastName,
+                // Restated for an API from before the first/last split, which reads only this;
+                // a current API ignores it whenever FirstName is sent.
                 Name = _member.Name,
                 DateOfBirth = _member.DateOfBirth,
                 RelationshipType = _member.Relationship,
@@ -1786,7 +1791,7 @@ public partial class CardiMemberDetailPage : ContentPage
     /// subtitle is right from the first frame, the way the journal entry page takes it.</summary>
     private async void OnJournalTimingTapped(object? sender, EventArgs e)
     {
-        var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
+        var name = Uri.EscapeDataString(_member?.DisplayFirstName() ?? string.Empty);
         await Shell.Current.GoToAsync(
             $"{JournalTimingPage.Route}?memberId={_route.Id}&name={name}");
     }
@@ -1803,7 +1808,7 @@ public partial class CardiMemberDetailPage : ContentPage
             return;
 
         await Shell.Current.GoToAsync(
-            $"{CaregiverInvitesPage.Route}?memberId={member.Id}&name={Uri.EscapeDataString(member.Name)}");
+            $"{CaregiverInvitesPage.Route}?memberId={member.Id}&name={Uri.EscapeDataString(member.DisplayFirstName())}");
     }
 
     private async void OnExportDataTapped(object? sender, TappedEventArgs e) =>
@@ -1817,13 +1822,13 @@ public partial class CardiMemberDetailPage : ContentPage
         // window, so the return is told to read the questions whatever the clock says.
         _questionsChangedElsewhere = true;
 
-        var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
+        var name = Uri.EscapeDataString(_member?.DisplayFirstName() ?? string.Empty);
         await Shell.Current.GoToAsync(
             $"{QuestionnairesPage.Route}?memberId={_route.Id}&name={name}");
     }
 
     private void OnChatTapped(object? sender, EventArgs e) =>
-        MemberChatLauncher.ShowOverlay(RootGrid, _route.Id, NameFormatting.FirstName(_member?.Name));
+        MemberChatLauncher.ShowOverlay(RootGrid, _route.Id, (_member?.DisplayFirstName() ?? string.Empty));
 
     private async void OnViewAlertsClicked(object? sender, EventArgs e) =>
         // Naming the member is what lets back come back to *this* page rather than to whichever
@@ -1844,7 +1849,7 @@ public partial class CardiMemberDetailPage : ContentPage
         if (!_member.IsPrimaryCaregiver)
         {
             await _popups.ShowInfoAsync(
-                $"Only {NameFormatting.FirstName(_member.Name)}'s primary caregiver can pause monitoring.", "Not your call to make");
+                $"Only {_member.DisplayFirstName()}'s primary caregiver can pause monitoring.", "Not your call to make");
             return;
         }
 
@@ -1923,7 +1928,7 @@ public partial class CardiMemberDetailPage : ContentPage
         _isBusy = true;
         try
         {
-            var firstName = NameFormatting.FirstName(_member.Name);
+            var firstName = _member.DisplayFirstName();
             var confirmed = await _popups.ConfirmWarningAsync(
                 $"We'll stop collecting {firstName}'s health data and won't raise alerts until then.",
                 $"Pause for {label}?",
@@ -2018,15 +2023,15 @@ public partial class CardiMemberDetailPage : ContentPage
         if (!_member.IsPrimaryCaregiver)
         {
             await _popups.ShowInfoAsync(
-                $"Only {NameFormatting.FirstName(_member.Name)}'s primary caregiver can remove them.", "Not your call to make");
+                $"Only {_member.DisplayFirstName()}'s primary caregiver can remove them.", "Not your call to make");
             return;
         }
 
-        var firstName = NameFormatting.FirstName(_member.Name);
+        var firstName = _member.DisplayFirstName();
         var confirmed = await _popups.ConfirmWarningAsync(
             $"Monitoring stops immediately and {firstName}'s devices are disconnected. " +
             "Their health history is kept for the retention period.",
-            $"Remove {_member.Name}?",
+            $"Remove {_member.DisplayFirstName()}?",
             "Yes, remove");
         if (!confirmed)
             return;
@@ -2047,7 +2052,7 @@ public partial class CardiMemberDetailPage : ContentPage
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
-            await _popups.ShowErrorAsync(ex.Message, $"Couldn't remove {NameFormatting.FirstName(_member?.Name)}");
+            await _popups.ShowErrorAsync(ex.Message, $"Couldn't remove {(_member?.DisplayFirstName() ?? string.Empty)}");
         }
         catch (ApiException)
         {
