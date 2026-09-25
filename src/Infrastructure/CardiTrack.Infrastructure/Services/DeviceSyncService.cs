@@ -651,7 +651,7 @@ public class DeviceSyncService : IDeviceSyncService
     /// A fresh connection starts with only the routine window, which leaves the 30-day baseline
     /// unreachable for weeks even when the wearable holds months of history the provider would
     /// serve today. Fetching it in one pull is not an option either: a day's snapshot costs up to
-    /// 20 requests against the 300/min per-wearer ceiling, so a 90-day one-shot (up to 1,800
+    /// 21 requests against the 300/min per-wearer ceiling, so a 90-day one-shot (up to 1,890
     /// requests at one page per series, more when a series spans several) would rate-limit
     /// partway, fail the sync, and start over from scratch on the next pull — burning quota
     /// without ever completing. Each pull therefore takes one chunk, newest-first (the days the

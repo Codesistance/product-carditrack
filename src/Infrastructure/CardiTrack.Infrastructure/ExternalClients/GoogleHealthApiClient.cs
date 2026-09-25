@@ -108,7 +108,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// <summary>
     /// Minimum spacing between successive page requests within one series read. The Google Health
     /// API's per-user quota is 300 requests/min (5 QPS) standard, but only 2.5 QPS while the app is
-    /// unverified — and a single wearer's daily snapshot already fires up to 20 requests in one
+    /// unverified — and a single wearer's daily snapshot already fires up to 21 requests in one
     /// burst, up to 16 of them in flight at once, over that ceiling on its own (see the quota note
     /// in `data_sync_architecture.md`). Raising <see cref="SampleSeriesCap"/> lets a high-cadence
     /// series page several more times in the same pull; pacing those extra requests keeps them from
