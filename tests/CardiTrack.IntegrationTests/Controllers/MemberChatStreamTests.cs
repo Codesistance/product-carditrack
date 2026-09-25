@@ -59,10 +59,10 @@ public class MemberChatStreamTests
         };
     }
 
-    private void SendDoes(Func<IProgress<MemberChatStep>, CancellationToken, Task<MemberChatMessageResponse>> send) =>
+    private void SendDoes(Func<IMemberChatSendProgress, CancellationToken, Task<MemberChatMessageResponse>> send) =>
         _chat.SendMessageAsync(Arg.Any<Guid>(), _memberId, Arg.Any<string>(),
-                Arg.Any<IProgress<MemberChatStep>?>(), Arg.Any<CancellationToken>())
-            .Returns(call => send(call.Arg<IProgress<MemberChatStep>?>()!, call.Arg<CancellationToken>()));
+                Arg.Any<IMemberChatSendProgress?>(), Arg.Any<CancellationToken>())
+            .Returns(call => send(call.Arg<IMemberChatSendProgress?>()!, call.Arg<CancellationToken>()));
 
     private Task<IActionResult> Stream(MemberChatController sut, CancellationToken ct = default) =>
         sut.StreamMessage(_memberId, new MemberChatMessageRequest { Message = "how did he sleep?" }, ct);
@@ -74,8 +74,8 @@ public class MemberChatStreamTests
     {
         SendDoes((progress, _) =>
         {
-            progress.Report(MemberChatStep.Understanding);
-            progress.Report(MemberChatStep.Reading);
+            progress.Step(MemberChatStep.Understanding);
+            progress.Step(MemberChatStep.Reading);
             return Task.FromResult(Answer);
         });
         var sut = CreateSut();
@@ -93,6 +93,79 @@ public class MemberChatStreamTests
         Assert.True(understanding >= 0 && understanding < reading && reading < answer && answer < done, text);
         Assert.Contains("\"reply\":\"The week looks steady.\"", text, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task ADraftThatStood_IsSentOnce_AndDoneConfirmsIt()
+    {
+        SendDoes((progress, _) =>
+        {
+            progress.Step(MemberChatStep.Writing);
+            progress.Draft(Answer);
+            progress.Step(MemberChatStep.Checking);
+            return Task.FromResult(Answer);
+        });
+
+        await Stream(CreateSut());
+
+        var text = Written;
+        Assert.Equal(1, CountOf(text, "event: answer\n"));
+        Assert.DoesNotContain("event: answer.updated", text, StringComparison.Ordinal);
+        Assert.True(text.IndexOf("event: answer\n", StringComparison.Ordinal)
+                    < text.IndexOf("\"step\":\"checking\"", StringComparison.Ordinal), text);
+        Assert.EndsWith("event: done\ndata: {}\n\n", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ADraftTheCheckReplaced_IsFollowedByTheSavedReply_AsAnswerUpdated()
+    {
+        var saved = new MemberChatMessageResponse
+        {
+            SessionId = Answer.SessionId,
+            Reply = "He was most active in the late morning.",
+            Charts = Array.Empty<ChartSeries>(),
+            GeneratedAt = Answer.GeneratedAt,
+        };
+        SendDoes((progress, _) =>
+        {
+            progress.Draft(Answer);
+            progress.Step(MemberChatStep.Retrying);
+            return Task.FromResult(saved);
+        });
+
+        await Stream(CreateSut());
+
+        var text = Written;
+        var draft = text.IndexOf("event: answer\ndata: {", StringComparison.Ordinal);
+        var retrying = text.IndexOf("\"step\":\"retrying\"", StringComparison.Ordinal);
+        var updated = text.IndexOf("event: answer.updated\ndata: {", StringComparison.Ordinal);
+        Assert.True(draft >= 0 && draft < retrying && retrying < updated, text);
+        Assert.Contains("late morning", text[updated..], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ADraftWhoseChartsChanged_IsUpdated_EvenWithTheSameWords()
+    {
+        // A retry re-plans its data: the words can match while the charts do not.
+        var saved = new MemberChatMessageResponse
+        {
+            SessionId = Answer.SessionId,
+            Reply = Answer.Reply,
+            Charts = [new ChartSeries("Steps", [new ChartPoint(new DateOnly(2026, 9, 20), 4200)])],
+            GeneratedAt = Answer.GeneratedAt,
+        };
+        SendDoes((progress, _) =>
+        {
+            progress.Draft(Answer);
+            return Task.FromResult(saved);
+        });
+
+        await Stream(CreateSut());
+
+        Assert.Contains("event: answer.updated\n", Written, StringComparison.Ordinal);
+    }
+
+    private static int CountOf(string text, string value) =>
+        (text.Length - text.Replace(value, string.Empty, StringComparison.Ordinal).Length) / value.Length;
 
     [Fact]
     public async Task ASendAnsweredWithoutAModel_StreamsJustTheAnswer()
@@ -182,7 +255,7 @@ public class MemberChatStreamTests
     {
         SendDoes((progress, _) =>
         {
-            progress.Report(MemberChatStep.Understanding);
+            progress.Step(MemberChatStep.Understanding);
             throw new HttpRequestException("saturated");
         });
         var sut = CreateSut();
@@ -202,7 +275,7 @@ public class MemberChatStreamTests
         // stream's last event carries that body instead.
         SendDoes((progress, _) =>
         {
-            progress.Report(MemberChatStep.Understanding);
+            progress.Step(MemberChatStep.Understanding);
             throw new InvalidOperationException("database fault");
         });
 
@@ -217,7 +290,7 @@ public class MemberChatStreamTests
     {
         SendDoes(async (progress, ct) =>
         {
-            progress.Report(MemberChatStep.Reading);
+            progress.Step(MemberChatStep.Reading);
             await Task.Delay(Timeout.Infinite, ct);
             return Answer;
         });
@@ -252,7 +325,7 @@ public class MemberChatStreamTests
     {
         SendDoes(async (progress, _) =>
         {
-            progress.Report(MemberChatStep.Understanding);
+            progress.Step(MemberChatStep.Understanding);
             await Task.Delay(50);
             return new MemberChatMessageResponse
             {
@@ -287,7 +360,7 @@ public class MemberChatStreamTests
         var sendCancelled = false;
         SendDoes(async (progress, ct) =>
         {
-            progress.Report(MemberChatStep.Reading);
+            progress.Step(MemberChatStep.Reading);
             try
             {
                 await Task.Delay(Timeout.Infinite, ct);

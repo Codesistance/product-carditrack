@@ -515,7 +515,7 @@ Two consequences worth stating:
 
 Every workflow now receives a **resolver** rather than pre-fetched datasets, because routing no longer names any. `status` calls it with a selection it derived in code; `advise` and the steers never call it; `analysis` and `inference` call it once, after their own planning call; `investigation` calls it twice, the second time conditioned on the first result. The resolver is where clamping and the whitelist live, so no workflow can widen its own fetch.
 
-### The answer check (added 2026-09-24, recording only)
+### The answer check (added 2026-09-24; acted on since 2026-09-25)
 
 Nothing above asks whether a reply answered the question. The copy guards say what a reply may not contain; none says it must contain what was asked. One dev conversation showed both ways that fails: "what might be the cause" of a short night got an account of heart rate, and "when was he active" got step counts where the app only holds daily totals.
 
@@ -527,13 +527,22 @@ After the reply is written, one structured Rewrite-slot call (`IChatAnswerChecke
 
 It runs on the replies that claim to answer: `status`, `analysis`, `inference`, `investigation` and `advise`. The steers redirect, `clarify` asks, and `journal` and `settings` act on a request whose outcome is its own answer. "Not in data" is judged against a fixed statement of what the product records (`ChatAnswerCheckerService.WhatTheAppRecords`), not against what one member happens to have.
 
-**What crosses to Vertex.** The same as the malicious check already sends (the redacted message and conversation), plus the reply, redacted the same way. The reply is written from de-identified findings, and earlier replies already reach this slot in the history, so the A20 boundary is unchanged.
+**What crosses to Vertex.** The same as the malicious check already sends (the redacted message and conversation), plus the reply, redacted the same way. The reply is written from de-identified findings, and earlier replies already reach this slot in the history, so the A20 boundary is unchanged. A retry adds the check's `intent` and `missing` lines to the question: model output from that same redacted input, crossing to the same places the question already goes (the planner and rewrite on Vertex, the clinical read in-estate).
 
 **What is kept.** The assessment is stored encrypted on the assistant turn (`MemberChatTurn.Assessment`), with the same retention and erasure as the turn, and is never returned to the app. Only the verdict and cause leave the row, as span tags (`chat.answer_check`, `chat.answer_gap`). The call is billed as `AiCallStep.AnswerCheck`.
 
 **Failure.** A check that throws is logged, tagged `failed`, and the reply goes out unassessed. It never costs the caregiver their answer, the same posture as the routing call.
 
-**Recording only, for now.** Nothing acts on the verdict yet, and the reply is the same either way. The miss rate by workflow and by cause (`@chat.answer_check:(partial OR no)` grouped by `@chat.answer_gap`) decides whether a retry is worth what it costs. The planned next step retries `notAddressed` once with the gap named, and answers `notInData` with a plain statement of what is not on file.
+**What the send does about a miss (since 2026-09-25).** The verdict decides a remedy, recorded on the stored assessment (`Remedy`) and tagged `chat.answer_remedy`:
+
+- **`notInData`:** the reply gains one sentence written in code, before any references block: "CardiTrack doesn't record that detail, so this is as close as the readings on file can get." (`MemberChatReplies.StatedAbsenceSentence`). No model call, on every send. A reply already near the turn cap is trimmed to make room for it, since the sentence is the part the caregiver must see. The check's own words about what is missing never reach the caregiver: a sentence built from them would be a model's claim about the data presented as the app's.
+- **`notAddressed`, on a clinical workflow** (`analysis`, `inference`, `investigation`): the workflow runs once more with the gap named. The check's `intent` and `missing` lines, trimmed to 200 characters each, are appended to the name-redacted question, so the retry's plan, clinical read and rewrite all see what the first answer left out. The retry's reply passes the same guards as any other; one that fails, or comes back as the withheld-verdict line, leaves the first reply standing (`retry_failed`). Each retry call is billed as it completes, so a retry that fails after its plan or clinical read still bills them; the pre-check is not billed twice.
+- **Inside the send budget.** The retry runs under its own deadline: the send budget less 60 s for the save (`RetryReserve`), less what the first attempt already used. Reaching that deadline is a failed retry, and the first reply is saved; only the caller hanging up, or the whole budget running out, rolls the turn back. With under 120 s left (`MinimumRetryWindow`) no retry starts (`retry_skipped`).
+- **Only on a streamed send.** The caregiver is shown the first reply as a draft while the check runs and the retry is worked, so a retry costs them no blank wait. The plain JSON endpoint has no one to show a draft to and would simply take twice as long, so it records `retry_skipped` and sends the first reply.
+- **`notAddressed` on `status` or `advise`:** recorded, not remedied. Those replies are assembled in code from what is on file, and asking again would compose the same sentence.
+- **Never twice.** The retried reply and the stated absence are not checked again. The stored verdict says why the remedy ran; `Remedy` says what it did. The miss rate on retried replies is therefore not measured; the retry rate by workflow (`@chat.answer_remedy:retried`) and its failure rate are.
+
+The miss rate by workflow and by cause (`@chat.answer_check:(partial OR no)` grouped by `@chat.answer_gap`) stays the measure of how often first replies fall short.
 
 ### Streaming the send (added 2026-09-25)
 
@@ -543,8 +552,9 @@ The endpoint returns `text/event-stream`:
 
 | Event | When | Data |
 |---|---|---|
-| `step` | as each stage starts | `{ step, text }`: `understanding` (the pre-check passed), `planning`, `reading` (the clinical read), `rereading` (inference's second read), `writing`, `checking` (the answer check) |
-| `answer` | after the turn is saved | the same `MemberChatMessageResponse` the JSON endpoint returns |
+| `step` | as each stage starts | `{ step, text }`: `understanding` (the pre-check passed), `planning`, `reading` (the clinical read), `rereading` (inference's second read), `writing`, `checking` (the answer check), `retrying` (the answer check's retry, followed by that attempt's own `planning`, `reading` and `writing`) |
+| `answer` | for a reply the answer check reads, as a draft before the check runs and before the turn is saved; for any other reply, after the turn is saved | the same `MemberChatMessageResponse` the JSON endpoint returns |
+| `answer.updated` | after the turn is saved, only when the check's remedy changed the draft (its words, its charts or its change flags) | the saved `MemberChatMessageResponse`; the app replaces the draft in place, labelled "Updated answer" |
 | `done` | last | `{}` |
 | `error` | instead of `answer`, if the send fails after the stream started | `{ status, message }`: the status and message the JSON endpoint would have answered with |
 
@@ -556,7 +566,7 @@ A comment line (`: keep-alive`) goes out every 15 s while nothing else does, so 
 
 **The pipeline never waits on the reader.** Steps go through a channel: the service reports synchronously, and the controller writes to the network on its own. The send runs under the same `MemberChat:SendBudgetSeconds` budget as the JSON endpoint, and the controller shares its failure mapping with it, so the two cannot disagree.
 
-**Hanging up.** A caller that disconnects cancels the send, which rolls back as it always has. A write that fails on a dead connection without a cancellation lets the send finish and save, so the reply is in the history the next time the app loads it. The app treats an `answer` without a following `done` as the answer, since the turn is saved before the `answer` goes out.
+**Hanging up.** A caller that disconnects cancels the send, which rolls back as it always has. A write that fails on a dead connection without a cancellation lets the send finish and save, so the reply is in the history the next time the app loads it. Only `done` confirms an answer as saved: an `answer` may be a draft the send never saved. So a stream that breaks before `done` is reported as cut off (the app's cached thread is already evicted, and a refresh shows whatever the server kept), and an `error` after a draft removes the draft and shows the error instead.
 
 **A send still running when its conversation is ended or reopened (decided 2026-09-25: kept as is).** Within one open chat sheet the app prevents this: "new conversation", the history list and "continue" are all disabled while a reply is on its way. The remaining case is a caregiver who closes the sheet mid-send, reopens it and ends or switches the conversation before the first send finishes, or does so from a second device. The send then saves its question and reply into the conversation it was asked in, which by then is in the history list rather than on screen. Nothing is lost, and the reply sits beside the question it answers. A journal offer that reply made cannot be confirmed from an ended conversation and lapses unapplied, which is the safe direction for a destructive offer. The alternative considered was to mark a conversation "send in flight" in the database and refuse end and reopen with a 409 until the reply lands, letting a reopened sheet show "still answering". It was not taken: it needs a schema change and a staleness rule for sends that die mid-flight, to prevent an outcome that loses nothing.
 
