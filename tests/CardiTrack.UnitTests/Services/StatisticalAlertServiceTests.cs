@@ -1297,4 +1297,23 @@ public class StatisticalAlertServiceTests
 
         Assert.Equal(1, raised);
     }
+
+    /// <summary>
+    /// The "may still be ordinary for this person" allowance belongs to yardsticks measured against
+    /// their own usual. Left unscoped it sat one sentence before "the published range is what normal
+    /// means" and argued with it — an invitation to downgrade the steady, poor-usual stretches the
+    /// published-range rules exist to surface (Copilot review on #1284).
+    /// </summary>
+    [Fact]
+    public void TheOrdinaryForThemAllowance_IsScopedToTheirOwnUsual()
+    {
+        var brief = StatisticalAlertService.ClinicalInstructions;
+
+        Assert.Contains(
+            "a reading past one measured against this person's own usual may still be ordinary for them",
+            brief, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "a reading past one may still be ordinary for this person", brief, StringComparison.Ordinal);
+        Assert.Contains("the published range where one is given is what normal means", brief, StringComparison.Ordinal);
+    }
 }
