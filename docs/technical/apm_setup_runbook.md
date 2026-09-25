@@ -94,6 +94,12 @@ the shared string in `TelemetryNames` (CardiTrack.Shared).
   it, `chat.answer_remedy` (`stated_absence`, `retried`, `retry_failed`, `retry_skipped`). All
   are fixed labels; the check's own reasoning is stored encrypted on the turn and never tagged
   or logged.
+  **Read rates from the metric, not the spans.** Chat spans are indexed by diversity sampling,
+  so the tags above sit only on a sample. The span-based metric `carditrack.chat.sends` counts
+  every send before sampling, grouped by `env`, route, `chat.workflow`, `chat.answer_check`,
+  `chat.answer_gap` and `chat.answer_remedy` (spec, queries and how to apply it:
+  [infrastructure/datadog/README.md](../../infrastructure/datadog/README.md#span-based-metrics)).
+  Use spans to inspect a single send; use the metric for any rate.
 - **Log line** — one Information completion log per call (model, elapsed ms, token
   counts, done_reason, Ollama server-side timings, trace id), enabled by the Serilog
   override `CardiTrack.Infrastructure.ExternalClients.Medical → Information` in the API
