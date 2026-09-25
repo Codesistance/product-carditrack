@@ -81,6 +81,48 @@ public class MemberChatStreamClientTests
         Assert.Equal(CardiTrackApiClient.MemberChatSendTimeout, requestedTimeout);
     }
 
+    private sealed class LinesRecorder : IProgress<IReadOnlyList<string>>
+    {
+        public List<IReadOnlyList<string>> Reports { get; } = [];
+        public void Report(IReadOnlyList<string> value) => Reports.Add(value);
+    }
+
+    /// <summary>
+    /// The waiting lines arrive as their own event and are handed over as they come; an empty
+    /// or unreadable one is decoration gone missing, never a failed send.
+    /// </summary>
+    [Fact]
+    public async Task WaitingLinesAreHandedOver_AndABadOneIsSkipped()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(_ => Stream("""
+            event: waiting
+            data: {"sentences":[]}
+
+            event: waiting
+            data: not json
+
+            event: waiting
+            data: {"sentences":["Looking at this week's sleep","Comparing each night"]}
+
+
+            """ + AnswerEvent + """
+            event: done
+            data: {}
+
+
+            """));
+        var lines = new LinesRecorder();
+
+        var answer = await client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null,
+            onWaitingLines: lines);
+
+        Assert.Equal("Steady night.", answer.Reply);
+        var reported = Assert.Single(lines.Reports);
+        Assert.Equal(["Looking at this week's sleep", "Comparing each night"], reported);
+    }
+
     private sealed class DraftRecorder : IProgress<MemberChatMessageResponse>
     {
         public List<string> Replies { get; } = [];
