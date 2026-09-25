@@ -652,7 +652,7 @@ public class DeviceSyncService : IDeviceSyncService
     /// unreachable for weeks even when the wearable holds months of history the provider would
     /// serve today. Fetching it in one pull is not an option either: a day's snapshot costs up to
     /// 20 requests against the 300/min per-wearer ceiling, so a 90-day one-shot (up to 1,800
-    /// requests) would rate-limit
+    /// requests at one page per series, more for a wearer whose series page) would rate-limit
     /// partway, fail the sync, and start over from scratch on the next pull — burning quota
     /// without ever completing. Each pull therefore takes one chunk, newest-first (the days the
     /// 30-day baseline needs soonest), and <see cref="DeviceConnection.HistoryBackfilledTo"/>
