@@ -558,20 +558,17 @@ public class DeviceConnectionService : IDeviceConnectionService
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch
         {
             await _unitOfWork.RollbackTransactionAsync();
 
             // The code has been exchanged, so a grant is live at the provider that nothing here will
             // ever hold a token for — a reconnect refused as another account, a replacement onto an
-            // account already connected, an invitation withdrawn while the wearer was consenting.
-            // Ended now, or it stays among the apps with access to that account's health data.
-            await RevokeUnstoredGrantAsync(payload, deviceType, tokens, account, ct);
-            throw;
-        }
-        catch
-        {
-            await _unitOfWork.RollbackTransactionAsync();
+            // account already connected, an invitation withdrawn while the wearer was consenting, or
+            // the request cancelled part-way. Ended now, or it stays among the apps with access to
+            // that account's health data. Not on the request's token: a cancelled request is one of
+            // the cases, and the cleanup must still run.
+            await RevokeUnstoredGrantAsync(payload, deviceType, tokens, account, CancellationToken.None);
             throw;
         }
 

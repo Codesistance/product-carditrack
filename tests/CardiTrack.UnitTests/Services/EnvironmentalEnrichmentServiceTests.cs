@@ -102,6 +102,21 @@ public class EnvironmentalEnrichmentServiceTests
     }
 
     [Fact]
+    public async Task AConnectionSuspendedSinceTheBatchWasRead_IsNeverAskedForExerciseSessions()
+    {
+        _members.GetActiveIdsWithEnvironmentalConsentAsync().Returns([_memberId]);
+        _members.GetByIdAsync(_memberId).Returns(Member());
+        var connection = Connection(locationScope: true);
+        _connections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+        _connections.IsSuspendedAsync(connection.Id).Returns(true);
+
+        var written = await _service.EnrichDueSessionsAsync(UtcNow);
+
+        Assert.Equal(0, written);
+        await _deviceApi.DidNotReceiveWithAnyArgs().GetExerciseSessionsAsync(default!, default);
+    }
+
+    [Fact]
     public async Task ASessionWithNoGpsTrack_IsSkipped_AndNeverReachesTheEnvironmentalClient()
     {
         _members.GetActiveIdsWithEnvironmentalConsentAsync().Returns([_memberId]);

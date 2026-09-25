@@ -1886,6 +1886,29 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
+    public async Task CompleteConnection_CancelledAfterTheExchange_StillRevokesTheUnstoredGrant()
+    {
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns(access: "b_access", refresh: "b_refresh");
+        _unitOfWork.DeviceConnections
+            .LockMemberDevicesAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new OperationCanceledException());
+
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
+            {
+                Code = "code",
+                State = initiation.State,
+                CodeVerifier = initiation.CodeVerifier,
+            }));
+
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.RefreshToken == "enc(b_refresh)"), CancellationToken.None);
+    }
+
+    [Fact]
     public async Task CompleteConnection_Add_DoesNotMatch_OnOneIdentifierWhenTheOtherConflicts()
     {
         // A row carrying a stale provider user id beside a current health-user id must not catch a

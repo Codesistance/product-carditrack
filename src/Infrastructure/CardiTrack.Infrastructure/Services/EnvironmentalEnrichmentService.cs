@@ -113,6 +113,11 @@ public class EnvironmentalEnrichmentService : IEnvironmentalEnrichmentService
         if (providerConfig is null)
             return 0;
 
+        // The member's batch was read before this connection's turn; a suspension since then wins,
+        // as it does for the sync.
+        if (await _unitOfWork.DeviceConnections.IsSuspendedAsync(connection.Id))
+            return 0;
+
         var accessToken = await _tokenRefresh.RefreshIfExpiredAsync(connection, providerConfig);
 
         var today = DateOnly.FromDateTime(utcNow);
