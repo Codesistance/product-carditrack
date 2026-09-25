@@ -1814,6 +1814,22 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
+    public async Task CompleteConnection_Reconnect_ClearsTheStoredProviderUserId_WhenTheNewGrantReportsNone()
+    {
+        // Left in place, the old id would keep matching later grants against an account this
+        // connection may no longer be on.
+        var existing = SeedConnection(status: ConnectionStatus.TokenExpired);
+        existing.Metadata = """{"providerUserId":"ACCOUNT_A"}""";
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        GrantIsForAccount(null);
+        GrantReturns(access: "new_access", providerUserId: null);
+
+        await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id));
+
+        Assert.Null(existing.Metadata);
+    }
+
+    [Fact]
     public async Task Suspend_RollsBack_WhenItIsRefused()
     {
         var only = SeedConnection(isPrimary: true);

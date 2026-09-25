@@ -512,10 +512,12 @@ public class DeviceConnectionService : IDeviceConnectionService
             connection.TokenExpiry = now.AddSeconds(tokens.ExpiresInSeconds);
             connection.Scopes = scopes;
             connection.IsActive = true;
-            if (tokens.ProviderUserId is not null)
-            {
-                connection.Metadata = JsonSerializer.Serialize(new { providerUserId = tokens.ProviderUserId });
-            }
+            // What this grant said about its account, and nothing older: a token response without a
+            // user id clears the one a previous grant left, or the account match would go on
+            // comparing later grants against an account this connection may no longer be on.
+            connection.Metadata = tokens.ProviderUserId is null
+                ? null
+                : JsonSerializer.Serialize(new { providerUserId = tokens.ProviderUserId });
 
             // Captured here rather than waiting for the first sync, so the next grant can be told
             // apart from this one — and webhooks reach a new connection from its first minute.
