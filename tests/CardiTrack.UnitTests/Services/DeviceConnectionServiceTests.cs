@@ -52,6 +52,10 @@ public class DeviceConnectionServiceTests
                 Arg.Any<CancellationToken>())
             .Returns(true);
         _encryption.Encrypt(Arg.Any<string>()).Returns(c => $"enc({c.Arg<string>()})");
+        // The member is still there once the device lock is held — the case every test but the
+        // erasure race means.
+        _unitOfWork.DeviceConnections.LockMemberDevicesAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(true);
     }
 
     /// <summary>
@@ -1828,7 +1832,7 @@ public class DeviceConnectionServiceTests
         // An unknown account may be one a live connection on another member reads through, and
         // revocation is grant-wide.
         _unitOfWork.DeviceConnections.LockMemberDevicesAsync(_memberId, Arg.Any<CancellationToken>())
-            .Returns<Task>(_ => throw new InvalidOperationException("db down"));
+            .Returns<Task<bool>>(_ => throw new InvalidOperationException("db down"));
         GrantIsForAccount(null);
         GrantReturns();
 
@@ -1843,7 +1847,7 @@ public class DeviceConnectionServiceTests
         GrantIsForAccount("ACCOUNT_B");
         GrantReturns(access: "b_access", refresh: "b_refresh");
         _unitOfWork.DeviceConnections.LockMemberDevicesAsync(_memberId, Arg.Any<CancellationToken>())
-            .Returns<Task>(_ => throw new OperationCanceledException());
+            .Returns<Task<bool>>(_ => throw new OperationCanceledException());
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => ConnectAsync(CreateSut(), FitbitRequest()));
 
@@ -1876,6 +1880,38 @@ public class DeviceConnectionServiceTests
             ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id)));
 
         Assert.Equal(DeviceConnectionException.DifferentAccount, ex.Code);
+    }
+
+    // Copilot review round 9 on #1290: a change that waited on the device lock behind a member
+    // erasure finds the member gone, and must not recreate rows for them.
+
+    [Fact]
+    public async Task Disconnect_OfAMemberErasedWhileItWaited_ChangesNothing()
+    {
+        var connection = SeedAccount("ACCOUNT_A", isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+        _unitOfWork.DeviceConnections.LockMemberDevicesAsync(_memberId, Arg.Any<CancellationToken>()).Returns(false);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().DisconnectAsync(_userId, _memberId, connection.Id));
+
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+    }
+
+    [Fact]
+    public async Task CompleteConnection_ForAMemberErasedWhileItWaited_StoresNoConnection()
+    {
+        _unitOfWork.DeviceConnections.LockMemberDevicesAsync(_memberId, Arg.Any<CancellationToken>()).Returns(false);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns(access: "b_access", refresh: "b_refresh");
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => ConnectAsync(CreateSut(), FitbitRequest()));
+
+        await _unitOfWork.DeviceConnections.DidNotReceive().AddAsync(Arg.Any<DeviceConnection>());
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+        // The exchanged grant still has to be ended; the Worker does that and drops the row.
+        await QueuedRevocation(r => r.Token == "enc(b_refresh)");
     }
 
     [Fact]

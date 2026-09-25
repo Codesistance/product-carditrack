@@ -54,50 +54,7 @@ public class MemberErasureService : IMemberErasureService
 
     public async Task<MemberErasureReport> EraseAsync(Guid cardiMemberId, CancellationToken ct = default)
     {
-        // Before the rows, not after: the runbook's "revoke upstream before deleting" step, which
-        // until now was a thing an operator had to remember. Once DeviceConnections is deleted the
-        // refresh token is gone and nothing can ever end that grant — the wearer would be left
-        // with CardiTrack still listed among the apps that can read their health data, for a
-        // member whose every row we have just destroyed. A provider that will not answer cannot
-        // stop the erasure, so failures are collected and reported rather than thrown.
         var unrevoked = new List<Guid>();
-        foreach (var connection in await _db.DeviceConnections
-                     .Where(c => c.CardiMemberId == cardiMemberId)
-                     .ToListAsync(ct))
-        {
-            if (!await _grantRevoker.TryRevokeAsync(connection, ct))
-                unrevoked.Add(connection.Id);
-        }
-
-        // Grants already queued for the Worker — a device removed or replaced moments ago — carry
-        // the only remaining copy of their token, and the queue is about to be deleted with the
-        // member. Ended here for the same reason as the live ones above, not left to a Worker pass
-        // that would find the rows gone.
-        foreach (var pending in await _db.PendingGrantRevocations
-                     .Where(r => r.CardiMemberId == cardiMemberId)
-                     .ToListAsync(ct))
-        {
-            var queued = new DeviceConnection
-            {
-                Id = pending.DeviceConnectionId,
-                CardiMemberId = pending.CardiMemberId,
-                DeviceType = pending.DeviceType,
-                RefreshToken = pending.Token,
-            };
-            if (!await _grantRevoker.TryRevokeAsync(queued, ct))
-                unrevoked.Add(pending.DeviceConnectionId);
-        }
-
-        if (unrevoked.Count > 0)
-        {
-            _logger.LogWarning(
-                "Erasure of CardiMember {CardiMemberId} could not confirm revocation of "
-                + "{Count} device grant(s): {Connections}. They are still live at the provider "
-                + "and the tokens that could have ended them are about to be deleted — revoke "
-                + "from the wearer's provider account by hand.",
-                cardiMemberId, unrevoked.Count, string.Join(", ", unrevoked));
-        }
-
         var rows = new List<(string Table, int Rows)>();
         var reportObjects = new List<string>();
 
@@ -119,6 +76,14 @@ public class MemberErasureService : IMemberErasureService
             // is what collects them. That is today's behaviour and it stays.
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"""SELECT 1 FROM "CardiMembers" WHERE "Id" = {cardiMemberId} FOR UPDATE""", ct);
+
+            // And the member's device lock, which device connects, removals and suspensions take
+            // instead of the member row. Held from here through the deletes, so a device change
+            // either commits before this reads the connections — and is revoked and deleted with
+            // them — or waits, and then finds the member gone and stores nothing.
+            await DeviceMemberLock.AcquireAsync(_db.Database, cardiMemberId, ct);
+
+            await RevokeDeviceGrantsAsync(cardiMemberId, unrevoked, ct);
 
             // These name files outside Postgres, and once the rows are gone nothing remembers
             // which. Read here — under the lock, inside the transaction — and not before it: a
@@ -278,6 +243,75 @@ public class MemberErasureService : IMemberErasureService
                 + "until it is gone.",
                 cardiMemberId, objectName);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Ends the member's device grants at the provider before the rows holding their tokens are
+    /// deleted: the live connections, and any grant already queued for the Worker, whose row holds
+    /// the only remaining copy of its token.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The runbook's "revoke upstream before deleting" step. Once the rows are deleted the tokens
+    /// are gone and nothing can ever end those grants — the wearer would be left with CardiTrack
+    /// still listed among the apps that can read their health data, for a member whose every row
+    /// has just been destroyed. A provider that will not answer cannot stop the erasure, so
+    /// failures are collected and reported rather than thrown.
+    /// </para>
+    /// <para>
+    /// A grant another member's live connection reads through is kept: revoking a Google refresh
+    /// token ends the grant for the whole account, and that member is not being erased. Only a
+    /// known account can be matched, so a grant whose account was never captured is revoked, as
+    /// before — ending an erased member's access is what this is for.
+    /// </para>
+    /// </remarks>
+    private async Task RevokeDeviceGrantsAsync(Guid cardiMemberId, List<Guid> unrevoked, CancellationToken ct)
+    {
+        var grants = (await _db.DeviceConnections
+                .Where(c => c.CardiMemberId == cardiMemberId)
+                .ToListAsync(ct))
+            .Select(c => (Grant: c, Account: c.HealthUserId))
+            .Concat((await _db.PendingGrantRevocations
+                    .Where(r => r.CardiMemberId == cardiMemberId)
+                    .ToListAsync(ct))
+                .Select(r => (Grant: new DeviceConnection
+                {
+                    Id = r.DeviceConnectionId,
+                    CardiMemberId = r.CardiMemberId,
+                    DeviceType = r.DeviceType,
+                    RefreshToken = r.Token,
+                }, Account: r.HealthUserId)))
+            .ToList();
+
+        foreach (var (grant, account) in grants)
+        {
+            if (account is not null
+                && await _db.DeviceConnections.AnyAsync(c =>
+                    c.CardiMemberId != cardiMemberId
+                    && c.HealthUserId == account
+                    && c.IsActive
+                    && c.ConnectionStatus != ConnectionStatus.Disconnected, ct))
+            {
+                _logger.LogInformation(
+                    "Kept the grant of DeviceConnection {DeviceConnectionId} while erasing CardiMember "
+                    + "{CardiMemberId}: another member's live connection reads through the same account.",
+                    grant.Id, cardiMemberId);
+                continue;
+            }
+
+            if (!await _grantRevoker.TryRevokeAsync(grant, ct))
+                unrevoked.Add(grant.Id);
+        }
+
+        if (unrevoked.Count > 0)
+        {
+            _logger.LogWarning(
+                "Erasure of CardiMember {CardiMemberId} could not confirm revocation of "
+                + "{Count} device grant(s): {Connections}. They are still live at the provider "
+                + "and the tokens that could have ended them are about to be deleted — revoke "
+                + "from the wearer's provider account by hand.",
+                cardiMemberId, unrevoked.Count, string.Join(", ", unrevoked));
         }
     }
 }

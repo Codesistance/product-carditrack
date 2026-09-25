@@ -112,8 +112,9 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     Task<bool> AnyOtherActiveWithHealthUserIdAsync(Guid excludingId, string healthUserId);
 
     /// <summary>
-    /// Serializes changes to one member's set of devices until the current transaction ends.
-    /// Must be called inside a transaction, before the member's connections are read.
+    /// Serializes changes to one member's set of devices until the current transaction ends, and
+    /// reports whether the member still exists and is active, read under the lock. Must be called
+    /// inside a transaction, before the member's connections are read.
     /// </summary>
     /// <remarks>
     /// The rules over a member's devices span rows, not one row: one primary, one connection per
@@ -122,8 +123,13 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// together break the rule — two replacements each promoting their new device, two
     /// suspensions each seeing the other device still collecting. Holding this across read and
     /// write makes the second change read what the first committed.
+    /// <para>
+    /// Member erasure takes the same lock, so the answer is what a change must act on: a change
+    /// that waited behind an erasure finds the member gone, and must not recreate a connection or
+    /// a queued revocation for someone whose every row has just been deleted.
+    /// </para>
     /// </remarks>
-    Task LockMemberDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<bool> LockMemberDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>
     /// Whether the connection is suspended right now, read from the database rather than from an

@@ -356,6 +356,66 @@ public class MemberErasureCascadeTests : IAsyncLifetime
     private const string SeededQueuedToken = "enc(seeded_queued_refresh)";
 
     /// <summary>
+    /// Copilot review round 9 on #1290: revoking a Google refresh token ends the grant for the whole
+    /// account, so a grant another member's live connection reads through is kept — that member is
+    /// not being erased.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_KeepsAGrantAnotherMembersLiveConnectionReadsThrough()
+    {
+        var (organizationId, userId, memberId) = await SeedMemberWithDataAsync();
+        var otherMemberId = await SeedSecondMemberAsync(organizationId, userId);
+        const string sharedAccount = "hu-shared-account";
+        using (var seed = _services.CreateScope())
+        {
+            var db = seed.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            foreach (var connection in db.DeviceConnections.Where(c => c.CardiMemberId == memberId))
+                connection.HealthUserId = sharedAccount;
+            foreach (var queued in db.PendingGrantRevocations.Where(r => r.CardiMemberId == memberId))
+                queued.HealthUserId = sharedAccount;
+            db.DeviceConnections.Add(new DeviceConnection
+            {
+                CardiMemberId = otherMemberId,
+                DeviceType = DeviceType.Fitbit,
+                DeviceName = "Other member's Fitbit",
+                ConnectionStatus = ConnectionStatus.Connected,
+                IsActive = true,
+                RefreshToken = "enc(other_refresh)",
+                HealthUserId = sharedAccount,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var report = await EraseAsync(memberId);
+
+        await _grantRevoker.DidNotReceive().TryRevokeAsync(
+            Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>());
+        Assert.Empty(report.UnrevokedGrants);
+    }
+
+    /// <summary>
+    /// Copilot review round 9 on #1290: erasure takes the member's device lock, so a device change
+    /// that holds it — a connect about to store a new connection — is waited for rather than raced.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_WaitsForADeviceChangeHoldingTheMembersDeviceLock()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+
+        using var holder = _services.CreateScope();
+        var holderDb = holder.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        await using var held = await holderDb.Database.BeginTransactionAsync();
+        await DeviceMemberLock.AcquireAsync(holderDb.Database, memberId);
+
+        var erasure = EraseAsync(memberId);
+        var raced = await Task.WhenAny(erasure, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.NotSame(erasure, raced);
+
+        await held.CommitAsync();
+        await erasure.WaitAsync(TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>
     /// A grant already queued for the Worker — a device removed moments before the erasure — holds
     /// the only remaining copy of its token, and the queue is deleted with the member. So it is
     /// ended here like the live ones, not left for a Worker pass that would find the row gone.

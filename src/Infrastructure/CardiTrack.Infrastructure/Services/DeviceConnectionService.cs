@@ -488,7 +488,7 @@ public class DeviceConnectionService : IDeviceConnectionService
             // same moment reads what this one stored — the account match and the primary flag
             // both depend on it.
             await _unitOfWork.BeginTransactionAsync();
-            await _unitOfWork.DeviceConnections.LockMemberDevicesAsync(payload.CardiMemberId, ct);
+            await LockLiveMemberAsync(payload.CardiMemberId, ct);
             var existing = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(payload.CardiMemberId)).ToList();
             outcome = await ResolveGrantTargetAsync(payload, existing, deviceType, account);
             var now = DateTime.UtcNow;
@@ -673,7 +673,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         await _unitOfWork.BeginTransactionAsync();
         try
         {
-            await _unitOfWork.DeviceConnections.LockMemberDevicesAsync(cardiMemberId, ct);
+            await LockLiveMemberAsync(cardiMemberId, ct);
             var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
             var result = await change(connections);
             await _unitOfWork.CommitTransactionAsync();
@@ -987,6 +987,16 @@ public class DeviceConnectionService : IDeviceConnectionService
         next.IsPrimary = true;
         next.UpdatedDate = now;
         _unitOfWork.DeviceConnections.Update(next);
+    }
+
+    /// <summary>
+    /// Takes the member's device lock, and refuses the change if the member was erased or removed
+    /// while it waited — the access check that let the caller in was read before the lock.
+    /// </summary>
+    private async Task LockLiveMemberAsync(Guid cardiMemberId, CancellationToken ct)
+    {
+        if (!await _unitOfWork.DeviceConnections.LockMemberDevicesAsync(cardiMemberId, ct))
+            throw new KeyNotFoundException("CardiMember not found");
     }
 
     private static DeviceConnection RequireConnection(List<DeviceConnection> connections, Guid deviceId)
