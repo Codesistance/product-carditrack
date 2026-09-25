@@ -507,7 +507,7 @@ public class MemberChatService : IMemberChatService
         SendMessageAsync(userId, cardiMemberId, message, progress: null, ct);
 
     public async Task<MemberChatMessageResponse> SendMessageAsync(
-        Guid userId, Guid cardiMemberId, string message, IProgress<MemberChatStep>? progress,
+        Guid userId, Guid cardiMemberId, string message, IMemberChatSendProgress? progress,
         CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
@@ -592,16 +592,20 @@ public class MemberChatService : IMemberChatService
             throw;
         }
 
-        return new MemberChatMessageResponse
-        {
-            SessionId = session.Id,
-            Reply = result.Reply,
-            Charts = result.Charts,
-            GeneratedAt = DateTimeOffset.UtcNow,
-            ChangedAlertSettings = result.ChangedAlertSettings,
-            ChangedJournal = result.ChangedJournal,
-        };
+        return ToResponse(session, result);
     }
+
+    /// <summary>The reply as the app receives it — the final one, and the draft a streamed send
+    /// shows before the answer check, in the same shape.</summary>
+    private static MemberChatMessageResponse ToResponse(MemberChatSession session, MemberChatWorkflowResult result) => new()
+    {
+        SessionId = session.Id,
+        Reply = result.Reply,
+        Charts = result.Charts,
+        GeneratedAt = DateTimeOffset.UtcNow,
+        ChangedAlertSettings = result.ChangedAlertSettings,
+        ChangedJournal = result.ChangedJournal,
+    };
 
     /// <summary>
     /// Every model-facing step of a turn: the malicious pre-check, the routing call, and the
@@ -623,7 +627,7 @@ public class MemberChatService : IMemberChatService
         Guid cardiMemberId,
         CardiMember? member,
         DateTime utcNow,
-        IProgress<MemberChatStep>? progress,
+        IMemberChatSendProgress? progress,
         CancellationToken ct)
     {
         var history = await BuildHistoryBlockAsync(session.Id, member?.Name, ct);
@@ -681,7 +685,7 @@ public class MemberChatService : IMemberChatService
         // The first step a stream reports, and deliberately not before this point: until the
         // pre-check has passed, a send can still end as its own 400, and a stream that had
         // already started could only report that as an event on a 200.
-        progress?.Report(MemberChatStep.Understanding);
+        progress?.Step(MemberChatStep.Understanding);
 
         // The routing call — every message goes through it; the malicious verdict above already
         // ran, so the pre-check stays a standalone hard stop ahead of it on every path.
@@ -736,7 +740,107 @@ public class MemberChatService : IMemberChatService
             result = result with { Calls = InsertAfterTriage(result.Calls, billedRoute) };
         }
 
-        return await CheckAnswerAsync(result, forModel, history, member?.Name, progress, ct);
+        var checkedResult = await CheckAnswerAsync(result, forModel, history, member?.Name, session, progress, ct);
+        return await RemedyAsync(checkedResult, forModel, history, cardiMemberId, member, utcNow, progress, ct);
+    }
+
+    /// <summary>The clinical workflows — the ones a second attempt can change. Status and advise
+    /// replies are assembled in code from what is on file; asking again would compose the same
+    /// sentence.</summary>
+    private static bool CanRetry(MemberChatWorkflow workflow) => workflow is
+        MemberChatWorkflow.Analysis or MemberChatWorkflow.Inference or MemberChatWorkflow.Investigation;
+
+    /// <summary>
+    /// Acts on the answer check's verdict. A reply that asked about something the app does not
+    /// hold gains a sentence, written here, saying so. A reply that missed a question the data
+    /// could answer is worked once more with the gap named — once, and only on a streamed send,
+    /// where the caregiver is already reading the first answer while the second is written.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The retry re-runs the workflow that answered — the same data rules, the same guards on its
+    /// reply — with the check's account of the gap appended to the question. That account is
+    /// model output about the caregiver's own question, from name-redacted input, so it travels
+    /// where the question does and is framed with it; it is trimmed, never trusted.
+    /// </para>
+    /// <para>
+    /// A retry that fails, or comes back as the withheld-verdict line, leaves the first reply
+    /// standing: a real answer that missed part of the question is better than none. Neither the
+    /// retried reply nor the absence sentence is checked again — the stored verdict says why the
+    /// remedy ran; <see cref="ChatAnswerAssessment.Remedy"/> says what it did.
+    /// </para>
+    /// </remarks>
+    private async Task<MemberChatWorkflowResult> RemedyAsync(
+        MemberChatWorkflowResult result, string forModel, ChatHistory history, Guid cardiMemberId,
+        CardiMember? member, DateTime utcNow, IMemberChatSendProgress? progress, CancellationToken ct)
+    {
+        if (result.Assessment is not { Completeness: not AnswerCompleteness.Full } assessment)
+            return result;
+
+        if (assessment.Cause == AnswerGapCause.NotInData)
+            return Remedied(result with { Reply = MemberChatReplies.WithStatedAbsence(result.Reply) }, AnswerRemedy.StatedAbsence);
+
+        if (assessment.Cause != AnswerGapCause.NotAddressed || !CanRetry(result.Workflow))
+            return result;
+
+        if (progress is null)
+            return Remedied(result, AnswerRemedy.RetrySkipped);
+
+        progress.Step(MemberChatStep.Retrying);
+        try
+        {
+            var question = WithGapNamed(forModel, assessment);
+            var retried = result.Workflow switch
+            {
+                MemberChatWorkflow.Inference =>
+                    await InferAsync(question, new AiUsage(), cardiMemberId, member, history, utcNow, progress, ct),
+                MemberChatWorkflow.Investigation =>
+                    await InvestigateAsync(question, new AiUsage(), cardiMemberId, member, history, utcNow, progress, ct),
+                _ => await AnalyseAsync(question, new AiUsage(), cardiMemberId, member, history, utcNow, progress, ct),
+            };
+
+            // The retry's own calls are billed to the turn; the pre-check record every handler
+            // opens with is the first attempt's, already on the list, and did not run again.
+            var calls = (IReadOnlyList<AiCallRecord>)
+                [.. result.Calls, .. retried.Calls.Where(c => c.Step != AiCallStep.MaliciousCheck)];
+
+            if (retried.Reply == CouldNotAnswerReply)
+                return Remedied(result with { Calls = calls }, AnswerRemedy.RetryFailed);
+
+            return Remedied(result with { Reply = retried.Reply, Charts = retried.Charts, Calls = calls }, AnswerRemedy.Retried);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Answer retry failed; the first reply stands.");
+            return Remedied(result, AnswerRemedy.RetryFailed);
+        }
+
+        static MemberChatWorkflowResult Remedied(MemberChatWorkflowResult r, AnswerRemedy remedy)
+        {
+            MemberChatTelemetry.TagAnswerRemedy(remedy);
+            return r with { Assessment = r.Assessment! with { Remedy = remedy } };
+        }
+    }
+
+    /// <summary>How long a line of the check's account may be when it rides along with the
+    /// question. Long enough for "the time of day he was most active", short enough that it
+    /// cannot carry a second question of its own.</summary>
+    private const int MaxGapLineLength = 200;
+
+    internal static string WithGapNamed(string question, ChatAnswerAssessment assessment)
+    {
+        static string Line(string? text) =>
+            MedicalPromptBlocks.Flatten(text ?? string.Empty) is { Length: > 0 } flat
+                ? flat.Length > MaxGapLineLength ? flat[..MaxGapLineLength] : flat
+                : "not stated";
+
+        return $"{question}\n\n(An earlier answer to this missed what was asked. What the question is after: "
+            + $"{Line(assessment.Intent)}. What that answer left out: {Line(assessment.Missing)}. "
+            + "Answer that directly, or say plainly what the readings cannot show.)";
     }
 
     /// <summary>
@@ -749,8 +853,9 @@ public class MemberChatService : IMemberChatService
         or MemberChatWorkflow.Investigation or MemberChatWorkflow.Advise;
 
     /// <summary>
-    /// Asks whether the reply answered what was asked, and records the verdict on the result —
-    /// recording only: the reply the caregiver gets is the same either way.
+    /// Asks whether the reply answered what was asked, and records the verdict on the result for
+    /// <see cref="RemedyAsync"/> to act on. A streamed send is shown the reply as a draft first,
+    /// so the caregiver reads it while the check runs.
     /// </summary>
     /// <remarks>
     /// The check costs one Rewrite-slot call on the replies it reads and is billed like any other.
@@ -759,12 +864,13 @@ public class MemberChatService : IMemberChatService
     /// </remarks>
     private async Task<MemberChatWorkflowResult> CheckAnswerAsync(
         MemberChatWorkflowResult result, string forModel, ChatHistory history, string? memberName,
-        IProgress<MemberChatStep>? progress, CancellationToken ct)
+        MemberChatSession session, IMemberChatSendProgress? progress, CancellationToken ct)
     {
         if (_answerChecker is null || !AnswersTheQuestion(result.Workflow))
             return result;
 
-        progress?.Report(MemberChatStep.Checking);
+        progress?.Draft(ToResponse(session, result with { Reply = CapReply(result.Reply) }));
+        progress?.Step(MemberChatStep.Checking);
 
         try
         {
@@ -835,12 +941,12 @@ public class MemberChatService : IMemberChatService
         CardiMember? member,
         ChatHistory history,
         DateTime utcNow,
-        IProgress<MemberChatStep>? progress,
+        IMemberChatSendProgress? progress,
         CancellationToken ct)
     {
         // The planner sees only what this workflow's catalogue entry allows — the registry slice
         // and the parse gate are the same list, so prompt and validator cannot drift.
-        progress?.Report(MemberChatStep.Planning);
+        progress?.Step(MemberChatStep.Planning);
         var plan = await _planner.PlanAsync(
             flattened, history.Full, ChatWorkflowCatalogue.Find(MemberChatWorkflow.Analysis)!.AllowedDatasets, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
@@ -855,11 +961,11 @@ public class MemberChatService : IMemberChatService
         var clinicalOnly = ClinicalOnlyData.Wrap(
             $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(flattened, clinicalOnly, history.QuestionsOnly);
-        progress?.Report(MemberChatStep.Reading);
+        progress?.Step(MemberChatStep.Reading);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
 
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
-        progress?.Report(MemberChatStep.Writing);
+        progress?.Step(MemberChatStep.Writing);
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var voice = MemberVoice.For(member);
@@ -896,11 +1002,11 @@ public class MemberChatService : IMemberChatService
         CardiMember? member,
         ChatHistory history,
         DateTime utcNow,
-        IProgress<MemberChatStep>? progress,
+        IMemberChatSendProgress? progress,
         CancellationToken ct)
     {
         var allowed = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Inference)!.AllowedDatasets;
-        progress?.Report(MemberChatStep.Planning);
+        progress?.Step(MemberChatStep.Planning);
         var plan = await _planner.PlanAsync(flattened, history.Full, allowed, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
@@ -921,11 +1027,11 @@ public class MemberChatService : IMemberChatService
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
             flattened, clinicalOnly, history.QuestionsOnly, InferenceClinicalInstructions);
-        progress?.Report(MemberChatStep.Reading);
+        progress?.Step(MemberChatStep.Reading);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<InferenceClinicalAiResponse>(clinicalPrompt, ct);
 
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
-        progress?.Report(MemberChatStep.Writing);
+        progress?.Step(MemberChatStep.Writing);
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var voice = MemberVoice.For(member);
@@ -951,7 +1057,7 @@ public class MemberChatService : IMemberChatService
         {
             var reaskPrompt = BuildClinicalPrompt(
                 flattened, clinicalOnly, history.QuestionsOnly, InferenceClinicalInstructions + InferenceReaskAddendum);
-            progress?.Report(MemberChatStep.Rereading);
+            progress?.Step(MemberChatStep.Rereading);
             var reasked = await _medicalAi.GenerateStructuredWithUsageAsync<InferenceClinicalAiResponse>(reaskPrompt, ct);
             var reaskRewrite = await _rewriteAi.GenerateWithUsageAsync(
                 BuildRewritePrompt(flattened, new DeidentifiedFindings(reasked.Result.Analysis)), ct);
@@ -1024,11 +1130,11 @@ public class MemberChatService : IMemberChatService
         CardiMember? member,
         ChatHistory history,
         DateTime utcNow,
-        IProgress<MemberChatStep>? progress,
+        IMemberChatSendProgress? progress,
         CancellationToken ct)
     {
         var allowed = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Investigation)!.AllowedDatasets;
-        progress?.Report(MemberChatStep.Planning);
+        progress?.Step(MemberChatStep.Planning);
         var plan = await _planner.PlanAsync(flattened, history.Full, allowed, ct);
         var anchor = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
@@ -1052,11 +1158,11 @@ public class MemberChatService : IMemberChatService
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
             flattened, clinicalOnly, history.QuestionsOnly, InvestigationClinicalInstructions);
-        progress?.Report(MemberChatStep.Reading);
+        progress?.Step(MemberChatStep.Reading);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
 
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
-        progress?.Report(MemberChatStep.Writing);
+        progress?.Step(MemberChatStep.Writing);
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var voice = MemberVoice.For(member);
@@ -1098,7 +1204,7 @@ public class MemberChatService : IMemberChatService
         MemberChatSession session,
         ChatHistory history,
         DateTime utcNow,
-        IProgress<MemberChatStep>? progress,
+        IMemberChatSendProgress? progress,
         CancellationToken ct)
     {
         // Descend on failure and on repeated ambiguity alike: analysis is the rung that serves

@@ -31,6 +31,29 @@ public enum AnswerGapCause
     NotInData = 2,
 }
 
+/// <summary>What the send did about a reply the check found short.</summary>
+public enum AnswerRemedy
+{
+    /// <summary>Nothing: the reply was full, the check failed, or no remedy applies to the
+    /// workflow (a code-written status or advise reply cannot be asked again).</summary>
+    None = 0,
+
+    /// <summary><see cref="AnswerGapCause.NotInData"/>: a sentence written in code says the
+    /// detail is not on file. No model call.</summary>
+    StatedAbsence = 1,
+
+    /// <summary><see cref="AnswerGapCause.NotAddressed"/>: the workflow ran once more with the
+    /// gap named, and its reply replaced the first.</summary>
+    Retried = 2,
+
+    /// <summary>The retry was attempted and failed; the first reply stands.</summary>
+    RetryFailed = 3,
+
+    /// <summary>A retry was due but not run: the send was not streamed, so nobody was being
+    /// shown the first answer while a second was worked on.</summary>
+    RetrySkipped = 4,
+}
+
 /// <summary>
 /// The answer check's reading of one reply: what the question was after, whether the reply gave
 /// it, and why not when it did not. Internal — stored encrypted on the assistant turn and never
@@ -44,9 +67,9 @@ public enum AnswerGapCause
 /// <see cref="Cause"/> leave the row, as telemetry tags.
 /// </para>
 /// <para>
-/// Recording only, for now: nothing acts on the verdict yet. The miss rate it measures is what
-/// decides whether a retry is worth its cost — see docs/technical/member_chat_routing.md,
-/// "The answer check".
+/// Acted on since 2026-09-25 — see <see cref="Remedy"/> and docs/technical/member_chat_routing.md,
+/// "The answer check". The verdict stored is the first reply's; a retried reply is not checked
+/// again, so the stored verdict says why the retry ran, not how it went.
 /// </para>
 /// </remarks>
 public sealed record ChatAnswerAssessment
@@ -69,6 +92,10 @@ public sealed record ChatAnswerAssessment
 
     /// <summary>The check's reasoning, in a sentence or two.</summary>
     public string? Reasoning { get; init; }
+
+    /// <summary>What the send did about the verdict. Absent from assessments stored before
+    /// remedies existed, which read as <see cref="AnswerRemedy.None"/>.</summary>
+    public AnswerRemedy Remedy { get; init; }
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 

@@ -48,6 +48,14 @@ public sealed class MemberChatStep
         Text = "Putting it into plain words…",
     };
 
+    /// <summary>The answer check found the first reply missed the question; the workflow is
+    /// running once more with the gap named. Follows a draft the caregiver can already read.</summary>
+    public static readonly MemberChatStep Retrying = new()
+    {
+        Step = "retrying",
+        Text = "Taking another look to answer exactly what you asked…",
+    };
+
     /// <summary>Checking the reply against the question (the answer check).</summary>
     public static readonly MemberChatStep Checking = new()
     {

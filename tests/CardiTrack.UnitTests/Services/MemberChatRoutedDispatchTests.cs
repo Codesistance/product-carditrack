@@ -950,6 +950,151 @@ public class MemberChatRoutedDispatchTests
         Assert.Equal(reply.Reply, checkedReply);
     }
 
+    // ---- Remedies: acting on the answer check -----------------------------------------------
+
+    private ChatAnswerAssessment StoredAssessment(MemberChatTurn turn) =>
+        ChatAnswerAssessment.FromJson(PromptContextFactory.Encryption.Decrypt(turn.Assessment!))!;
+
+    /// <summary>The first reply, then the retry's — the rewrite answers in call order.</summary>
+    private void RewritesAnswer(string first, string second) =>
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(first, new AiUsage()), new AiGenerationResult<string>(second, new AiUsage()));
+
+    private void TheCheckSays(AnswerGapCause cause) => CheckerAnswers(new ChatAnswerAssessment
+    {
+        Completeness = AnswerCompleteness.Partial,
+        Cause = cause,
+        Intent = "when he was active",
+        Missing = "the time of day",
+    });
+
+    /// <summary>
+    /// Asked for something the app does not hold, the reply says so — in a sentence written in
+    /// code, with no second model call.
+    /// </summary>
+    [Fact]
+    public async Task ANotInDataVerdict_AddsTheStatedAbsence_WithNoFurtherModelCall()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        TheCheckSays(AnswerGapCause.NotInData);
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "when was he active?", new StepRecorder());
+
+        Assert.EndsWith(MemberChatReplies.StatedAbsenceSentence, reply.Reply, StringComparison.Ordinal);
+        await _medicalAi.Received(1).GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _rewriteAi.Received(1).GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        Assert.Equal(AnswerRemedy.StatedAbsence, StoredAssessment(assistant!).Remedy);
+    }
+
+    /// <summary>
+    /// A reply that missed a question the data could answer is worked once more, with the gap
+    /// named, while the caregiver reads the first answer as a draft — and the retry is the reply.
+    /// </summary>
+    [Fact]
+    public async Task ANotAddressedVerdict_OnAStreamedSend_IsRetriedOnceWithTheGapNamed()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        RewritesAnswer("The week looks steady.", "No single day stood out from the rest this week.");
+        TheCheckSays(AnswerGapCause.NotAddressed);
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+        var steps = new StepRecorder();
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "when was he active?", steps);
+
+        Assert.StartsWith("No single day stood out", reply.Reply, StringComparison.Ordinal);
+        Assert.StartsWith("The week looks steady.", Assert.Single(steps.Drafts).Reply, StringComparison.Ordinal);
+        Assert.Equal(
+            ["understanding", "planning", "reading", "writing", "checking", "retrying", "planning", "reading", "writing"],
+            steps.Keys);
+
+        // The second plan was told what the first answer left out; the check ran once.
+        var plannedQuestions = _planner.ReceivedCalls().Select(c => (string)c.GetArguments()[0]!).ToList();
+        Assert.Equal(2, plannedQuestions.Count);
+        Assert.DoesNotContain("left out", plannedQuestions[0], StringComparison.Ordinal);
+        Assert.Contains("What that answer left out: the time of day.", plannedQuestions[1], StringComparison.Ordinal);
+        await _checker.ReceivedWithAnyArgs(1).CheckAsync(default!, default, default!, default);
+
+        // Both attempts are billed; the pre-check ran once and is billed once.
+        await _usages.Received(2).AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.ClinicalAnalysis));
+        await _usages.Received(1).AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.MaliciousCheck));
+        Assert.Equal(AnswerRemedy.Retried, StoredAssessment(assistant!).Remedy);
+        Assert.StartsWith("No single day stood out", PromptContextFactory.Encryption.Decrypt(assistant!.Content), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The plain send has no one to show a draft to: a retry would only double its wait, so the
+    /// first reply goes out, and the skip is recorded.
+    /// </summary>
+    [Fact]
+    public async Task ANotAddressedVerdict_OnAPlainSend_IsNotRetried()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        RewritesAnswer("The week looks steady.", "No single day stood out from the rest this week.");
+        TheCheckSays(AnswerGapCause.NotAddressed);
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "when was he active?");
+
+        Assert.StartsWith("The week looks steady.", reply.Reply, StringComparison.Ordinal);
+        await _medicalAi.Received(1).GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        Assert.Equal(AnswerRemedy.RetrySkipped, StoredAssessment(assistant!).Remedy);
+    }
+
+    /// <summary>A retry that fails costs the caregiver nothing: the first reply stands.</summary>
+    [Fact]
+    public async Task ARetryThatFails_LeavesTheFirstReplyStanding()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        TheCheckSays(AnswerGapCause.NotAddressed);
+        var clinicalCalls = 0;
+        _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => ++clinicalCalls == 1
+                ? Task.FromResult(new AiGenerationResult<MemberChatService.MemberChatClinicalAiResponse>(
+                    new MemberChatService.MemberChatClinicalAiResponse { Analysis = "steady week", ReadingsFrom = null, ReadingsTo = null },
+                    new AiUsage()))
+                : throw new HttpRequestException("saturated"));
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "when was he active?", new StepRecorder());
+
+        Assert.StartsWith("The week looks steady.", reply.Reply, StringComparison.Ordinal);
+        Assert.Equal(AnswerRemedy.RetryFailed, StoredAssessment(assistant!).Remedy);
+    }
+
+    /// <summary>The check's account of the gap rides with the question, trimmed so it cannot
+    /// carry a question of its own.</summary>
+    [Fact]
+    public void TheGapRidesWithTheQuestion_Trimmed()
+    {
+        var gap = MemberChatService.WithGapNamed("when was he active?", new ChatAnswerAssessment
+        {
+            Completeness = AnswerCompleteness.Partial,
+            Cause = AnswerGapCause.NotAddressed,
+            Intent = "when he was active",
+            Missing = new string('x', 500),
+        });
+
+        Assert.StartsWith("when was he active?\n\n(An earlier answer", gap, StringComparison.Ordinal);
+        Assert.DoesNotContain(new string('x', 201), gap, StringComparison.Ordinal);
+        Assert.Contains(new string('x', 200), gap, StringComparison.Ordinal);
+    }
+
     /// <summary>A steer redirects rather than answers, so there is nothing to check.</summary>
     [Fact]
     public async Task ASteer_IsNotChecked()
@@ -987,10 +1132,12 @@ public class MemberChatRoutedDispatchTests
 
     // ---- Progress steps (the streaming endpoint's step events) --------------------------------
 
-    private sealed class StepRecorder : IProgress<MemberChatStep>
+    private sealed class StepRecorder : IMemberChatSendProgress
     {
         public List<string> Keys { get; } = [];
-        public void Report(MemberChatStep value) => Keys.Add(value.Step);
+        public List<MemberChatMessageResponse> Drafts { get; } = [];
+        public void Step(MemberChatStep step) => Keys.Add(step.Step);
+        public void Draft(MemberChatMessageResponse draft) => Drafts.Add(draft);
     }
 
     /// <summary>A reading rung reports each stage as it starts, in the order it runs them.</summary>

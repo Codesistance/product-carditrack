@@ -85,6 +85,24 @@ public static class MemberChatTelemetry
     public static void TagAnswerCheckFailed() =>
         Activity.Current?.SetTag(AnswerCheckTag, "failed");
 
+    /// <summary>What the send did about a short reply: <c>stated_absence</c>, <c>retried</c>,
+    /// <c>retry_failed</c> or <c>retry_skipped</c>. Absent when nothing was due.</summary>
+    public const string AnswerRemedyTag = "chat.answer_remedy";
+
+    public static void TagAnswerRemedy(AnswerRemedy remedy)
+    {
+        if (remedy == AnswerRemedy.None)
+            return;
+
+        Activity.Current?.SetTag(AnswerRemedyTag, remedy switch
+        {
+            AnswerRemedy.StatedAbsence => "stated_absence",
+            AnswerRemedy.Retried => "retried",
+            AnswerRemedy.RetryFailed => "retry_failed",
+            _ => "retry_skipped",
+        });
+    }
+
     public static void TagSource(string source) =>
         Activity.Current?.SetTag(SourceTag, source);
 

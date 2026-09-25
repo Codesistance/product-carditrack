@@ -81,6 +81,74 @@ public class MemberChatStreamClientTests
         Assert.Equal(CardiTrackApiClient.MemberChatSendTimeout, requestedTimeout);
     }
 
+    private sealed class DraftRecorder : IProgress<MemberChatMessageResponse>
+    {
+        public List<string> Replies { get; } = [];
+        public void Report(MemberChatMessageResponse value) => Replies.Add(value.Reply);
+    }
+
+    [Fact]
+    public async Task ADraftIsHandedOver_AndAnUpdatedAnswerIsTheResult()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(_ => Stream(AnswerEvent + """
+            event: step
+            data: {"step":"retrying","text":"Taking another look…"}
+
+            event: answer.updated
+            data: {"sessionId":"6f9619ff-8b86-d011-b42d-00c04fc964ff","reply":"No single night stood out.","charts":[],"generatedAt":"2026-08-20T15:51:00Z"}
+
+            event: done
+            data: {}
+
+
+            """));
+        var drafts = new DraftRecorder();
+
+        var answer = await client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null, drafts);
+
+        Assert.Equal(["Steady night."], drafts.Replies);
+        Assert.Equal("No single night stood out.", answer.Reply);
+    }
+
+    [Fact]
+    public async Task ADraftThatStood_IsTheResult()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(_ => Stream(AnswerEvent + """
+            event: done
+            data: {}
+
+
+            """));
+        var drafts = new DraftRecorder();
+
+        var answer = await client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null, drafts);
+
+        Assert.Equal("Steady night.", answer.Reply);
+        Assert.Equal(["Steady night."], drafts.Replies);
+    }
+
+    [Fact]
+    public async Task AnErrorAfterTheDraft_IsStillAnError()
+    {
+        // The draft was not saved: the send failed after it, and the caller must not keep it.
+        var (client, http) = CreateSut();
+        http.Enqueue(_ => Stream(AnswerEvent + """
+            event: error
+            data: {"status":404,"message":"We couldn't find what you were looking for."}
+
+
+            """));
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null));
+
+        Assert.Equal(HttpStatusCode.NotFound, ex.StatusCode);
+    }
+
     [Fact]
     public async Task AnErrorEvent_IsTheSameApiExceptionThePlainSendThrows()
     {

@@ -912,25 +912,67 @@ public partial class MemberChatPage : ContentView
         ScrollToLatest();
         var steps = new Progress<MemberChatStep>(step => PendingTextLabel.Text = step.Text);
 
+        // A reply the server goes on to check arrives first as a draft: shown at once, so the
+        // caregiver reads it while the check runs, with the pending line beneath it still saying
+        // what is happening. The saved reply replaces it only when the check changed it.
+        MemberChatMessageResponse? draft = null;
+        ChatTurnItem? draftItem = null;
+        var settled = false;
+        var drafts = new Progress<MemberChatMessageResponse>(d =>
+        {
+            // Progress posts to this thread; a post that somehow lands after the send has settled
+            // would add a second bubble beside the answer it drafted.
+            if (settled)
+                return;
+            draft = d;
+            draftItem = ChatTurnItem.FromReply(d, _memberFirstName);
+            _turns.Add(draftItem);
+            ScrollToLatest();
+        });
+
         try
         {
             var response = await _api.StreamMemberChatMessageAsync(
-                _memberId, new MemberChatMessageRequest { Message = message }, steps);
+                _memberId, new MemberChatMessageRequest { Message = message }, steps, drafts);
+            settled = true;
             // The first send of a window is what creates the session, so this is where the
             // thread learns which conversation it is — the export action needs it named.
             _currentSessionId = response.SessionId;
             if (_currentStartedOn == default)
                 _currentStartedOn = DateOnly.FromDateTime(DateTime.Now);
-            _turns.Add(ChatTurnItem.FromReply(response, _memberFirstName));
+
+            if (draftItem is null)
+            {
+                _turns.Add(ChatTurnItem.FromReply(response, _memberFirstName));
+            }
+            else if (response.Reply != draft!.Reply)
+            {
+                // In place, and labelled: the caregiver may already have read the first version,
+                // and a bubble that silently changed under them would read as a glitch.
+                var index = _turns.IndexOf(draftItem);
+                var updated = ChatTurnItem.FromReply(response, _memberFirstName, updated: true);
+                if (index >= 0)
+                    _turns[index] = updated;
+                else
+                    _turns.Add(updated);
+            }
         }
         catch (ApiException ex)
         {
+            settled = true;
+            // A draft already on screen was never saved — the send failed after it — so it gives
+            // way to the error rather than standing as an answer the history will not have.
+            if (draftItem is not null)
+                _turns.Remove(draftItem);
             // The question stays in the list — retyping it would be worse than seeing why it
             // didn't get an answer. The reply slot carries the error instead of a made-up answer.
             _turns.Add(ChatTurnItem.FromError(ex.Message));
         }
         catch (Exception ex)
         {
+            settled = true;
+            if (draftItem is not null)
+                _turns.Remove(draftItem);
             ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while sending a message");
             _turns.Add(ChatTurnItem.FromError("Something went wrong sending that — try again."));
         }
@@ -1107,7 +1149,9 @@ public sealed class ChatTurnItem
         return (drawable, summarised);
     }
 
-    public static ChatTurnItem FromReply(MemberChatMessageResponse response, string? memberFirstName)
+    /// <param name="updated">The saved reply replacing a draft the answer check changed —
+    /// labelled so a caregiver who read the first version sees why the words moved.</param>
+    public static ChatTurnItem FromReply(MemberChatMessageResponse response, string? memberFirstName, bool updated = false)
     {
         var (drawable, summarised) = SplitCharts(response.Charts);
         var (body, reference) = SplitReference(response.Reply);
@@ -1117,7 +1161,9 @@ public sealed class ChatTurnItem
             Content = body,
             ReferenceText = reference,
             IsUser = false,
-            RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
+            RoleLabel = updated
+                ? "Updated answer"
+                : memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
             ShowRoleLabel = true,
             TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
             BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,

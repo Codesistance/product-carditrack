@@ -90,12 +90,20 @@ public class MemberChatController : BaseApiController
 
     /// <summary>
     /// <see cref="SendMessage"/> as a stream of server-sent events: a <c>step</c> event as each
-    /// stage of the pipeline starts, then one <c>answer</c> carrying the saved reply (the same
-    /// <see cref="MemberChatMessageResponse"/> the JSON endpoint returns), then <c>done</c>. A
+    /// stage of the pipeline starts, one <c>answer</c> carrying the reply (the same
+    /// <see cref="MemberChatMessageResponse"/> the JSON endpoint returns), an
+    /// <c>answer.updated</c> when the answer check's remedy replaced it, then <c>done</c>. A
     /// failure after the stream has started ends it with one <c>error</c> event carrying the
     /// status and message the JSON endpoint would have answered with.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// For a reply the answer check reads, <c>answer</c> is the draft, sent before the check runs
+    /// and before the turn is saved, so the caregiver reads it while the check works. When the
+    /// check's remedy changes it (a stated absence, or a retry that answered the question) the
+    /// saved reply follows as <c>answer.updated</c>; when nothing changed, <c>done</c> confirms the
+    /// draft as the saved answer. Any other reply is sent once, as <c>answer</c>, after it is saved.
+    /// </para>
     /// <para>
     /// Nothing is written until the first event, and the service reports its first step only once
     /// the malicious pre-check has passed — so the failures that have their own status (403, 400
@@ -135,19 +143,30 @@ public class MemberChatController : BaseApiController
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
         budget.CancelAfter(_sendBudget);
 
-        var steps = Channel.CreateUnbounded<MemberChatStep>(
+        var steps = Channel.CreateUnbounded<StreamEvent>(
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
         var progress = new ChannelProgress(steps.Writer);
 
         var send = SendThenCompleteAsync(cardiMemberId, request.Message, progress, steps.Writer, budget.Token);
         var events = new ServerSentEventWriter(Response, _json);
+        MemberChatMessageResponse? shownDraft = null;
 
         try
         {
             while (await WaitForStepAsync(steps.Reader, ct))
             {
-                while (steps.Reader.TryRead(out var step))
-                    await events.WriteAsync("step", step, ct);
+                while (steps.Reader.TryRead(out var item))
+                {
+                    if (item.Draft is { } draft)
+                    {
+                        await events.WriteAsync("answer", draft, ct);
+                        shownDraft = draft;
+                    }
+                    else
+                    {
+                        await events.WriteAsync("step", item.Step!, ct);
+                    }
+                }
             }
         }
         catch
@@ -193,7 +212,12 @@ public class MemberChatController : BaseApiController
         }
 
         NameAuditAction(result);
-        await events.WriteAsync("answer", result, ct);
+        // A draft already on screen is replaced only when the answer check's remedy changed it;
+        // otherwise the draft was the answer, and the saved turn carries the same text.
+        if (shownDraft is null)
+            await events.WriteAsync("answer", result, ct);
+        else if (shownDraft.Reply != result.Reply)
+            await events.WriteAsync("answer.updated", result, ct);
         await events.WriteAsync("done", new { }, ct);
         return new EmptyResult();
 
@@ -201,7 +225,7 @@ public class MemberChatController : BaseApiController
         // one — but only once the stream has started: before the first step there is nothing to
         // keep alive, and a heartbeat would commit the 200 a pre-check failure still needs to
         // be able to replace.
-        async Task<bool> WaitForStepAsync(ChannelReader<MemberChatStep> reader, CancellationToken token)
+        async Task<bool> WaitForStepAsync(ChannelReader<StreamEvent> reader, CancellationToken token)
         {
             // One wait for the whole call, however many heartbeats pass: a single-reader channel
             // holds one waiter, and a fresh wait per heartbeat would stack them.
@@ -223,8 +247,8 @@ public class MemberChatController : BaseApiController
     internal static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(15);
 
     private async Task<MemberChatMessageResponse> SendThenCompleteAsync(
-        Guid cardiMemberId, string message, IProgress<MemberChatStep> progress,
-        ChannelWriter<MemberChatStep> writer, CancellationToken ct)
+        Guid cardiMemberId, string message, IMemberChatSendProgress progress,
+        ChannelWriter<StreamEvent> writer, CancellationToken ct)
     {
         try
         {
@@ -312,10 +336,14 @@ public class MemberChatController : BaseApiController
 
     /// <summary>Reports straight into the channel: never blocks the pipeline, and a report after
     /// the send has settled is dropped rather than thrown.</summary>
-    private sealed class ChannelProgress(ChannelWriter<MemberChatStep> writer) : IProgress<MemberChatStep>
+    private sealed class ChannelProgress(ChannelWriter<StreamEvent> writer) : IMemberChatSendProgress
     {
-        public void Report(MemberChatStep value) => writer.TryWrite(value);
+        public void Step(MemberChatStep step) => writer.TryWrite(new StreamEvent(step, null));
+        public void Draft(MemberChatMessageResponse draft) => writer.TryWrite(new StreamEvent(null, draft));
     }
+
+    /// <summary>One report from the pipeline: a step, or the draft reply.</summary>
+    private sealed record StreamEvent(MemberChatStep? Step, MemberChatMessageResponse? Draft);
 
     /// <summary>
     /// Short lines for the app to cycle in the pending reply bubble while the send for the same

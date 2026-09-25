@@ -23,6 +23,31 @@ public enum ConfirmationAnswer
 public static partial class MemberChatReplies
 {
     /// <summary>
+    /// What a reply gains when the answer check finds the question asked for something the app
+    /// does not hold ("when was he active", against daily totals). Written here, never by a model:
+    /// the check says only that the detail is missing, and a sentence built from its words would
+    /// be a model's claim about the data presented as the app's.
+    /// </summary>
+    public const string StatedAbsenceSentence =
+        "CardiTrack doesn't record that detail, so this is as close as the readings on file can get.";
+
+    /// <summary>
+    /// <paramref name="reply"/> with <see cref="StatedAbsenceSentence"/> added — before a closing
+    /// references block when there is one, so the citations stay last where the app renders them.
+    /// Unchanged when the sentence is already there.
+    /// </summary>
+    public static string WithStatedAbsence(string reply)
+    {
+        if (reply.Contains(StatedAbsenceSentence, StringComparison.Ordinal))
+            return reply;
+
+        var references = reply.LastIndexOf("\n\nReference", StringComparison.Ordinal);
+        return references < 0
+            ? $"{reply}\n\n{StatedAbsenceSentence}"
+            : $"{reply[..references]}\n\n{StatedAbsenceSentence}{reply[references..]}";
+    }
+
+    /// <summary>
     /// The answer to "is he asleep now?" — the limit first, then the most recent thing actually
     /// recorded, so the answer is useful rather than only honest.
     /// </summary>

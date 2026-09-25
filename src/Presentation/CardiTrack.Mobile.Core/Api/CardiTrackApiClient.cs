@@ -387,7 +387,8 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     /// <summary>
     /// The send as a stream: each <c>step</c> event is handed to <paramref name="onStep"/> as it
-    /// arrives, and the <c>answer</c> event is the result. Failures read the same as
+    /// arrives, a first <c>answer</c> to <paramref name="onDraft"/> so it can be shown at once, and
+    /// the result is the last of <c>answer</c> and <c>answer.updated</c> — the reply as saved. Failures read the same as
     /// <see cref="SendMemberChatMessageAsync"/>'s — an error status before the stream starts, or an
     /// <c>error</c> event after, both become an <see cref="ApiException"/> carrying the server's
     /// status and message.
@@ -399,7 +400,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// </remarks>
     public async Task<MemberChatMessageResponse> StreamMemberChatMessageAsync(
         Guid cardiMemberId, MemberChatMessageRequest request, IProgress<MemberChatStep>? onStep,
-        CancellationToken ct = default)
+        IProgress<MemberChatMessageResponse>? onDraft = null, CancellationToken ct = default)
     {
         var path = $"api/v1/member-chat/members/{cardiMemberId}/messages/stream";
         using var whole = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -437,7 +438,15 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
                         // Unreadable is treated as absent — the "cut off" message below — rather
                         // than letting a JsonException escape as an unexplained failure.
                         if (JsonUtility.TryDeserialize<MemberChatMessageResponse>(sse.Data, out var parsed, out _))
+                        {
                             answer = parsed;
+                            onDraft?.Report(parsed!);
+                        }
+                        break;
+                    case "answer.updated":
+                        // The answer check's remedy replaced the draft; this is what was saved.
+                        if (JsonUtility.TryDeserialize<MemberChatMessageResponse>(sse.Data, out var updated, out _))
+                            answer = updated;
                         break;
                     case "error":
                         throw StreamError(path, sse.Data);
