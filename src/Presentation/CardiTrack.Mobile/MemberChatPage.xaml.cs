@@ -150,6 +150,12 @@ public partial class MemberChatPage : ContentView
             if (AiChatNotice.IsSeen(Preferences.Default.Get(AiChatNoticeSeenKey, string.Empty), email))
                 return;
 
+            // PopupService attaches to the first window's page and returns without showing
+            // anything when there is none, so a notice asked for then is not one the caregiver
+            // saw: nothing is recorded, and the next open or send asks again.
+            if (Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page is null)
+                return;
+
             await ServiceHelper.GetRequiredService<IPopupService>()
                 .ShowInfoAsync(AiChatNotice.Message, AiChatNotice.Title, AiChatNotice.AcknowledgeText);
 
