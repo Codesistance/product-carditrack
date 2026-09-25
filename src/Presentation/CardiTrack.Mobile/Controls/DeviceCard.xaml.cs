@@ -21,16 +21,22 @@ public partial class DeviceCard : ContentView
     /// <summary>False while a re-pull is open or its cooldown is in force — the row then only reports.</summary>
     private bool _canRepull = true;
 
-    /// <summary>Raised with the new state when the user opens or closes the sharing detail.</summary>
-    public event EventHandler<bool>? SharingExpansionChanged;
+    /// <summary>Raised when the user opens a family's readings (the family) or folds them (null).</summary>
+    public event EventHandler<DatasetFamily?>? SharingFamilyChanged;
 
     private Guid _deviceId;
 
     /// <summary>Guards the Toggled handler while <see cref="Apply"/> sets the switch itself.</summary>
     private bool _applying;
 
-    /// <summary>False when every family names a single dataset — the pills already say it all.</summary>
-    private bool _canExpandSharing;
+    /// <summary>What this device shares, by family, as last applied.</summary>
+    private IReadOnlyList<DeviceDatasetGroup> _groups = [];
+
+    /// <summary>The pills that open a strip — families with more than one reading.</summary>
+    private readonly Dictionary<DatasetFamily, Border> _pills = [];
+
+    /// <summary>The family whose readings the strip is showing, if any.</summary>
+    private DatasetFamily? _openFamily;
 
     public DeviceCard()
     {
@@ -154,7 +160,6 @@ public partial class DeviceCard : ContentView
         // Genuinely not a control while withheld, rather than a tap that silently does nothing:
         // a disabled button is announced as such by a screen reader, and dimmed for everyone.
         RepullButton.IsEnabled = _canRepull;
-        RepullButton.Opacity = _canRepull ? 1 : 0.5;
 
         SemanticProperties.SetDescription(RepullButton, status is null
             ? "Re-pull history"
@@ -188,37 +193,49 @@ public partial class DeviceCard : ContentView
     }
 
     /// <summary>
-    /// Rebuilds the sharing row: one pill per dataset family, with the family's readings on a
-    /// detail line behind the chevron. A connection sharing nothing is worth saying out loud —
+    /// Rebuilds the sharing row: one pill per dataset family, each that stands for several readings
+    /// opening them in the strip below it. A connection sharing nothing is worth saying out loud —
     /// it looks connected but sends no data — so the row keeps a pill either way.
     /// </summary>
     private void ApplyDatasets(List<string> scopes)
     {
         DatasetPills.Children.Clear();
-        SharingDetail.Children.Clear();
+        _pills.Clear();
+        _groups = DeviceDatasets.GroupedFor(scopes);
 
-        var groups = DeviceDatasets.GroupedFor(scopes);
-        if (groups.Count == 0)
+        if (_groups.Count == 0)
         {
+            SharingLabel.Text = "SHARING";
             DatasetPills.Children.Add(BuildWarningPill("Not sharing any data"));
-            SetSharingExpandable(false);
+            SetOpenFamily(null);
             return;
         }
 
-        foreach (var group in groups)
+        var readings = _groups.Sum(g => g.Datasets.Count);
+        SharingLabel.Text = readings == 1 ? "SHARING · 1 READING" : $"SHARING · {readings} READINGS";
+
+        foreach (var group in _groups)
         {
-            DatasetPills.Children.Add(BuildPill(group));
-            SharingDetail.Children.Add(BuildDetailLine(group));
+            var pill = BuildPill(group);
+            DatasetPills.Children.Add(pill);
+
+            // A pill that names its one reading already says everything it could open.
+            if (group.Datasets.Count > 1)
+            {
+                _pills[group.Family] = pill;
+                var tap = new TapGestureRecognizer();
+                tap.Tapped += (_, _) => OnPillTapped(group.Family);
+                pill.GestureRecognizers.Add(tap);
+            }
         }
 
-        // Nothing to reveal when every pill already names its one dataset.
-        SetSharingExpandable(groups.Any(g => g.Datasets.Count > 1));
+        // Re-applied so a rebuild keeps (or drops, if that family has gone) whatever was open.
+        SetOpenFamily(_openFamily);
     }
 
     /// <summary>
     /// A family pill: the label, plus the number of readings when the family carries several.
-    /// The count is the whole point of collapsing the row — it keeps "how much" visible after
-    /// "which ones" moves behind the chevron.
+    /// The count keeps "how much" visible while "which ones" waits behind a tap.
     /// </summary>
     private static Border BuildPill(DeviceDatasetGroup group)
     {
@@ -295,9 +312,14 @@ public partial class DeviceCard : ContentView
         _ => "icon_dataset_other.svg",
     };
 
+    /// <remarks>
+    /// Always carries a 1.5 stroke, transparent until the pill is the open one: a stroke that
+    /// appeared only on selection would widen the pill and reflow the row under the finger.
+    /// </remarks>
     private static Border Pill(Color background, View content) => new()
     {
-        StrokeThickness = 0,
+        StrokeThickness = 1.5,
+        Stroke = Colors.Transparent,
         BackgroundColor = background,
         Padding = new Thickness(10, 4),
         // FlexLayout has no spacing of its own; the margin is the gutter between pills.
@@ -305,30 +327,6 @@ public partial class DeviceCard : ContentView
         StrokeShape = new RoundRectangle { CornerRadius = 10 },
         Content = content,
     };
-
-    /// <summary>"Heart  Heart Rate · Resting HR" — the family in its own ink, the readings after.</summary>
-    private static Label BuildDetailLine(DeviceDatasetGroup group)
-    {
-        var (_, foreground) = PillColours(group.Family);
-
-        var text = new FormattedString();
-        text.Spans.Add(new Span
-        {
-            Text = $"{DeviceDatasetGroup.DisplayName(group.Family)}  ",
-            TextColor = foreground,
-            FontFamily = "QuicksandSemiBold",
-            FontSize = 11,
-        });
-        text.Spans.Add(new Span
-        {
-            Text = group.Detail,
-            TextColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources["BodyText"],
-            FontFamily = "Quicksand",
-            FontSize = 11,
-        });
-
-        return new Label { FormattedText = text };
-    }
 
     /// <summary>Resolves a family's tint/ink pair from the Colors.xaml palette.</summary>
     private static (Color Background, Color Foreground) PillColours(DatasetFamily family)
@@ -346,39 +344,44 @@ public partial class DeviceCard : ContentView
         return ((Color)resources[$"{token}Background"], (Color)resources[$"{token}Text"]);
     }
 
+    private void OnPillTapped(DatasetFamily family)
+    {
+        var open = _openFamily == family ? (DatasetFamily?)null : family;
+        SetOpenFamily(open);
+        SharingFamilyChanged?.Invoke(this, open);
+    }
+
     /// <summary>
-    /// Restores the disclosure state after a reload. The page re-creates every card on refresh,
-    /// so without this an open detail would snap shut each time an action reloads the list.
+    /// Opens <paramref name="family"/>'s readings in the strip under the pills, or folds the strip
+    /// for <c>null</c>. Also how the page restores what was open after a reload: it re-creates
+    /// every card on refresh, so without this an open strip would snap shut each time an action
+    /// reloads the list. A family this device no longer shares (or one with a single reading,
+    /// which has nothing to open) folds the strip.
     /// </summary>
-    public void SetSharingExpanded(bool expanded)
+    public void SetOpenFamily(DatasetFamily? family)
     {
-        SharingDetail.IsVisible = _canExpandSharing && expanded;
-        SharingChevron.Source = SharingDetail.IsVisible ? "icon_chevron.svg" : "icon_chevron_down.svg";
-        SemanticProperties.SetDescription(SharingHeader, !_canExpandSharing
-            ? "Shared data"
-            : SharingDetail.IsVisible ? "Shared data, expanded" : "Shared data, collapsed");
-        SemanticProperties.SetHint(SharingHeader, !_canExpandSharing
-            ? string.Empty
-            : SharingDetail.IsVisible ? "Hides each reading" : "Lists each reading shared");
-    }
+        var group = family is { } f && _pills.ContainsKey(f)
+            ? _groups.FirstOrDefault(g => g.Family == f)
+            : null;
+        _openFamily = group?.Family;
 
-    private void SetSharingExpandable(bool expandable)
-    {
-        _canExpandSharing = expandable;
-        SharingChevron.IsVisible = expandable;
-        // Re-applied either way so the chevron glyph and the semantic description match the
-        // panel after a rebuild, whichever state the card was left in.
-        SetSharingExpanded(SharingDetail.IsVisible);
-    }
+        foreach (var (pillFamily, pill) in _pills)
+        {
+            var isOpen = pillFamily == _openFamily;
+            pill.Stroke = isOpen ? PillColours(pillFamily).Foreground : Colors.Transparent;
+            SemanticProperties.SetHint(pill, isOpen
+                ? "Double tap to hide its readings"
+                : "Double tap to list its readings");
+        }
 
-    private void OnSharingTapped(object? sender, TappedEventArgs e)
-    {
-        if (!_canExpandSharing)
+        SharingStrip.IsVisible = group is not null;
+        if (group is null)
             return;
 
-        var expanded = !SharingDetail.IsVisible;
-        SetSharingExpanded(expanded);
-        SharingExpansionChanged?.Invoke(this, expanded);
+        var (background, foreground) = PillColours(group.Family);
+        SharingStrip.BackgroundColor = background;
+        SharingStripLabel.TextColor = foreground;
+        SharingStripLabel.Text = group.Detail;
     }
 
     private static string ProviderImageFor(string provider) => provider.ToLowerInvariant() switch

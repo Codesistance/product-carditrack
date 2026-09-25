@@ -80,23 +80,43 @@
                            SemanticProperties.Description="Close"/>
                 </controls:SquareBorder>
 
-                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                <!-- The subtitle names who this conversation is about. With more than one member
+                     it is also the way to change that: a tap puts the "who" question back in the
+                     conversation area, and the chevron beside it says so. -->
+                <VerticalStackLayout x:Name="TitleBlock" Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <VerticalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSubtitleTapped"/>
+                    </VerticalStackLayout.GestureRecognizers>
                     <Label Text="Chat"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
-                    <Label x:Name="SubtitleLabel"
-                           Text="What would you like to know?"
-                           FontFamily="Quicksand"
-                           FontSize="12"
-                           TextColor="{StaticResource White}"
-                           Opacity="0.85"
-                           LineBreakMode="TailTruncation"/>
+                    <!-- A Grid, not a HorizontalStackLayout: a stack measures its children with
+                         unbounded width, so the subtitle never truncated and its overflow squeezed
+                         the header's round buttons out of shape. -->
+                    <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="4" HorizontalOptions="Start">
+                        <Label x:Name="SubtitleLabel"
+                               Text="What would you like to know?"
+                               FontFamily="Quicksand"
+                               FontSize="12"
+                               TextColor="{StaticResource White}"
+                               Opacity="0.85"
+                               LineBreakMode="TailTruncation"
+                               VerticalOptions="Center"/>
+                        <Image x:Name="SwitchChevron"
+                               Grid.Column="1"
+                               Source="icon_chevron_down_white.svg"
+                               WidthRequest="12" HeightRequest="12"
+                               Opacity="0.85"
+                               VerticalOptions="Center"
+                               IsVisible="False"/>
+                    </Grid>
                 </VerticalStackLayout>
 
                 <!-- Past conversations. A toggle as much as a door: from the thread it opens the
                      history list, from the list it returns to the thread, and from a reopened old
                      conversation it steps back out to the list. -->
-                <controls:SquareBorder Grid.Column="2"
+                <controls:SquareBorder x:Name="HistoryButton"
+                        Grid.Column="2"
                         MinimumHeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource HeaderButtonTint}"
@@ -138,6 +158,42 @@
                         HorizontalOptions="Center"
                         Clicked="OnRetryClicked"/>
             </VerticalStackLayout>
+
+            <!-- "Who do you want to chat about?" — asked by the bot, in the conversation area,
+                 when the sheet opens with several members and none chosen, and again when the
+                 caregiver taps the subtitle to switch. One row per member, as the dashboard shows
+                 them: their avatar, their name, and the line their card carries today (see
+                 ChatMemberChoice). The input bar stays, locked, until someone is picked. -->
+            <ScrollView x:Name="ChooserPanel" Grid.Row="0" IsVisible="False">
+                <VerticalStackLayout Padding="16,18,16,12" Spacing="14">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <controls:SquareBorder WidthRequest="40" HeightRequest="40"
+                                StrokeThickness="0"
+                                BackgroundColor="{StaticResource White}"
+                                VerticalOptions="Start">
+                            <controls:SquareBorder.StrokeShape>
+                                <RoundRectangle CornerRadius="99"/>
+                            </controls:SquareBorder.StrokeShape>
+                            <Image Source="icon_chatbot.svg" WidthRequest="26" HeightRequest="26"
+                                   HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </controls:SquareBorder>
+                        <Border Grid.Column="1"
+                                BackgroundColor="{StaticResource White}"
+                                StrokeThickness="0"
+                                Padding="14,10"
+                                HorizontalOptions="Start">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="4,20,20,20"/>
+                            </Border.StrokeShape>
+                            <Label x:Name="ChooserQuestion"
+                                   Text="Who do you want to chat about?"
+                                   Style="{StaticResource Body2}"
+                                   TextColor="{StaticResource HeadingText}"/>
+                        </Border>
+                    </Grid>
+                    <VerticalStackLayout x:Name="ChoiceList" Spacing="10"/>
+                </VerticalStackLayout>
+            </ScrollView>
 
             <RefreshView x:Name="Refresher" Grid.Row="0" Refreshing="OnPullToRefresh" IsVisible="False">
                 <CollectionView x:Name="TurnsList"

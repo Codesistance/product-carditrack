@@ -272,7 +272,9 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     {
         if (preference == ProofPreference.Biometric && _biometric.IsAvailable)
         {
-            if (await _biometric.AuthenticateAsync("Confirm this export"))
+            if (await _biometric.AuthenticateAsync(
+                    "Confirm this export",
+                    "Your fingerprint or face shows it's you sharing this health data."))
                 return ExportConsentMethod.Biometric;
 
             if (ct.IsCancellationRequested)

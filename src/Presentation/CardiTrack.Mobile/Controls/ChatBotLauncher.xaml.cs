@@ -181,27 +181,16 @@ public partial class ChatBotLauncher : ContentView
             if (members.Count == 0)
                 return;
 
-            var chosen = members[0];
+            // Several: the chat opens at once and its bot asks who it is about, with each
+            // member's avatar and today's line (MemberChatPage.ShowChooserAsync) — the question
+            // belongs in the conversation rather than in a popup in front of it.
             if (members.Count > 1)
             {
-                // The chooser hands back only the tapped label, so the label must identify the
-                // member by itself — and labels are first names, which two members can easily
-                // share. Duplicated names get a per-member ordinal, which keeps every label unique and
-                // makes the index lookup below unambiguous.
-                var labels = members
-                    .Select((m, i) => members.Count(x => x.DisplayFirstName() == m.DisplayFirstName()) > 1 ? $"{m.DisplayFirstName()} ({i + 1})" : m.DisplayFirstName())
-                    .ToArray();
-                // The app's own chooser rather than the platform action sheet, which was the one
-                // system-drawn surface left on the pages that host this launcher.
-                var picked = await ServiceHelper.GetRequiredService<IPopupService>()
-                    .ChooseAsync("Ask about who?", "Cancel", labels);
-                var index = picked is null ? -1 : Array.IndexOf(labels, picked);
-                if (index < 0)
-                    return;
-                chosen = members[index];
+                MemberChatLauncher.ShowOverlay(host, Guid.Empty, null);
+                return;
             }
 
-            MemberChatLauncher.ShowOverlay(host, chosen.Id, chosen.DisplayFirstName());
+            MemberChatLauncher.ShowOverlay(host, members[0].Id, members[0].DisplayFirstName());
         }
         catch (ApiException)
         {

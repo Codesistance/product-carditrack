@@ -40,14 +40,14 @@
                  filled glyph and its shadow only — both kept; see the design-sync backlog. -->
             <Border x:Name="SelectionPill"
                     Grid.Column="0"
-                    Margin="8,-7,8,0"
-                    HeightRequest="60"
+                    Margin="3,-11,3,0"
+                    HeightRequest="68"
                     VerticalOptions="Start"
                     StrokeThickness="0"
-                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                    BackgroundColor="{StaticResource TabPillBackground}"
                     InputTransparent="True">
                 <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="18"/>
+                    <RoundRectangle CornerRadius="5"/>
                 </Border.StrokeShape>
             </Border>
 

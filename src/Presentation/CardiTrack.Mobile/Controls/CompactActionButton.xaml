@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.CompactActionButton"
+             HeightRequest="44"
+             HorizontalOptions="Start">
+
+    <!-- A small tinted action: a 30-high pill drawn inside a 44-high tap area, so the button
+         reads a size down from the app's ActionButton without being any harder to hit. The pill
+         is the Border; the whole 44 band takes the tap. Pale fill and coloured ink rather than a
+         solid gradient — the same pairing as the device card's sharing pills beside it, so the
+         card keeps its solid colour for things that have gone wrong. -->
+    <Grid x:Name="Root">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnTapped"/>
+        </Grid.GestureRecognizers>
+        <Border x:Name="Fill"
+                HeightRequest="30"
+                VerticalOptions="Center"
+                StrokeThickness="0"
+                Padding="10,0">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="8"/>
+            </Border.StrokeShape>
+            <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                <Image x:Name="Icon"
+                       WidthRequest="16" HeightRequest="16"
+                       VerticalOptions="Center"/>
+                <Label x:Name="Caption"
+                       FontFamily="QuicksandSemiBold"
+                       FontSize="12"
+                       VerticalOptions="Center"/>
+            </HorizontalStackLayout>
+        </Border>
+    </Grid>
+</ContentView>

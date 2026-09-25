@@ -264,7 +264,9 @@ public partial class SettingsPage : ContentPage
             return false;
         }
 
-        return await _biometric.AuthenticateAsync("Confirm it is you before deleting your account");
+        return await _biometric.AuthenticateAsync(
+            "Delete your account",
+            "Your fingerprint or face shows it's you asking. You'll get one last check before anything is deleted.");
     }
 
     /// <summary>

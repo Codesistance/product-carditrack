@@ -200,6 +200,19 @@
     <Color x:Key="CautionAmber">#B45309</Color>
     <Color x:Key="DangerRed">#C42F2F</Color>
 
+    <!-- The bottom bar's selection pill: a clear step deeper than SelectedOptionBackground so it
+         reads as "you are here" rather than as a faint wash behind the tab. -->
+    <Color x:Key="TabPillBackground">#B8D5F7</Color>
+
+    <!-- ── Compact tinted actions (CompactActionButton) ──
+         The device card's small buttons: the activity pill's tint and ink for the everyday
+         actions, and a pale red with DangerRed ink for removal — ink that clears 4.5:1 on its
+         own fill at 12px. -->
+    <Color x:Key="ActionTintBlueBackground">#E8F3FD</Color>
+    <Color x:Key="ActionTintBlueInk">#10659F</Color>
+    <Color x:Key="ActionTintRedBackground">#FCEBEB</Color>
+    <Color x:Key="ActionTintRedInk">#C42F2F</Color>
+
     <!-- ── Solid colour brushes ── -->
     <SolidColorBrush x:Key="CardShadowBrush" Color="{StaticResource CardShadow}"/>
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}"/>

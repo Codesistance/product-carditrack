@@ -23,10 +23,10 @@ public partial class DeviceManagementPage : ContentPage
     private readonly Dictionary<Guid, string> _deviceNames = [];
 
     /// <summary>
-    /// Devices whose sharing detail the user opened. Cards are rebuilt on every load, so the
-    /// disclosure state has to live on the page or a pull-to-refresh would close it.
+    /// The family whose readings each device's card has open. Cards are rebuilt on every load, so
+    /// the disclosure state has to live on the page or a pull-to-refresh would close it.
     /// </summary>
-    private readonly HashSet<Guid> _expandedSharing = [];
+    private readonly Dictionary<Guid, DatasetFamily> _openSharing = [];
 
     private readonly MemberRoute _route = new();
     private bool _isBusy;
@@ -210,25 +210,26 @@ public partial class DeviceManagementPage : ContentPage
         DevicesStack.IsVisible = devices.Count > 0;
 
         // A device that has gone would otherwise keep its entry here for the life of the page.
-        _expandedSharing.IntersectWith(devices.Select(d => d.DeviceId));
+        foreach (var gone in _openSharing.Keys.Except(devices.Select(d => d.DeviceId)).ToList())
+            _openSharing.Remove(gone);
 
         foreach (var device in devices)
         {
             var id = device.DeviceId;
             var card = new DeviceCard();
             card.Apply(device);
-            card.SetSharingExpanded(_expandedSharing.Contains(id));
+            card.SetOpenFamily(_openSharing.TryGetValue(id, out var open) ? open : null);
             card.RefreshRequested += OnRefreshRequested;
             card.RepullRequested += OnRepullRequested;
             card.SetPrimaryRequested += OnSetPrimaryRequested;
             card.RemoveRequested += OnRemoveRequested;
             card.ReconnectRequested += OnReconnectRequested;
-            card.SharingExpansionChanged += (_, expanded) =>
+            card.SharingFamilyChanged += (_, family) =>
             {
-                if (expanded)
-                    _expandedSharing.Add(id);
+                if (family is { } f)
+                    _openSharing[id] = f;
                 else
-                    _expandedSharing.Remove(id);
+                    _openSharing.Remove(id);
             };
             _cards[id] = card;
             _deviceNames[id] = device.DisplayName;

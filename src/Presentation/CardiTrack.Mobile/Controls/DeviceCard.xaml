@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.DeviceCard">
 
     <Border Style="{StaticResource ElevatedCard}">
@@ -70,34 +71,18 @@
 
             <!-- What this connection shares: one pill per dataset family, not per dataset. Full
                  card width rather than inside the identity grid — even summary pills read better
-                 on their own line than squeezed beside the device name. The per-dataset names sit
-                 one tap away, so the card answers "is heart data coming in?" at a glance and
-                 "which heart readings?" on demand. -->
-            <VerticalStackLayout Spacing="8">
+                 on their own line than squeezed beside the device name. Each pill that stands
+                 for several readings is its own disclosure: a tap lists that family's readings in
+                 a strip in the family's tint under the pills, and a second tap (or another pill)
+                 folds it. One family at a time, so the card never grows by more than a line or
+                 two, and the answer to "which heart readings?" sits under the pill that asked. -->
+            <VerticalStackLayout Spacing="6">
 
-                <!-- The header alone carries the tap: it is also where the disclosure state is
-                     announced, and an accessibility activation is delivered to the focused
-                     element rather than replayed as a touch that bubbles — a gesture on the
-                     container would leave the announced affordance unactivatable. Full card
-                     width and 28 high so the target stays comfortable, and so a tap on a pill or
-                     on the detail text the user is reading does not collapse the panel. The
-                     description stays off the container for the same reason it always did: it
-                     would fold the pills into one accessibility element and swallow theirs. -->
-                <Grid x:Name="SharingHeader" ColumnDefinitions="*,Auto" HeightRequest="28">
-                    <Grid.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnSharingTapped"/>
-                    </Grid.GestureRecognizers>
-                    <Label Text="SHARING"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="9"
-                           TextColor="{StaticResource MutedText}"
-                           VerticalTextAlignment="Center"/>
-                    <Image x:Name="SharingChevron"
-                           Grid.Column="1"
-                           Source="icon_chevron_down.svg"
-                           WidthRequest="16" HeightRequest="16"
-                           VerticalOptions="Center"/>
-                </Grid>
+                <Label x:Name="SharingLabel"
+                       Text="SHARING"
+                       FontFamily="QuicksandSemiBold"
+                       FontSize="9"
+                       TextColor="{StaticResource MutedText}"/>
 
                 <FlexLayout x:Name="DatasetPills"
                             Direction="Row"
@@ -106,8 +91,17 @@
                             AlignItems="Center"
                             AlignContent="Start"/>
 
-                <!-- One line per family, revealed by the chevron. -->
-                <VerticalStackLayout x:Name="SharingDetail" Spacing="4" IsVisible="False"/>
+                <Border x:Name="SharingStrip"
+                        IsVisible="False"
+                        StrokeThickness="0"
+                        Padding="10,6">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="8"/>
+                    </Border.StrokeShape>
+                    <Label x:Name="SharingStripLabel"
+                           FontFamily="Quicksand"
+                           FontSize="12"/>
+                </Border>
             </VerticalStackLayout>
 
             <!-- Stats. The battery column collapses to zero width when the provider reports no
@@ -147,35 +141,34 @@
 
             <BoxView Style="{StaticResource DividerLine}"/>
 
-            <!-- Actions, as the app's compact action buttons: the ones that do something in blue,
-                 Remove in red at the far end. Reconnect takes Refresh's place when the provider
+            <!-- Actions, as small tinted buttons (CompactActionButton) a size down from the app's
+                 ActionButton, so they sit in proportion with the pills and tiles above: the ones
+                 that do something in blue, Remove in red at the far end. The row's negative
+                 margin gives back the tap band each button carries around its pill. Reconnect takes Refresh's place when the provider
                  itself broke the token — retrying Refresh would repeat the same failure, so there
                  is one live action there, not one that works and one that silently can't. -->
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
-                <Button x:Name="RefreshButton"
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8" Margin="0,-7">
+                <controls:CompactActionButton x:Name="RefreshButton"
                         Text="Refresh"
-                        Style="{StaticResource ActionButtonBlue}"
-                        ImageSource="icon_btn_refresh.svg"
+                        IconSource="icon_btn_refresh_tint.svg"
                         Clicked="OnRefreshClicked"/>
-                <Button x:Name="ReconnectButton"
+                <controls:CompactActionButton x:Name="ReconnectButton"
                         Text="Reconnect"
-                        Style="{StaticResource ActionButtonBlue}"
-                        ImageSource="icon_btn_connect.svg"
+                        IconSource="icon_btn_connect_tint.svg"
                         IsVisible="False"
                         Clicked="OnReconnectClicked"/>
                 <!-- Re-pull: asks the server to re-read a stretch of this device's past days to
                      fill gaps the routine sync left. Withheld while a request is open or cooling
                      down; its progress is the line under the buttons. -->
-                <Button x:Name="RepullButton"
+                <controls:CompactActionButton x:Name="RepullButton"
                         Grid.Column="1"
                         Text="Re-pull"
-                        Style="{StaticResource ActionButtonBlue}"
-                        ImageSource="icon_btn_history.svg"
+                        IconSource="icon_btn_history_tint.svg"
                         Clicked="OnRepullClicked"/>
-                <Button Grid.Column="3"
+                <controls:CompactActionButton Grid.Column="3"
                         Text="Remove"
-                        Style="{StaticResource ActionButtonRed}"
-                        ImageSource="icon_btn_delete.svg"
+                        Tone="Red"
+                        IconSource="icon_btn_delete_tint.svg"
                         Clicked="OnRemoveClicked"/>
             </Grid>
 

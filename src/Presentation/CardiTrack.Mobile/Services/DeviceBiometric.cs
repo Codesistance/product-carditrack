@@ -77,7 +77,7 @@ public sealed class DeviceBiometric : IDeviceBiometric
         }
     }
 
-    public Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default)
+    public Task<bool> AuthenticateAsync(string title, string description, CancellationToken ct = default)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (ct.IsCancellationRequested)
@@ -104,8 +104,8 @@ public sealed class DeviceBiometric : IDeviceBiometric
                 // The prompt refuses to build without a negative button unless
                 // device credential is an allowed authenticator, which it isn't.
                 var prompt = new Android.Hardware.Biometrics.BiometricPrompt.Builder(activity)
-                    .SetTitle("Confirm it's you")
-                    .SetSubtitle(reason)
+                    .SetTitle(title)
+                    .SetDescription(description)
                     .SetAllowedAuthenticators((int)Allowed)
                     .SetNegativeButton("Cancel", executor, new CancelListener(callback))
                     .Build();
@@ -239,7 +239,7 @@ public sealed class DeviceBiometric : IDeviceBiometric
         return tcs.Task;
     }
 
-    public Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default)
+    public Task<bool> AuthenticateAsync(string title, string description, CancellationToken ct = default)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (ct.IsCancellationRequested)
@@ -274,7 +274,7 @@ public sealed class DeviceBiometric : IDeviceBiometric
 
             context.EvaluatePolicy(
                 LocalAuthentication.LAPolicy.DeviceOwnerAuthenticationWithBiometrics,
-                reason,
+                description,
                 (success, _) => tcs.TrySetResult(success));
         });
         return tcs.Task;
@@ -286,9 +286,9 @@ public sealed class DeviceBiometric : IDeviceBiometric
 
     public Task<bool> OpenEnrollmentSettingsAsync() => Task.FromResult(false);
 
-    public Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default)
+    public Task<bool> AuthenticateAsync(string title, string description, CancellationToken ct = default)
     {
-        _ = reason;
+        _ = (title, description);
         _ = ct;
         return Task.FromResult(false);
     }

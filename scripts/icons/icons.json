@@ -335,6 +335,26 @@
    "tokens": [
     "DatasetOtherText"
    ]
+  },
+  "actionTintRed": {
+   "title": "Compact tinted action · red",
+   "style": "linear",
+   "slots": [
+    "#C42F2F"
+   ],
+   "tokens": [
+    "ActionTintRedInk"
+   ]
+  },
+  "actionTintBlue": {
+   "title": "Compact tinted action · blue",
+   "style": "linear",
+   "slots": [
+    "#10659F"
+   ],
+   "tokens": [
+    "ActionTintBlueInk"
+   ]
   }
  },
  "icons": [
@@ -1079,6 +1099,34 @@
    "name": "setting-two",
    "group": "datasetOther",
    "size": 24
+  },
+  {
+   "file": "icon_btn_refresh_tint.svg",
+   "source": "iconpark",
+   "name": "refresh",
+   "group": "actionTintBlue",
+   "size": 16
+  },
+  {
+   "file": "icon_btn_history_tint.svg",
+   "source": "iconpark",
+   "name": "history",
+   "group": "actionTintBlue",
+   "size": 16
+  },
+  {
+   "file": "icon_btn_connect_tint.svg",
+   "source": "iconpark",
+   "name": "iwatch",
+   "group": "actionTintBlue",
+   "size": 16
+  },
+  {
+   "file": "icon_btn_delete_tint.svg",
+   "source": "iconpark",
+   "name": "delete",
+   "group": "actionTintRed",
+   "size": 16
   }
  ]
 }

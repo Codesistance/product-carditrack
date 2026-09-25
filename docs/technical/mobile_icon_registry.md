@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**122 icons**, **39 distinct colours**, **3 referenced nowhere**.
+**126 icons**, **39 distinct colours**, **5 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -27,7 +27,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#153D66` | 29 | icons.json brand outer stroke |
 | `#3175B9` | 23 | icons.json brand and activity fill, steel blue |
 | `#939DAA` | 16 | MutedText |
-| `#C42F2F` | 12 | DangerRed |
+| `#C42F2F` | 13 | DangerRed |
 | `#1884DC` | 11 | Primary |
 | `#174E86` | 7 | PrimaryDark |
 | `#36C09B` | 7 | StatusGreen |
@@ -35,11 +35,11 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#FBE4E4` | 7 | derived: StatusRed at 14% over white |
 | `#1F8A72` | 6 | MetricTemperatureInk / DatasetBodyText |
 | `#D9DCE1` | 5 | — |
+| `#10659F` | 4 | DatasetActivityText |
 | `#B45309` | 3 | severity orange ink |
 | `#5A3300` | 2 | — |
 | `#861B1B` | 2 | — |
 | `#A9741A` | 2 | DatasetWarningText |
-| `#10659F` | 1 | DatasetActivityText |
 | `#123A5F` | 1 | — |
 | `#1A6CB0` | 1 | — |
 | `#2FA6C4` | 1 | — |
@@ -68,6 +68,8 @@ lists every colour rather than only the common ones: a colour used once still pi
 In the tree, used by nothing. Candidates for deletion — but check the history first: an
 icon can be staged ahead of a screen that has not shipped.
 
+- `icon_btn_history.svg`
+- `icon_btn_refresh.svg`
 - `icon_caution_danger.svg`
 - `icon_status_critical.svg`
 - `icon_status_urgent.svg`
@@ -174,13 +176,17 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
 | `icon_book_cog.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_btn_close.svg` | `#FFFFFF` | ActionLook, AlertRespondPage, AppPasswordPage, ContactEditPopupPage, MedicalEntryEditPopupPage, MedicalSortPopupPage, QuestionCard |
-| `icon_btn_connect.svg` | `#FFFFFF` | ActionLook, DeviceCard, DeviceManagementPage, NoDevicePopupPage |
-| `icon_btn_delete.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, DeviceCard |
+| `icon_btn_connect.svg` | `#FFFFFF` | ActionLook, DeviceManagementPage, NoDevicePopupPage |
+| `icon_btn_connect_tint.svg` | `#10659F` | DeviceCard |
+| `icon_btn_delete.svg` | `#FFFFFF` | ActionLook, AlertDetailPage |
+| `icon_btn_delete_tint.svg` | `#C42F2F` | DeviceCard |
 | `icon_btn_edit.svg` | `#FFFFFF` | ActionLook |
-| `icon_btn_history.svg` | `#FFFFFF` | DeviceCard |
+| `icon_btn_history.svg` | `#FFFFFF` | **nothing** |
+| `icon_btn_history_tint.svg` | `#10659F` | DeviceCard |
 | `icon_btn_later.svg` | `#FFFFFF` | ActionLook, NoDevicePopupPage |
 | `icon_btn_plus.svg` | `#FFFFFF` | ActionLook, MedicalInformationPage |
-| `icon_btn_refresh.svg` | `#FFFFFF` | DeviceCard |
+| `icon_btn_refresh.svg` | `#FFFFFF` | **nothing** |
+| `icon_btn_refresh_tint.svg` | `#10659F` | DeviceCard |
 | `icon_btn_resolve.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, AlertRespondPage, MedicalInformationPage |
 | `icon_btn_save.svg` | `#FFFFFF` | ActionLook, ContactEditPopupPage, MedicalEntryEditPopupPage, MedicalSortPopupPage, QuestionCard |
 | `icon_btn_sort.svg` | `#5A3300` | MedicalInformationPage |

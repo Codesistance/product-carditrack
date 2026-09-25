@@ -38,7 +38,10 @@ public partial class BottomNavBar : ContentView
     private const uint SlideMs = 240;
 
     /// <summary>The selected glyph's size against the others — the magnification.</summary>
-    private const double SelectedIconScale = 1.15;
+    private const double SelectedIconScale = 1.25;
+
+    /// <summary>How much smaller the glyphs of the tabs not selected are drawn.</summary>
+    private const double UnselectedIconShrink = 2;
 
     private bool _navigating;
 
@@ -83,16 +86,27 @@ public partial class BottomNavBar : ContentView
         var selectedColor = (Color)resources["PrimaryDark"];
         var unselectedColor = (Color)resources["MutedText"];
 
-        Style(DashboardIcon, DashboardLabel, "icon_tab_home", shown == NavTab.Dashboard);
-        Style(AlertsIcon, AlertsLabel, "icon_tab_alerts", shown == NavTab.Alerts);
-        Style(FamilyIcon, FamilyLabel, "icon_tab_family", shown == NavTab.Family);
-        Style(JournalIcon, JournalLabel, "icon_tab_journal", shown == NavTab.Journal);
-        Style(SettingsIcon, SettingsLabel, "icon_tab_settings", shown == NavTab.Settings);
+        // Two glyph boxes, as the XAML explains: the Figma pair in a 28 box, the others in 24.
+        Style(DashboardIcon, DashboardLabel, "icon_tab_home", 28, shown == NavTab.Dashboard);
+        Style(AlertsIcon, AlertsLabel, "icon_tab_alerts", 28, shown == NavTab.Alerts);
+        Style(FamilyIcon, FamilyLabel, "icon_tab_family", 24, shown == NavTab.Family);
+        Style(JournalIcon, JournalLabel, "icon_tab_journal", 24, shown == NavTab.Journal);
+        Style(SettingsIcon, SettingsLabel, "icon_tab_settings", 24, shown == NavTab.Settings);
         if (snapPill)
             SnapPill(shown);
 
-        void Style(Image icon, Label label, string iconStem, bool isSelected)
+        void Style(Image icon, Label label, string iconStem, double box, bool isSelected)
         {
+            // The tabs not selected step down — the glyph by 2, the label by 1 — so the selected
+            // one stands out by more than colour. The margin gives the 2 back, split above and
+            // below, so every label keeps the same baseline whichever tab is selected.
+            var size = isSelected ? box : box - UnselectedIconShrink;
+            var inset = (box == 24 ? 2 : 0) + (isSelected ? 0 : UnselectedIconShrink / 2);
+            icon.WidthRequest = size;
+            icon.HeightRequest = size;
+            icon.Margin = new Thickness(0, inset);
+            label.FontSize = isSelected ? 12 : 11;
+
             icon.Scale = isSelected ? SelectedIconScale : 1;
             icon.Source = isSelected ? $"{iconStem}_active.svg" : $"{iconStem}.svg";
             // Figma puts a drop shadow under the selected glyph only. It lives here rather than
@@ -211,7 +225,7 @@ public partial class BottomNavBar : ContentView
 
     private static async Task MagnifyAsync(Image icon)
     {
-        await icon.ScaleToAsync(1.3, SlideMs / 2, Easing.CubicOut);
+        await icon.ScaleToAsync(1.4, SlideMs / 2, Easing.CubicOut);
         await icon.ScaleToAsync(SelectedIconScale, SlideMs / 2, Easing.SpringOut);
     }
 
