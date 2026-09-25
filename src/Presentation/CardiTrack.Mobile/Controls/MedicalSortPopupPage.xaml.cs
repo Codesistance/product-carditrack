@@ -59,8 +59,9 @@ public partial class MedicalSortPopupPage : ContentPage
     {
         base.OnSizeAllocated(width, height);
         PopupCard.Fit(Card, width);
-        // Tall enough for several parts, never taller than the screen can show with its buttons.
-        Card.MaximumHeightRequest = height * 0.85;
+        // The card is as tall as its parts, and the parts scroll only past about half the screen,
+        // so the buttons stay in reach. Capping the card instead stretched a short list to the cap.
+        PiecesScroller.MaximumHeightRequest = height * 0.5;
     }
 
     protected override void OnAppearing()

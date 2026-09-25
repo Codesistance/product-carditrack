@@ -28,7 +28,7 @@
                 <TapGestureRecognizer/>
             </Border.GestureRecognizers>
 
-            <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="0">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="0">
                 <Label Text="Sort into lines"
                        Style="{StaticResource Heading3}"
                        HorizontalTextAlignment="Center"/>
