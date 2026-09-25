@@ -1069,6 +1069,22 @@ public class MemberChatService : IMemberChatService
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
         var today = DateOnly.FromDateTime(utcNow);
+        var age = member?.DateOfBirth.ToAgeInYears(today);
+        if (TooFewReadingsToAnswer(fetched, plan.Result, today, age) is { } tooFew)
+        {
+            return new MemberChatWorkflowResult
+            {
+                Workflow = MemberChatWorkflow.Analysis,
+                Reply = tooFew,
+                Charts = BuildCharts(fetched, plan.Result.ChartMetrics, age),
+                Calls =
+                [
+                    new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
+                    new AiCallRecord(AiCallStep.QueryPlan, AiProviderSlot.Rewrite, plan.Usage),
+                ],
+            };
+        }
+
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
@@ -1076,7 +1092,7 @@ public class MemberChatService : IMemberChatService
         // and the only method that can unwrap it is the one building the Private-slot prompt. The
         // rewrite builder's signature takes DeidentifiedFindings and cannot take this.
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today, age)}\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(flattened, clinicalOnly, history.QuestionsOnly);
         progress?.Step(MemberChatStep.Reading);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
@@ -1090,13 +1106,13 @@ public class MemberChatService : IMemberChatService
         var voice = MemberVoice.For(member);
         var reply = ComposeReply(
             rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
-            fetched.RecentActivityWindow, today);
+            fetched.RecentActivityWindow, today, SupportedSleepFigures(fetched));
 
         return new MemberChatWorkflowResult
         {
             Workflow = MemberChatWorkflow.Analysis,
             Reply = reply,
-            Charts = BuildCharts(fetched, plan.Result.ChartMetrics, member?.DateOfBirth.ToAgeInYears(today)),
+            Charts = BuildCharts(fetched, plan.Result.ChartMetrics, age),
             Calls =
             [
                 new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
@@ -1137,13 +1153,33 @@ public class MemberChatService : IMemberChatService
         var dashboard = await ReadDashboardStatusAsync(cardiMemberId, member, utcNow, ct);
 
         var today = DateOnly.FromDateTime(utcNow);
+        var age = member?.DateOfBirth.ToAgeInYears(today);
+
+        // A verdict over a stretch most of whose days never reached us would be a verdict about
+        // the missing days. Checked before the dashboard tier matters: whatever the hero says,
+        // there is nothing here to weigh it against.
+        if (TooFewReadingsToAnswer(fetched, plan.Result, today, age) is { } tooFew)
+        {
+            return new MemberChatWorkflowResult
+            {
+                Workflow = MemberChatWorkflow.Inference,
+                Reply = tooFew,
+                Charts = BuildCharts(fetched, plan.Result.ChartMetrics, age),
+                Calls =
+                [
+                    new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
+                    new AiCallRecord(AiCallStep.QueryPlan, AiProviderSlot.Rewrite, plan.Usage),
+                ],
+            };
+        }
+
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
         // The status line carries the member's resolved name, which is why it renders here — into
         // the Private-slot block — and never into the rewrite prompt.
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today)}"
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today, age)}"
             + (dashboard is { } status ? $"\n\n{FormatDashboardStatus(status)}" : string.Empty)
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
@@ -1160,7 +1196,7 @@ public class MemberChatService : IMemberChatService
         var voice = MemberVoice.For(member);
         var reply = ComposeReply(
             rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
-            fetched.RecentActivityWindow, today);
+            fetched.RecentActivityWindow, today, SupportedSleepFigures(fetched));
 
         var calls = new List<AiCallRecord>
         {
@@ -1191,7 +1227,7 @@ public class MemberChatService : IMemberChatService
 
             var secondReply = ComposeReply(
                 reaskRewrite.Result, reasked.Result.Analysis, voice, reasked.Result.ReadingsFrom,
-                reasked.Result.ReadingsTo, fetched.RecentActivityWindow, today);
+                reasked.Result.ReadingsTo, fetched.RecentActivityWindow, today, SupportedSleepFigures(fetched));
 
             if (MemberChatReplies.ClaimsSettled(secondReply))
             {
@@ -1202,7 +1238,7 @@ public class MemberChatService : IMemberChatService
                 {
                     Workflow = MemberChatWorkflow.Inference,
                     Reply = CouldNotAnswerReply,
-                    Charts = BuildCharts(fetched, plan.Result.ChartMetrics, member?.DateOfBirth.ToAgeInYears(today)),
+                    Charts = BuildCharts(fetched, plan.Result.ChartMetrics, age),
                     Calls = calls,
                 };
             }
@@ -1230,7 +1266,7 @@ public class MemberChatService : IMemberChatService
         {
             Workflow = MemberChatWorkflow.Inference,
             Reply = reply,
-            Charts = BuildCharts(fetched, plan.Result.ChartMetrics, member?.DateOfBirth.ToAgeInYears(today)),
+            Charts = BuildCharts(fetched, plan.Result.ChartMetrics, age),
             Calls = calls,
         };
     }
@@ -1276,12 +1312,13 @@ public class MemberChatService : IMemberChatService
             surroundingsPlan, cardiMemberId, _unitOfWork, utcNow, ct);
 
         var today = DateOnly.FromDateTime(utcNow);
+        var age = member?.DateOfBirth.ToAgeInYears(today);
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"[PATIENT CONTEXT]\n{memberContext}\n\n--- Data about the change ---\n{FormatFetchedData(anchor, today)}"
-            + $"\n\n--- What else was happening around the same time ---\n{FormatFetchedData(surroundings, today)}"
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n--- Data about the change ---\n{FormatFetchedData(anchor, today, age)}"
+            + $"\n\n--- What else was happening around the same time ---\n{FormatFetchedData(surroundings, today, age)}"
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
             flattened, clinicalOnly, history.QuestionsOnly, InvestigationClinicalInstructions);
@@ -1299,13 +1336,14 @@ public class MemberChatService : IMemberChatService
         // did not ask for, so RecentActivity lands in one or the other and never in both.
         var reply = ComposeReply(
             rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
-            anchor.RecentActivityWindow ?? surroundings.RecentActivityWindow, today);
+            anchor.RecentActivityWindow ?? surroundings.RecentActivityWindow, today,
+            SupportedSleepFigures(anchor, surroundings));
 
         return new MemberChatWorkflowResult
         {
             Workflow = MemberChatWorkflow.Investigation,
             Reply = reply,
-            Charts = BuildCharts(anchor, plan.Result.ChartMetrics, member?.DateOfBirth.ToAgeInYears(today)),
+            Charts = BuildCharts(anchor, plan.Result.ChartMetrics, age),
             Calls =
             [
                 new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
@@ -2430,7 +2468,9 @@ public class MemberChatService : IMemberChatService
         {findings.Text}
         """;
 
-    private static string FormatFetchedData(FetchedMemberData data, DateOnly today)
+    /// <param name="ageYears">Picks the sleep band in the window summary; null leaves it out
+    /// rather than guessing one.</param>
+    internal static string FormatFetchedData(FetchedMemberData data, DateOnly today, int? ageYears)
     {
         var sections = new List<string>();
 
@@ -2460,6 +2500,11 @@ public class MemberChatService : IMemberChatService
                     MedicalPromptBlocks.DailyReadingsJson(
                         data.RecentActivity, data.RecentActivity.Count, today))
                 + (missing is null ? string.Empty : $"\n{missing}"));
+
+            // The window's arithmetic, done here: handed only the rows, the clinical read averaged
+            // a week of 4h 18m–7h nights to 2h 22m (2026-09-25). See ChatWindowSummaryBlock.
+            if (ChatWindowSummaryBlock.Render(data, today, ageYears) is { } summary)
+                sections.Add(summary);
         }
 
         if (data.Baseline is { } baseline)
@@ -2795,9 +2840,15 @@ public class MemberChatService : IMemberChatService
         string? readingsFrom,
         string? readingsTo,
         (DateOnly From, DateOnly To)? fetchedWindow,
-        DateOnly today)
+        DateOnly today,
+        RewriteCopyGuards.SleepFigures supportedSleep)
     {
         if (RewriteCopyGuards.NamesAReadingTheReadDidNot(rewritten, clinicalRead) is not null)
+            return CouldNotAnswerReply;
+
+        // A figure no night, average or yardstick in the fetch could produce — the 2h 22m weekly
+        // average of 2026-09-25. Run on the rewrite, which is what the caregiver reads.
+        if (RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(rewritten, supportedSleep) is not null)
             return CouldNotAnswerReply;
 
         var resolved = ResolvedOrFallback(rewritten, voice);
@@ -2877,6 +2928,59 @@ public class MemberChatService : IMemberChatService
         public void Draft(MemberChatMessageResponse draft) => inner.Draft(draft);
 
         public void WaitingLines(IReadOnlyList<string> lines) => inner.WaitingLines(lines);
+    }
+
+    /// <summary>
+    /// Every sleep figure a reply over these fetches could honestly state — see
+    /// <see cref="RewriteCopyGuards.SupportedSleepFigures"/>. Takes every fetch a rung made, since
+    /// the investigation rung's nights can sit in either.
+    /// </summary>
+    private static RewriteCopyGuards.SleepFigures SupportedSleepFigures(params FetchedMemberData[] fetches)
+    {
+        var nights = fetches
+            .SelectMany(f => f.RecentActivity)
+            .Where(l => l.SleepMinutes is not null)
+            .OrderBy(l => l.Date)
+            .Select(l => l.SleepMinutes!.Value);
+        var usual = fetches.Select(f => f.Baseline?.AvgSleepMinutes).FirstOrDefault(u => u is not null);
+
+        return RewriteCopyGuards.SupportedSleepFigures(nights, usual);
+    }
+
+    /// <summary>
+    /// The code-written answer when a question about a stretch of days asked only about readings
+    /// that too few of those days carried — or null, when the clinical read should run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only when the planner named the readings the question is about, and only when every one of
+    /// them falls short. A general question has no one reading to judge coverage by, and the
+    /// window summary already marks each short reading as having no average; a question about
+    /// sleep and steps where only steps fell short is still answerable about sleep.
+    /// </para>
+    /// <para>
+    /// A window too short to average across — a single day, or a daytime reading over yesterday
+    /// and today — is a question about a day, not a stretch, and always goes to the read.
+    /// </para>
+    /// </remarks>
+    private static string? TooFewReadingsToAnswer(
+        FetchedMemberData fetched, DataQueryPlan plan, DateOnly today, int? ageYears)
+    {
+        if (plan.ChartMetrics is not { Count: > 0 } asked || fetched.RecentActivityWindow is not { } window)
+            return null;
+
+        var summaries = new List<ReadingWindowSummary>();
+        foreach (var metric in asked.Distinct())
+        {
+            var summary = ReadingWindowSummaries.ForMetric(
+                metric, fetched.RecentActivity, window, today, fetched.Baseline, ageYears);
+            if (summary is null || summary.IsCovered)
+                return null;
+
+            summaries.Add(summary);
+        }
+
+        return MemberChatReplies.TooFewReadingsReply(summaries, window.From, today);
     }
 
     // ── MedGemma / Rewrite response shapes ──────────────────────────────────────

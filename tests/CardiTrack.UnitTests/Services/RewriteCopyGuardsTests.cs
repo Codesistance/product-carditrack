@@ -136,4 +136,45 @@ public class RewriteCopyGuardsTests
     [InlineData("The shed door was open.")]
     public void Ordinary_words_containing_a_pronoun_are_not_a_stated_sex(string copy) =>
         Assert.False(RewriteCopyGuards.StatesAnUnsupportedSex(copy, Gender.PreferNotToSay));
+
+    /// <summary>
+    /// A week shaped like the one behind the 2026-09-25 chat reply — nights falling from about
+    /// seven hours to under four, a near-empty first night — with invented figures, for the reason
+    /// the remarks above give. Averages 4h 48m over all seven, 4h 58m without last night.
+    /// </summary>
+    private static readonly RewriteCopyGuards.SleepFigures TheWeek =
+        RewriteCopyGuards.SupportedSleepFigures([10, 430, 400, 350, 340, 260, 225], usualMinutes: 345);
+
+    /// <summary>The reply that prompted the sleep guard, in its own words and with this week's
+    /// numbers around it: an average no night, pair of nights or yardstick could produce.</summary>
+    [Theory]
+    [InlineData(
+        "Over the past week CardiTrackCardiMember slept about 2h 22m a night, compared to "
+        + "CardiTrackCardiMemberTheir usual average of nearly 6 hours.", "2h 22m")]
+    [InlineData("CardiTrackCardiMember averaged 2.5 hours of sleep a night this week.", "2.5 hours")]
+    public void A_sleep_average_the_nights_cannot_produce_is_caught(string copy, string figure) =>
+        Assert.Equal(figure, RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(copy, TheWeek));
+
+    /// <summary>
+    /// Figures the data does hold, however the reply rounds or phrases them: the computed average,
+    /// a single night, the usual approximated, a fraction, a distance to the usual or to the band's
+    /// floor. The last is the one that forced lengths and differences apart — 2h 12m is how far the
+    /// week sat under seven hours, and within reach of the 2h 22m that must still be caught.
+    /// </summary>
+    [Theory]
+    [InlineData("CardiTrackCardiMember slept about 4h 48m a night this week, a little under the usual 5h 45m.")]
+    [InlineData("Last night CardiTrackCardiMember slept 3h 45m.")]
+    [InlineData("Sleep has been close to nearly 6 hours on the better nights, and 6½ hours on Sep 21.")]
+    [InlineData("This week's sleep averaged 57 minutes less than usual.")]
+    [InlineData("That average is about 2h 12m below the recommended 7 hours a night.")]
+    public void Sleep_figures_the_data_holds_pass(string copy) =>
+        Assert.Null(RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(copy, TheWeek));
+
+    /// <summary>Durations outside a sleep sentence are not nights, and a span longer than any
+    /// night is not a sleep figure even inside one.</summary>
+    [Theory]
+    [InlineData("CardiTrackCardiMember was active for 2 hours on Tuesday.")]
+    [InlineData("Over the last 24 hours CardiTrackCardiMember slept 3h 45m.")]
+    public void Durations_that_are_not_nights_are_not_judged(string copy) =>
+        Assert.Null(RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(copy, TheWeek));
 }

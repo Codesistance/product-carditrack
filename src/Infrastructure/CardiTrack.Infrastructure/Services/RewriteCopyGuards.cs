@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Globalization;
+using System.Text.RegularExpressions;
 using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -116,6 +117,173 @@ internal static partial class RewriteCopyGuards
     }
 
     /// <summary>
+    /// The first sleep duration the copy states that nothing in the data supports, as written, or
+    /// null when every one it states is within reach of a figure the data holds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The failure this answers, from member chat on 2026-09-25: asked "how did he sleep this
+    /// week?", the reply said about 2h 22m a night "compared to his usual average of nearly 6
+    /// hours", under a chart of the same fetch whose nights ran 4h 18m to 7h. The usual was right
+    /// and the average was not a figure the data could produce. Nothing checked: the family guard
+    /// above saw sleep in the read and sleep in the reply and passed it, and the answer check
+    /// judges whether a question was answered, never whether its figures are true — it is not
+    /// shown the readings (DPIA A20).
+    /// </para>
+    /// <para>
+    /// So a stated duration has to land near one the data holds — within a quarter hour, or a
+    /// tenth of the figure for a long one, so "nearly 6 hours" against a 5h 42m usual still passes.
+    /// A length of sleep ("2h 22m a night") is held to the nights, the window's average, the
+    /// member's usual and the published band's edges; a difference ("55 minutes less than usual")
+    /// to the distances between those. The two are kept apart because they overlap: that week's
+    /// average sat about 2h 13m under the 7-hour floor, and one pooled list would have waved the
+    /// 2h 22m average straight through as a difference nobody stated. A duration is a difference
+    /// when the words beside it compare — "less", "below", "short of", "down by".
+    /// </para>
+    /// <para>
+    /// Only sentences about sleep are read, so an hour of activity or a minute count elsewhere in
+    /// the reply is never mistaken for a night; and nothing longer than a plausible night is read
+    /// as one, so "the last 24 hours" is not a sleep figure.
+    /// </para>
+    /// <para>
+    /// A backstop, not the fix. The window's arithmetic is done in code and handed to the clinical
+    /// read (<c>ChatWindowSummaryBlock</c>); this catches the reply that ignores it.
+    /// </para>
+    /// </remarks>
+    /// <param name="supported">
+    /// The sleep figures the reply could honestly state — see <see cref="SupportedSleepFigures"/>.
+    /// </param>
+    internal static string? StatesASleepFigureTheDataDoesNot(string? copy, SleepFigures supported)
+    {
+        if (string.IsNullOrWhiteSpace(copy))
+            return null;
+
+        foreach (var sentence in Sentences().Split(copy))
+        {
+            if (!Mentions(sentence, SleepSentenceWords))
+                continue;
+
+            foreach (Match match in SleepDuration().Matches(sentence))
+            {
+                var minutes = Minutes(match);
+                if (minutes is not { } stated || stated > MaxPlausibleNightMinutes)
+                    continue;
+
+                var candidates = IsADifference(sentence, match) ? supported.Differences : supported.Lengths;
+                if (!candidates.Any(figure => Math.Abs(stated - figure) <= Tolerance(figure)))
+                    return match.Value.Trim();
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The sleep figures a reply over some nights could honestly state, in minutes, split by what
+    /// kind of figure each is — see <see cref="StatesASleepFigureTheDataDoesNot"/> for why.
+    /// </summary>
+    /// <param name="Lengths">
+    /// Each night, the average of them with and without the newest, the member's usual, and every
+    /// edge of the published band.
+    /// </param>
+    /// <param name="Differences">The distance from each night, average and the usual to the usual and to each band edge.</param>
+    internal sealed record SleepFigures(IReadOnlyCollection<decimal> Lengths, IReadOnlyCollection<decimal> Differences);
+
+    /// <summary>
+    /// The <see cref="SleepFigures"/> for these nights and this usual.
+    /// </summary>
+    /// <remarks>
+    /// Both averages because either is honest — the newest night is complete by the morning, but a
+    /// reply may fairly set it apart as "last night" and average the rest. The band's edges are
+    /// every edge NSF publishes, 7, 8 and 9 hours, whatever the member's age: a reply naming the
+    /// adult ceiling to an older member's family is quoting the published range, not inventing a
+    /// reading.
+    /// </remarks>
+    internal static SleepFigures SupportedSleepFigures(IEnumerable<int> nightsMinutes, decimal? usualMinutes)
+    {
+        var nights = nightsMinutes.Select(n => (decimal)n).ToList();
+        var anchors = new List<decimal>(nights);
+
+        if (nights.Count > 0)
+            anchors.Add(nights.Average());
+        if (nights.Count > 1)
+            anchors.Add(nights.SkipLast(1).Average());
+
+        var yardsticks = new List<decimal> { 7m * 60, 8m * 60, 9m * 60 };
+        if (usualMinutes is { } usual)
+        {
+            anchors.Add(usual);
+            yardsticks.Add(usual);
+        }
+
+        var differences = new HashSet<decimal>();
+        foreach (var anchor in anchors)
+        {
+            foreach (var yardstick in yardsticks)
+                differences.Add(Math.Abs(anchor - yardstick));
+        }
+
+        return new SleepFigures(new HashSet<decimal>(anchors.Concat(yardsticks)), differences);
+    }
+
+    /// <summary>
+    /// Whether the duration at <paramref name="match"/> is stated as a difference: a comparative
+    /// within two words after it ("40 minutes less", "an hour or so below"), or "by" just before it
+    /// ("down by 40 minutes", "short by 1h 10m").
+    /// </summary>
+    private static bool IsADifference(string sentence, Match match) =>
+        ComparativeAfter().IsMatch(sentence[(match.Index + match.Length)..])
+        || ByBefore().IsMatch(sentence[..match.Index]);
+
+    [GeneratedRegex(@"^\W*(?:\w+\W+){0,2}?(?:less|more|fewer|below|above|short|shorter|longer|under|over|than|up|down|extra)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex ComparativeAfter();
+
+    [GeneratedRegex(@"\b(?:by|down|up)\s+(?:about|around|roughly|nearly|almost|just|over|under)?\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex ByBefore();
+
+    /// <summary>The longest stated duration read as a night — anything longer is a span of time.</summary>
+    private const decimal MaxPlausibleNightMinutes = 16 * 60;
+
+    private static decimal Tolerance(decimal figure) => Math.Max(15m, figure * 0.1m);
+
+    private static decimal? Minutes(Match match)
+    {
+        if (match.Groups["minutesOnly"].Success)
+            return decimal.Parse(match.Groups["minutesOnly"].Value, CultureInfo.InvariantCulture);
+
+        if (!decimal.TryParse(match.Groups["hours"].Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var hours))
+            return null;
+
+        var total = hours * 60;
+        total += match.Groups["fraction"].Value switch
+        {
+            "¼" => 15,
+            "½" => 30,
+            "¾" => 45,
+            _ => 0,
+        };
+        if (match.Groups["minutes"].Success)
+            total += decimal.Parse(match.Groups["minutes"].Value, CultureInfo.InvariantCulture);
+
+        return total;
+    }
+
+    /// <summary>
+    /// A duration as a reply writes one: "5h 34m", "2h22m", "5 hours and 34 minutes", "6.5 hours",
+    /// "6½ hours", or minutes alone. The unit is closed by a negative lookahead rather than a word
+    /// boundary, because "2h22m" runs the hours straight into the minutes.
+    /// </summary>
+    [GeneratedRegex(
+        @"(?<hours>\d+(?:\.\d+)?)(?<fraction>[¼½¾])?\s*(?:hours?|hrs?|h)(?![a-z])(?:\s*(?:and\s+)?(?<minutes>\d+)\s*(?:minutes?|mins?|m)(?![a-z]))?"
+        + @"|(?<minutesOnly>\d+)\s*(?:minutes?|mins?|m)(?![a-z])",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex SleepDuration();
+
+    /// <summary>A sentence break: terminal punctuation followed by space, or a line break.</summary>
+    [GeneratedRegex(@"(?<=[.!?])\s+|\n+")]
+    private static partial Regex Sentences();
+
+    /// <summary>
     /// Collapses "heart rate variability" to "hrv" so the two heart families do not overlap.
     /// </summary>
     /// <remarks>
@@ -161,6 +329,16 @@ internal static partial class RewriteCopyGuards
             "movement", "exercise", "exercising"]),
         ("stillness", ["stillness", "sitting still", "sedentary", "unbroken"]),
     ];
+
+    /// <summary>
+    /// What makes a sentence one about sleep for <see cref="StatesASleepFigureTheDataDoesNot"/>:
+    /// the sleep family's words, plus "night", which is how a reply names the thing whose length
+    /// it is quoting ("about 5h 30m a night").
+    /// </summary>
+    /// <remarks>Declared after <see cref="ReadingFamilies"/>, which it reads: static fields
+    /// initialise in textual order.</remarks>
+    private static readonly string[] SleepSentenceWords =
+        [.. ReadingFamilies.Single(f => f.Family == "sleep").Words, "night", "nights", "nightly"];
 
     private static bool Mentions(string text, string[] words) =>
         words.Any(word => Regex.IsMatch(text, $@"\b{Regex.Escape(word)}\b", RegexOptions.IgnoreCase));
