@@ -499,7 +499,7 @@ Stops the device collecting while keeping its tokens and its history. It is skip
 - the inactivity probe;
 - the device nudges.
 
-Stored as `DeviceConnection.SuspendedAt` / `SuspendedByUserId`, **beside** `ConnectionStatus` rather than as another value of it. The sync and auth-recovery paths write that status as they learn about the grant. A suspension stored there would be overwritten, or would hide that the grant expired while suspended.
+Stored as `DeviceConnection.SuspendedAt` / `SuspendedByUserId`, **beside** `ConnectionStatus` rather than as another value of it. The sync and auth-recovery paths write that status as they learn about the grant. A suspension stored there would be overwritten, or would hide that the grant expired while suspended. Those writers also cannot overwrite the suspension itself. `DeviceConnectionRepository.Update` writes only the columns a unit of work changed, and never a whole entity that was read before the save. A token refresh runs its provider call outside the member's device lock, so it may have read the device before a suspension committed. Its save writes the new tokens and leaves `SuspendedAt` as the suspension set it.
 
 **Open-ended**, unlike Pause Monitoring: the member's other devices go on collecting. For the same reason it is **refused with 409 (`LAST_ACTIVE_DEVICE`)** when no *other* device is collecting — that is, unsuspended with its grant `active`. A device waiting on a reconnect does not count. Stopping a member's only data feed is what Pause Monitoring is for, and that is bounded (1 hour to 7 days).
 

@@ -432,6 +432,71 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.False(await repo.AnyOtherActiveWithHealthUserIdAsync(connection.Id, account));
     }
 
+    // ── Update ───────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Copilot review round 12 on #1290: a token refresh reads the connection, calls the provider
+    /// outside the member's device lock, then saves. A suspension committed in between must survive
+    /// that save — the refresh changed the tokens, not the suspension.
+    /// </summary>
+    [Fact]
+    public async Task Update_OfAConnectionReadBeforeASuspension_DoesNotUndoTheSuspension()
+    {
+        using var seedScope = fixture.CreateScope();
+        var org = await TestDataSeeder.SeedOrganizationAsync(seedScope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(seedScope, org.Id);
+        var seeded = await TestDataSeeder.SeedDeviceConnectionAsync(seedScope, member.Id);
+
+        using var refresh = fixture.CreateScope();
+        var refreshUow = refresh.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var stale = (await refreshUow.DeviceConnections.GetByCardiMemberIdAsync(member.Id))
+            .Single(c => c.Id == seeded.Id);
+
+        var suspendedAt = DateTime.UtcNow;
+        using (var suspend = fixture.CreateScope())
+        {
+            var suspendUow = suspend.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var fresh = (await suspendUow.DeviceConnections.GetByCardiMemberIdAsync(member.Id))
+                .Single(c => c.Id == seeded.Id);
+            fresh.SuspendedAt = suspendedAt;
+            fresh.SuspendedByUserId = Guid.NewGuid();
+            suspendUow.DeviceConnections.Update(fresh);
+            await suspendUow.SaveChangesAsync();
+        }
+
+        stale.AccessToken = "enc(refreshed_access)";
+        stale.UpdatedDate = DateTime.UtcNow;
+        refreshUow.DeviceConnections.Update(stale);
+        await refreshUow.SaveChangesAsync();
+
+        using var check = fixture.CreateScope();
+        var saved = await check.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>()
+            .GetByIdAsync(seeded.Id);
+        Assert.NotNull(saved!.SuspendedAt);
+        Assert.Equal("enc(refreshed_access)", saved.AccessToken);
+    }
+
+    /// <summary>A connection built outside this unit of work still saves in full.</summary>
+    [Fact]
+    public async Task Update_OfADetachedConnection_WritesItInFull()
+    {
+        using var seedScope = fixture.CreateScope();
+        var org = await TestDataSeeder.SeedOrganizationAsync(seedScope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(seedScope, org.Id);
+        var detached = await TestDataSeeder.SeedDeviceConnectionAsync(seedScope, member.Id);
+
+        using var scope = fixture.CreateScope();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        detached.AccessToken = "enc(detached_access)";
+        uow.DeviceConnections.Update(detached);
+        await uow.SaveChangesAsync();
+
+        using var check = fixture.CreateScope();
+        var saved = await check.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>()
+            .GetByIdAsync(detached.Id);
+        Assert.Equal("enc(detached_access)", saved!.AccessToken);
+    }
+
     // ── LockMemberDevicesAsync ───────────────────────────────────────────────────
 
     [Fact]

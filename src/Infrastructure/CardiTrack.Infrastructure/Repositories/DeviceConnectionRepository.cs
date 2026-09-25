@@ -329,6 +329,23 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     /// watcher clause is the negation of
     /// <c>IUserCardiMemberRepository.IsLeftUnwatchedByPendingDeletionAsync</c>.
     /// </summary>
+    /// <summary>
+    /// Marks a connection for saving without writing back columns this unit of work never changed.
+    /// </summary>
+    /// <remarks>
+    /// <c>DbSet.Update</c> marks every column modified, so a connection read before another
+    /// transaction committed would write that transaction's columns back to what they were. A token
+    /// refresh runs its provider call outside the member's device lock, and a suspension committed
+    /// while it was in flight was silently undone by its save. A tracked connection is therefore left
+    /// to change tracking, which writes only what this unit of work changed; only a detached one, which
+    /// change tracking cannot see, is attached as a whole-entity update.
+    /// </remarks>
+    public override void Update(DeviceConnection entity)
+    {
+        if (_context.Entry(entity).State == EntityState.Detached)
+            _dbSet.Update(entity);
+    }
+
     public async Task<bool> AnyOtherActiveWithHealthUserIdAsync(Guid excludingId, string healthUserId)
     {
         return await _dbSet
