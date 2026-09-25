@@ -106,7 +106,7 @@ public partial class MedicalInformationPage : ContentPage
 
     private bool CanEdit => _member?.IsPrimaryCaregiver == true;
 
-    private string FirstName => NameFormatting.FirstName(_member?.Name);
+    private string FirstName => _member?.DisplayFirstName() ?? string.Empty;
 
     private async void OnBackTapped(object? sender, EventArgs e) =>
         await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
@@ -400,7 +400,7 @@ public partial class MedicalInformationPage : ContentPage
     private void ApplyMember(CardiMemberDetailResponse member)
     {
         ChatBot.MemberId = _route.Id;
-        ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
+        ChatBot.MemberFirstName = member.DisplayFirstName();
         AddButton.IsVisible = member.IsPrimaryCaregiver;
     }
 

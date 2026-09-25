@@ -518,7 +518,7 @@ public partial class FamilyPage : ContentPage
         });
 
         var text = new VerticalStackLayout { Spacing = 2, VerticalOptions = LayoutOptions.Center };
-        text.Add(new Label { Text = member.Name, Style = Named("Body1SemiBoldDark") });
+        text.Add(new Label { Text = member.DisplayFirstName(), Style = Named("Body1SemiBoldDark") });
         text.Add(syncLine);
         row.Add(text, 1, 0);
 
@@ -535,7 +535,7 @@ public partial class FamilyPage : ContentPage
         tap.Tapped += async (_, _) =>
             await Shell.Current.GoToAsync($"{CardiMemberDetailPage.Route}?memberId={member.Id}");
         card.GestureRecognizers.Add(tap);
-        SemanticProperties.SetDescription(card, $"{member.Name}, {syncText}");
+        SemanticProperties.SetDescription(card, $"{member.DisplayFirstName()}, {syncText}");
         return card;
     }
 

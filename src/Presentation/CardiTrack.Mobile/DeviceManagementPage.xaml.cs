@@ -161,9 +161,9 @@ public partial class DeviceManagementPage : ContentPage
                     _member = load.Member;
                     ChatBot.MemberId = memberId;
                     ChatBot.MemberFirstName = load.Member.DisplayFirstName();
-                    // Just the name: every member on this screen is a CardiMember, so saying so
-                    // was a label with nothing to tell apart.
-                    MemberSubtitleLabel.Text = load.Member.Name;
+                    // The first name alone: every member on this screen is a CardiMember, so the
+                    // "• CardiMember" tag was a label with nothing to tell apart.
+                    MemberSubtitleLabel.Text = load.Member.DisplayFirstName();
                     // The no-device card's own sentence (NoDevicePopupPage), so the card reads the
                     // same here as it does from the dashboard.
                     EmptyDetailLabel.Text =
