@@ -1,0 +1,18 @@
+{
+  "data": {
+    "id": "carditrack.chat.sends",
+    "type": "spans_metrics",
+    "attributes": {
+      "compute": { "aggregation_type": "count" },
+      "filter": { "query": "service:api @http.route:*member-chat*messages*" },
+      "group_by": [
+        { "path": "env" },
+        { "path": "@http.route" },
+        { "path": "@chat.workflow" },
+        { "path": "@chat.answer_check" },
+        { "path": "@chat.answer_gap" },
+        { "path": "@chat.answer_remedy" }
+      ]
+    }
+  }
+}

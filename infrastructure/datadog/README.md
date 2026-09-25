@@ -1,6 +1,6 @@
-# Datadog monitors and log pipelines
+# Datadog monitors, log pipelines and span metrics
 
-Monitor and log-pipeline definitions for CardiTrack, kept in version control so alerting and log
+Monitor, log-pipeline and span-metric definitions for CardiTrack, kept in version control so alerting and log
 processing are reviewable and reproducible rather than living only as clicked-together state in the
 Datadog UI.
 
@@ -225,6 +225,53 @@ Two things the POST does not verify:
 - **Confirm the filter is actually matching.** In Logs → Pipelines, a pipeline matching nothing
   looks identical to one that is working. The canonical `Error`/`Warn`/`Info` values in the status
   facet should start taking the counts that currently sit on `Error`/`Warning`/`Information`.
+
+## Span-based metrics
+
+| Spec | Metric | Site | Purpose |
+|-|-|-|-|
+| `span-metrics/carditrack.chat.sends.json` | `carditrack.chat.sends` (created 2026-09-25) | uk1 | Every member-chat send, counted before sampling, by workflow and by the answer check's verdict, gap and remedy |
+
+### Why a metric and not the spans
+
+Chat request spans are kept by diversity sampling: every one of the 44 chat spans indexed on dev
+between 2026-09-22 and 2026-09-25 was retained that way, and the `chat.*` tags exist only on what
+is kept. A miss rate or retry rate computed from indexed spans is therefore a rate over a sample
+chosen for variety, not over sends. A span-based metric is computed from every ingested span
+before retention, so these counts are complete. It is a count only: no member, user or session id
+is a group-by, which keeps it free of identifiers and its cardinality to the label sets alone.
+
+It covers both send endpoints (`…/messages` and `…/messages/stream`) and starts counting when it
+was created; it does not backfill. The tags themselves are described in
+`docs/technical/apm_setup_runbook.md` (AI-call telemetry).
+
+### Queries
+
+```text
+# Sends by workflow
+sum:carditrack.chat.sends{env:dev} by {chat.workflow}.as_count()
+
+# Share of checked replies that fell short (partial or no)
+sum:carditrack.chat.sends{env:dev AND chat.answer_check IN (partial,no)}.as_count()
+  / sum:carditrack.chat.sends{env:dev AND chat.answer_check IN (full,partial,no)}.as_count()
+
+# What the send did about it
+sum:carditrack.chat.sends{env:dev AND chat.answer_remedy:*} by {chat.answer_remedy}.as_count()
+```
+
+### Applying it
+
+```bash
+BASE="https://api.${DD_SITE:-datadoghq.com}"   # DD_SITE=uk1.datadoghq.com for this org
+curl -sS -X POST "$BASE/api/v2/apm/config/metrics" \
+  -H "DD-API-KEY: $DD_API_KEY" -H "DD-APPLICATION-KEY: $DD_APP_KEY" \
+  -H "Content-Type: application/json" \
+  -d @infrastructure/datadog/span-metrics/carditrack.chat.sends.json
+```
+
+The application key needs the APM configuration write scope. A span metric's query and group-bys
+can be changed later with `PATCH /api/v2/apm/config/metrics/<id>` (the `compute` block cannot);
+keep this file in step with whatever is live.
 
 ## Outstanding
 
