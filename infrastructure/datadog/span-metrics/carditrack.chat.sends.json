@@ -11,7 +11,9 @@
         { "path": "@chat.workflow" },
         { "path": "@chat.answer_check" },
         { "path": "@chat.answer_gap" },
-        { "path": "@chat.answer_remedy" }
+        { "path": "@chat.answer_remedy" },
+        { "path": "@chat.reply_withheld" },
+        { "path": "@chat.retry_withheld" }
       ]
     }
   }

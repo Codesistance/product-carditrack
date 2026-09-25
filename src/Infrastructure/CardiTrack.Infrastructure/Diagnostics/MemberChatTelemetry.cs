@@ -103,6 +103,56 @@ public static class MemberChatTelemetry
         });
     }
 
+    /// <summary>
+    /// The guard that withheld the reply, replacing it with the could-not-answer line — one of the
+    /// <c>Withheld</c> constants below. Absent when the reply was shown as written.
+    /// </summary>
+    /// <remarks>
+    /// Until 2026-09-25 these guards returned the fallback line and said nothing, so a caregiver's
+    /// "I couldn't put a proper answer together" could not be traced to its cause: every call in
+    /// the trace had succeeded, and six different checks produce the same sentence.
+    /// </remarks>
+    public const string ReplyWithheldTag = "chat.reply_withheld";
+
+    /// <summary>
+    /// The same, for a reply the answer check's retry wrote. Kept apart so a withheld retry — after
+    /// which the first reply stands — does not read as a withheld answer.
+    /// </summary>
+    public const string RetryWithheldTag = "chat.retry_withheld";
+
+    /// <summary>The reply named a reading the clinical read did not.</summary>
+    public const string WithheldReadingNotInRead = "reading_not_in_read";
+
+    /// <summary>The reply stated a sleep duration no figure in the data supports.</summary>
+    public const string WithheldSleepFigure = "sleep_figure";
+
+    /// <summary>The reply used a pronoun the member's record does not bear out.</summary>
+    public const string WithheldUnsupportedSex = "unsupported_sex";
+
+    /// <summary>The reply was empty, or left a name or pronoun token unresolved.</summary>
+    public const string WithheldUnresolvedVoice = "unresolved_voice";
+
+    /// <summary>The reply named a medical condition.</summary>
+    public const string WithheldNamesCondition = "names_condition";
+
+    /// <summary>The inference verdict read as settled twice beneath a Yellow-or-worse status.</summary>
+    public const string WithheldSettledTwice = "settled_twice";
+
+    private static readonly AsyncLocal<bool> s_retrying = new();
+
+    /// <summary>True inside <see cref="Retrying"/>: the reply being written is the retry's.</summary>
+    public static bool InRetry => s_retrying.Value;
+
+    /// <summary>Marks the replies written until disposal as the answer check's retry.</summary>
+    public static IDisposable Retrying()
+    {
+        s_retrying.Value = true;
+        return new RetryScope();
+    }
+
+    public static void TagReplyWithheld(string guard) =>
+        Activity.Current?.SetTag(InRetry ? RetryWithheldTag : ReplyWithheldTag, guard);
+
     public static void TagSource(string source) =>
         Activity.Current?.SetTag(SourceTag, source);
 
@@ -123,4 +173,9 @@ public static class MemberChatTelemetry
 
     internal static string Label(MemberChatWorkflow workflow) =>
         ChatWorkflowCatalogue.Find(workflow)?.Label ?? workflow.ToString();
+
+    private sealed class RetryScope : IDisposable
+    {
+        public void Dispose() => s_retrying.Value = false;
+    }
 }

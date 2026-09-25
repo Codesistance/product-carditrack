@@ -230,7 +230,7 @@ Two things the POST does not verify:
 
 | Spec | Metric | Site | Purpose |
 |-|-|-|-|
-| `span-metrics/carditrack.chat.sends.json` | `carditrack.chat.sends` (created 2026-09-25) | uk1 | Every member-chat send, counted before sampling, by workflow and by the answer check's verdict, gap and remedy |
+| `span-metrics/carditrack.chat.sends.json` | `carditrack.chat.sends` (created 2026-09-25) | uk1 | Every member-chat send, counted before sampling, by workflow, by the answer check's verdict, gap and remedy, and by the guard that withheld a reply |
 
 ### Why a metric and not the spans
 
@@ -261,6 +261,12 @@ sum:carditrack.chat.sends{env:dev AND chat.answer_check IN (partial,no)}.as_coun
 
 # What the send did about it
 sum:carditrack.chat.sends{env:dev AND chat.answer_remedy:*} by {chat.answer_remedy}.as_count()
+
+# Why a caregiver was shown "I couldn't put a proper answer together", by guard
+sum:carditrack.chat.sends{env:dev AND chat.reply_withheld:*} by {chat.workflow,chat.reply_withheld}.as_count()
+
+# Why a retry was thrown away (the first reply stood)
+sum:carditrack.chat.sends{env:dev AND chat.retry_withheld:*} by {chat.retry_withheld}.as_count()
 ```
 
 ### Applying it
@@ -275,7 +281,17 @@ curl -sS -X POST "$BASE/api/v2/apm/config/metrics" \
 
 The application key needs the APM configuration write scope. A span metric's query and group-bys
 can be changed later with `PATCH /api/v2/apm/config/metrics/<id>` (the `compute` block cannot);
-keep this file in step with whatever is live.
+keep this file in step with whatever is live. The two `withheld` group-bys were added to the
+spec on 2026-09-25, after the metric was created; apply them with the same `PATCH`, sending only
+`group_by`:
+
+```bash
+jq '{data: {id: .data.id, type: .data.type, attributes: {group_by: .data.attributes.group_by}}}' \
+  infrastructure/datadog/span-metrics/carditrack.chat.sends.json |
+curl -sS -X PATCH "$BASE/api/v2/apm/config/metrics/carditrack.chat.sends" \
+  -H "DD-API-KEY: $DD_API_KEY" -H "DD-APPLICATION-KEY: $DD_APP_KEY" \
+  -H "Content-Type: application/json" -d @-
+```
 
 ## Outstanding
 

@@ -894,6 +894,7 @@ public class MemberChatService : IMemberChatService
         var spent = new List<AiCallRecord>();
         using var retryBudget = CancellationTokenSource.CreateLinkedTokenSource(ct);
         retryBudget.CancelAfter(remaining);
+        using var retrying = MemberChatTelemetry.Retrying();
         try
         {
             var question = WithGapNamed(forModel, assessment);
@@ -1231,6 +1232,7 @@ public class MemberChatService : IMemberChatService
 
             if (MemberChatReplies.ClaimsSettled(secondReply))
             {
+                MemberChatTelemetry.TagReplyWithheld(MemberChatTelemetry.WithheldSettledTwice);
                 _logger.LogWarning(
                     "Inference verdict for CardiMember {CardiMemberId} read as settled twice beneath a {Tier} hero; withheld.",
                     cardiMemberId, dashboard.Tier);
@@ -2799,6 +2801,25 @@ public class MemberChatService : IMemberChatService
         "I'm sorry — I couldn't put a proper answer together from what's on file just now. "
         + "Could you try asking it a slightly different way?";
 
+    /// <summary>
+    /// The could-not-answer line, with the guard that chose it tagged on the request span and
+    /// logged, so the fallback can be traced to its cause.
+    /// </summary>
+    /// <remarks>
+    /// Privacy: the guard's catalogue name, and for an invented reading its family ("sleep",
+    /// "heart rate variability") — never the reply, a figure, or the condition it named.
+    /// </remarks>
+    private string Withheld(string guard, string? readingFamily = null)
+    {
+        MemberChatTelemetry.TagReplyWithheld(guard);
+        _logger.LogWarning(
+            "Member-chat {Pass} reply withheld by the {Guard} guard{Detail}; the could-not-answer line stands in.",
+            MemberChatTelemetry.InRetry ? "retry" : "first",
+            guard,
+            readingFamily is null ? string.Empty : $" (named {readingFamily})");
+        return CouldNotAnswerReply;
+    }
+
     /// <summary>Resolves the member's name and pronouns, or falls back to a fixed line rather than
     /// showing a leftover placeholder, an empty reply, or a sex nothing on file bears out —
     /// see <c>MemberVoice.IsUnresolvedIn</c> and <c>RewriteCopyGuards.StatesAnUnsupportedSex</c>.</summary>
@@ -2811,14 +2832,14 @@ public class MemberChatService : IMemberChatService
     /// the record still passes, so the cost lands only on members whose sex is not on file, and
     /// only when the model has ignored the token rule.
     /// </remarks>
-    private static string ResolvedOrFallback(string text, MemberVoice voice)
+    private string ResolvedOrFallback(string text, MemberVoice voice)
     {
         if (RewriteCopyGuards.StatesAnUnsupportedSex(text, voice.Gender))
-            return CouldNotAnswerReply;
+            return Withheld(MemberChatTelemetry.WithheldUnsupportedSex);
 
         var resolved = voice.Resolve(text.Trim()) ?? string.Empty;
         return MemberVoice.IsUnresolvedIn(resolved) || string.IsNullOrWhiteSpace(resolved)
-            ? CouldNotAnswerReply
+            ? Withheld(MemberChatTelemetry.WithheldUnresolvedVoice)
             : resolved;
     }
 
@@ -2840,7 +2861,7 @@ public class MemberChatService : IMemberChatService
     /// worse than saying nothing.
     /// </para>
     /// </remarks>
-    private static string ComposeReply(
+    private string ComposeReply(
         string rewritten,
         string clinicalRead,
         MemberVoice voice,
@@ -2850,19 +2871,19 @@ public class MemberChatService : IMemberChatService
         DateOnly today,
         RewriteCopyGuards.SleepFigures supportedSleep)
     {
-        if (RewriteCopyGuards.NamesAReadingTheReadDidNot(rewritten, clinicalRead) is not null)
-            return CouldNotAnswerReply;
+        if (RewriteCopyGuards.NamesAReadingTheReadDidNot(rewritten, clinicalRead) is { } family)
+            return Withheld(MemberChatTelemetry.WithheldReadingNotInRead, family);
 
         // A figure no night, average or yardstick in the fetch could produce — the 2h 22m weekly
         // average of 2026-09-25. Run on the rewrite, which is what the caregiver reads.
         if (RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(rewritten, supportedSleep) is not null)
-            return CouldNotAnswerReply;
+            return Withheld(MemberChatTelemetry.WithheldSleepFigure);
 
         var resolved = ResolvedOrFallback(rewritten, voice);
         if (resolved == CouldNotAnswerReply)
             return resolved;
         if (JournalRegisterGuards.NamesACondition(resolved) is not null)
-            return CouldNotAnswerReply;
+            return Withheld(MemberChatTelemetry.WithheldNamesCondition);
 
         var reply = CapReply(resolved);
         return MemberChatReplies.ResolveSpan(readingsFrom, readingsTo, fetchedWindow) is { } span

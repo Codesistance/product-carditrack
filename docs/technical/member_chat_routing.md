@@ -558,6 +558,8 @@ It runs on the replies that claim to answer: `status`, `analysis`, `inference`, 
 
 The miss rate by workflow and by cause (`@chat.answer_check:(partial OR no)` grouped by `@chat.answer_gap`) stays the measure of how often first replies fall short.
 
+**Which guard withheld a reply (since 2026-09-25).** Six checks replace a reply with the could-not-answer line: a reading the clinical read did not name, a sleep figure the data cannot produce, an unsupported pronoun, an unresolved name or pronoun token, a named condition, and an inference verdict settled twice beneath a Yellow-or-worse status. Each now tags `chat.reply_withheld` with its name and logs a Warning (the guard, and for an invented reading its family — never the reply or a figure). A guard that fires on the retry tags `chat.retry_withheld` instead, since the first reply stands. Before this, a caregiver's "I couldn't put a proper answer together" left a trace in which every call had succeeded and nothing said why.
+
 ### Streaming the send (added 2026-09-25)
 
 A send can take minutes, most of it in the clinical read. Until now the app filled the wait with three lines a separate Rewrite-slot call wrote from the question (`waiting-sentences`), which described checking that might not be happening. The app now sends through `POST …/members/{id}/messages/stream` and shows what is actually happening.
