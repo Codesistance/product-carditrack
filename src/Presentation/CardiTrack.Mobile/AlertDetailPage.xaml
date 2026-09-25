@@ -124,9 +124,11 @@
                                 <!-- Once the alert has been dealt with, the banner says so first: a
                                      green strip across its top, part of the same card rather than a
                                      caption under the buttons, because "it settled on its own" or "Tom
-                                     acknowledged" changes how everything below it reads. Green because
-                                     the episode is handled, whatever colour the alert itself was; the
-                                     severity ground stays underneath so the two never blur. -->
+                                     acknowledged" changes how everything below it reads. Green once
+                                     the episode is over, dark blue while somebody has only
+                                     acknowledged it (set in ApplyAcknowledgement), whatever colour the
+                                     alert itself was; the severity ground stays underneath so the two
+                                     never blur. -->
                                 <Grid x:Name="HandledStrip"
                                       IsVisible="False"
                                       BackgroundColor="{StaticResource HandledStripBackground}"

@@ -477,6 +477,8 @@ public partial class AlertDetailPage : ContentPage
         }
 
         AcknowledgedLabel.Text = AlertAnswerCopy.HandledLine(alert) ?? AlertAnswerCopy.SettledOnItsOwn;
+        HandledStrip.BackgroundColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[
+            AlertAnswerCopy.IsClosed(alert) ? "HandledStripBackground" : "AcknowledgedStripBackground"];
         HandledStrip.IsVisible = true;
     }
 

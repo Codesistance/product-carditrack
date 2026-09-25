@@ -39,7 +39,8 @@ public class AlertAnswerCopyTests
 
         var line = AlertAnswerCopy.HandledLine(alert);
 
-        Assert.StartsWith("Tom acknowledged — Calling them now, 2 minutes ago", line);
+        // Who and when only: the label ("Calling them now") is read under "What the family did".
+        Assert.Equal("Tom acknowledged · 2 minutes ago", line);
     }
 
     [Fact]
@@ -53,7 +54,8 @@ public class AlertAnswerCopyTests
             Responses = [Response("close", "Jane Doe", "Spoke to them — they're fine", null, 1)],
         };
 
-        Assert.StartsWith("Jane closed this — Spoke to them — they're fine", AlertAnswerCopy.HandledLine(alert));
+        Assert.Equal("Jane closed this · 1 minute ago", AlertAnswerCopy.HandledLine(alert));
+        Assert.True(AlertAnswerCopy.IsClosed(alert));
     }
 
     [Fact]
@@ -75,12 +77,12 @@ public class AlertAnswerCopyTests
 
         var line = AlertAnswerCopy.HandledLine(alert);
 
-        Assert.StartsWith("Jane closed this — Expected, nothing wrong", line);
+        Assert.StartsWith("Jane closed this · 1 minute ago", line);
         Assert.EndsWith("It had already settled on its own.", line);
     }
 
     [Fact]
-    public void TheBareAcknowledgementStillReadsAsBefore()
+    public void TheBareAcknowledgementReadsLikeTheRowsBelowIt()
     {
         var alert = new AlertDetailResponse
         {
@@ -89,7 +91,9 @@ public class AlertAnswerCopyTests
             AcknowledgedByName = "Sam Smith",
         };
 
-        Assert.Equal("Acknowledged by Sam, 5 minutes ago", AlertAnswerCopy.HandledLine(alert));
+        Assert.Equal("Sam acknowledged · 5 minutes ago", AlertAnswerCopy.HandledLine(alert));
+        // Somebody is on it, which is not the episode being over — the strip says so in its colour.
+        Assert.False(AlertAnswerCopy.IsClosed(alert));
     }
 
     [Fact]

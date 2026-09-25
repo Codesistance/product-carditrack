@@ -4,7 +4,7 @@ using CardiTrack.Mobile.Core.Forms;
 namespace CardiTrack.Mobile.Core.Alerts;
 
 /// <summary>
-/// How an answered alert describes itself: the attribution line under the actions, and each row
+/// How an answered alert describes itself: the strip across the top of its banner, and each row
 /// of "What the family did".
 /// </summary>
 public static class AlertAnswerCopy
@@ -12,10 +12,16 @@ public static class AlertAnswerCopy
     public const string SettledOnItsOwn = "This settled on its own — no action needed";
 
     /// <summary>
-    /// The line under the actions. Leads with the latest response when there is one, because
-    /// with second caregivers "what did the family do" is the question (D-20); falls back to the
-    /// first-wins acknowledgement, and to the system's own resolution when nobody touched it.
+    /// The strip across the top of the alert banner. Leads with the latest response when there is
+    /// one, because with second caregivers "what did the family do" is the question (D-20); falls
+    /// back to the first-wins acknowledgement, and to the system's own resolution when nobody
+    /// touched it.
     /// </summary>
+    /// <remarks>
+    /// Who and when only — "Tom acknowledged · 2 minutes ago". The response's label ("Calling
+    /// them now") used to ride along, which on a one-line strip made the headline the longest
+    /// thing on the banner; the label and any note are read under "What the family did".
+    /// </remarks>
     public static string? HandledLine(AlertDetailResponse alert)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -25,10 +31,7 @@ public static class AlertAnswerCopy
 
         if (Latest(alert) is { } latest)
         {
-            var line = RowTitle(latest);
-            if (!string.IsNullOrWhiteSpace(latest.ResponseLabel))
-                line += $" — {latest.ResponseLabel}";
-            line += $", {RelativeTime.Format(latest.CreatedAt)}";
+            var line = $"{RowTitle(latest)} · {RelativeTime.Format(latest.CreatedAt)}";
 
             // A close the system had already made says so: the family's note is still worth
             // reading, but it did not end the alert.
@@ -47,9 +50,20 @@ public static class AlertAnswerCopy
             return SettledOnItsOwn;
 
         var who = FirstName(alert.AcknowledgedByName) is { } name
-            ? $"Acknowledged by {name}"
+            ? $"{name} acknowledged"
             : "Acknowledged";
-        return $"{who}, {RelativeTime.Format(at)}";
+        return $"{who} · {RelativeTime.Format(at)}";
+    }
+
+    /// <summary>
+    /// Whether the episode is over — closed by a caregiver or settled on its own — rather than
+    /// only acknowledged. The strip wears a different colour for each: an acknowledgement says
+    /// somebody is on it, which is not the same news as it being finished.
+    /// </summary>
+    public static bool IsClosed(AlertDetailResponse alert)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+        return alert.Status == "resolved";
     }
 
     /// <summary>"Tom acknowledged" / "Jane closed this".</summary>
