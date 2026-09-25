@@ -82,8 +82,8 @@ public class DeviceSyncService : IDeviceSyncService
         // can reach the pull on the following day: two independent reads would then decide "no
         // repair pass needed" against the old day and fetch against the new one, skipping that
         // day's backfill entirely — and the next pull, now stamped with the new day, would not
-        // make it up.
-        var (zone, today) = await MemberTodayAsync(connection);
+        // make it up. The success stamp below takes this same instant for the same reason.
+        var (zone, today, readAtUtc) = await MemberTodayAsync(connection);
 
         // The trailing repair days are re-fetched once a member-local day, not on every pull. They
         // exist to catch a provider revising a *finished* day, which happens on the order of hours
@@ -121,7 +121,14 @@ public class DeviceSyncService : IDeviceSyncService
             // and the connection would not come due again until the next interval. This also
             // clears a SyncError left by an earlier run: the window just landed, so whatever
             // the provider was doing then, the connection is working now.
-            await _deviceConnections.MarkSyncSucceededAsync(connection.Id, DateTime.UtcNow);
+            //
+            // Stamped with the instant `today` was read from, not the time the window finished
+            // landing. The repair gate above reads this stamp's local date as "the day the last
+            // pull was for", and a pull that starts before the member's midnight and lands after
+            // it would otherwise record the new day: the next pull would then skip the repair
+            // pass for the day that just closed, leaving it to a later pass's lookback. It is also
+            // the truer "last synced" — nothing fetched is newer than the moment the pull began.
+            await _deviceConnections.MarkSyncSucceededAsync(connection.Id, readAtUtc);
 
             // The worker-cadence extras run after the routine window succeeded, never inside its
             // success envelope: both are enrichment, and a transient failure in either must not
@@ -156,7 +163,7 @@ public class DeviceSyncService : IDeviceSyncService
         // No LastSyncDate stamp and no SyncError transition: see IDeviceSyncService.AuditSyncAsync.
         // Any revision this turns up still lands in the raw row and is merged, so the audit
         // repairs history as a side effect of measuring it.
-        var (_, today) = await MemberTodayAsync(connection);
+        var (_, today, _) = await MemberTodayAsync(connection);
         await PullWindowAsync(connection, accessToken, lookbackDays, today);
     }
 
@@ -182,10 +189,12 @@ public class DeviceSyncService : IDeviceSyncService
     /// a database failure never parks the connection in <see cref="ConnectionStatus.SyncError"/>.
     /// </para>
     /// </remarks>
-    private async Task<(TimeZoneInfo Zone, DateOnly Today)> MemberTodayAsync(DeviceConnection connection)
+    private async Task<(TimeZoneInfo Zone, DateOnly Today, DateTime ReadAtUtc)> MemberTodayAsync(
+        DeviceConnection connection)
     {
         var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, connection.CardiMemberId);
-        return (zone, LocalDate(_clock.GetUtcNow().UtcDateTime, zone));
+        var readAtUtc = _clock.GetUtcNow().UtcDateTime;
+        return (zone, LocalDate(readAtUtc, zone), readAtUtc);
     }
 
     /// <summary>

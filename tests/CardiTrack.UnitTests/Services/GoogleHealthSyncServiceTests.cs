@@ -1208,6 +1208,39 @@ public class DeviceSyncServiceTests
         Assert.Equal(WindowEndingAt(new DateOnly(2026, 7, 14), 5), fetched);
     }
 
+    // A pull that starts at 23:58 and lands after midnight was for the 14th. Stamped with its
+    // finish time it would read as a pull for the 15th, and the 00:10 pull would skip the repair
+    // pass for the day that had just closed.
+    [Fact]
+    public async Task SyncCardiMemberAsync_RunsTheNextRepairPass_WhenAPullCrossesLocalMidnight()
+    {
+        AnchorMemberTo(Sydney);
+        SetupSuccessfulTokenRefresh();
+        var clock = ClockAt(new DateTime(2026, 7, 14, 13, 58, 0)); // 23:58 on the 14th
+        _fitbitConnection.LastSyncDate = new DateTime(2026, 7, 14, 13, 40, 0, DateTimeKind.Utc);
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(_ =>
+            {
+                clock.Advance(TimeSpan.FromMinutes(5)); // lands at 00:03 on the 15th
+                return Snapshot();
+            });
+        DateTime? stamped = null;
+        _deviceConnections.MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Do<DateTime>(d => stamped = d))
+            .Returns(Task.CompletedTask);
+
+        await CreateSut(clock).SyncCardiMemberAsync(_fitbitConnection);
+
+        Assert.Equal(new DateTime(2026, 7, 14, 13, 58, 0, DateTimeKind.Utc), stamped);
+
+        _fitbitConnection.LastSyncDate = stamped;
+        _deviceApi.ClearReceivedCalls();
+        var fetched = CaptureSnapshotDates();
+
+        await CreateSut(ClockAt(new DateTime(2026, 7, 14, 14, 10, 0))).SyncCardiMemberAsync(_fitbitConnection);
+
+        Assert.Equal(WindowEndingAt(new DateOnly(2026, 7, 15), LookbackDays), fetched);
+    }
+
     // No caregiver with a resolvable zone: the member is still synced, on UTC, as before.
     [Fact]
     public async Task SyncCardiMemberAsync_FallsBackToUtc_WhenNoCaregiverZoneResolves()
