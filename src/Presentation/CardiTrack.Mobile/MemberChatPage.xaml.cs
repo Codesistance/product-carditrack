@@ -72,7 +72,7 @@ public partial class MemberChatPage : ContentView
     internal const string AiChatNoticeSeenKey = "AiChatNoticeSeenFor";
 
     /// <summary>The AI notice while it is up, so the open and a quick first send share one popup.</summary>
-    private Task? _aiNotice;
+    private Task<bool>? _aiNotice;
 
     /// <summary>How long a step has to be on screen before the waiting lines start under it — a
     /// step that finishes sooner has already said enough, and a line that flashes past reads as
@@ -137,38 +137,44 @@ public partial class MemberChatPage : ContentView
         }
     }
 
-    /// <summary>Shows the AI notice if this caregiver has not seen it — once, however many
-    /// callers ask while it is up. Never faults.</summary>
-    private Task EnsureAiNoticeSeenAsync() =>
+    /// <summary>
+    /// Shows the AI notice if this caregiver has not seen it — once, however many callers ask
+    /// while it is up — and says whether they have now seen it. Never faults: a notice that could
+    /// not be shown is <c>false</c>, and the caller decides what that stops.
+    /// </summary>
+    private Task<bool> EnsureAiNoticeSeenAsync() =>
         _aiNotice is { IsCompleted: false } showing ? showing : _aiNotice = ShowAiNoticeIfOwedAsync();
 
-    private async Task ShowAiNoticeIfOwedAsync()
+    private async Task<bool> ShowAiNoticeIfOwedAsync()
     {
         try
         {
             var email = ServiceHelper.GetRequiredService<IAuthService>().CurrentUserEmail;
             if (AiChatNotice.IsSeen(Preferences.Default.Get(AiChatNoticeSeenKey, string.Empty), email))
-                return;
+                return true;
 
             // PopupService attaches to the first window's page and returns without showing
             // anything when there is none, so a notice asked for then is not one the caregiver
             // saw: nothing is recorded, and the next open or send asks again.
             if (Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page is null)
-                return;
+                return false;
 
             await ServiceHelper.GetRequiredService<IPopupService>()
                 .ShowInfoAsync(AiChatNotice.Message, AiChatNotice.Title, AiChatNotice.AcknowledgeText);
 
             // Shown is seen: the notice has one answer, and closing it any other way has still
-            // put the words in front of the caregiver.
+            // put the words in front of the caregiver. With no signed-in identity there is
+            // nothing to remember it by, so it shows again next time — but it was seen now.
             if (AiChatNotice.SeenValueFor(email) is { } seen)
                 Preferences.Default.Set(AiChatNoticeSeenKey, seen);
+            return true;
         }
         catch (Exception ex)
         {
             // Fire-and-forget from the constructor: a notice that fails must not take the chat
-            // with it. A send still asks again, since the key was never written.
+            // with it. A send asks again, and waits for it, since the key was never written.
             ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while showing the AI notice");
+            return false;
         }
     }
 
@@ -942,8 +948,16 @@ public partial class MemberChatPage : ContentView
         SendButton.IsEnabled = false;
 
         // Never a first message to the assistant without the notice: normally it was shown when
-        // the sheet opened, and this returns at once.
-        await EnsureAiNoticeSeenAsync();
+        // the sheet opened, and this returns at once. If it could not be shown, the message is
+        // not sent — it goes back in the field, where one more tap tries the notice again.
+        if (!await EnsureAiNoticeSeenAsync())
+        {
+            if (string.IsNullOrWhiteSpace(MessageEditor.Text))
+                MessageEditor.Text = message;
+            _isSending = false;
+            SendButton.IsEnabled = true;
+            return;
+        }
 
         // The chips are a first-message affordance: once the conversation has started, what to
         // ask next comes from the reply, not from a generic list. The new-conversation action
