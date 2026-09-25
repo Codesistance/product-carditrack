@@ -120,6 +120,20 @@ public partial class ChoiceField : ContentView
         set => SetValue(PromptProperty, value);
     }
 
+    public static readonly BindableProperty HintProperty = BindableProperty.Create(
+        nameof(Hint), typeof(string), typeof(ChoiceField), null);
+
+    /// <summary>
+    /// One line under the sheet's heading, for a field whose options need a question to read
+    /// right — Relationship's "Parent" is only unambiguous once it is "their parent" or "your
+    /// parent". Null shows none.
+    /// </summary>
+    public string? Hint
+    {
+        get => (string?)GetValue(HintProperty);
+        set => SetValue(HintProperty, value);
+    }
+
     /// <summary>Raised when the chosen row moved — by a tap in the sheet or by the page — and only then.</summary>
     public event EventHandler? SelectedIndexChanged;
 
@@ -185,7 +199,7 @@ public partial class ChoiceField : ContentView
         {
             var popups = ServiceHelper.GetRequiredService<IPopupService>();
             var picked = await popups.ChooseIndexAsync(
-                Prompt ?? Title ?? string.Empty, _selection.Options, _selection.SelectedIndex);
+                Prompt ?? Title ?? string.Empty, _selection.Options, _selection.SelectedIndex, Hint);
 
             if (picked is { } index)
                 SelectedIndex = index;

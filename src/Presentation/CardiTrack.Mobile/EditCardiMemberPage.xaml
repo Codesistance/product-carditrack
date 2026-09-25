@@ -195,7 +195,7 @@
 
                     <VerticalStackLayout Spacing="4">
                         <Label Text="Relationship" Style="{StaticResource AuthFieldLabel}"/>
-                        <controls:ChoiceField x:Name="RelationshipPicker" Prompt="Relationship"/>
+                        <controls:ChoiceField x:Name="RelationshipPicker" Prompt="Relationship" Hint="They are your…"/>
                     </VerticalStackLayout>
 
                     <BoxView Style="{StaticResource DividerLine}" Margin="0,6"/>

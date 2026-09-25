@@ -1,5 +1,6 @@
 using Microsoft.Maui.Controls.PlatformConfiguration;
 using Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific;
+using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -27,7 +28,10 @@ public partial class ChoiceSheetPage : ContentPage
     private readonly View? _selectedRow;
     private bool _closing;
 
-    public ChoiceSheetPage(string title, IReadOnlyList<string> options, int selectedIndex)
+    /// <param name="hint">
+    /// One line under the title for a question the options cannot answer alone. Null for none.
+    /// </param>
+    public ChoiceSheetPage(string title, IReadOnlyList<string> options, int selectedIndex, string? hint = null)
     {
         InitializeComponent();
         // Without OverFullScreen, iOS removes the page underneath and the transparent
@@ -36,16 +40,25 @@ public partial class ChoiceSheetPage : ContentPage
 
         TitleLabel.Text = title;
         TitleLabel.IsVisible = !string.IsNullOrEmpty(title);
+        HintLabel.Text = hint;
+        HintLabel.IsVisible = !string.IsNullOrWhiteSpace(hint);
 
         var primary = MetricStatus.Resource("Primary", Colors.Blue);
         var ink = MetricStatus.Resource("HeadingText", Colors.Black);
-        var divider = MetricStatus.Resource("Divider", Colors.LightGray);
+        var rowFill = MetricStatus.Resource("InputBackground", Colors.WhiteSmoke);
+        var selectedFill = MetricStatus.Resource("SelectedOptionBackground", Colors.AliceBlue);
+        var radioRing = MetricStatus.Resource("MutedText", Colors.Gray);
 
         for (var i = 0; i < options.Count; i++)
         {
             var index = i;
             var selected = i == selectedIndex;
 
+            // Each option a filled row with a radio mark, rather than a line of text between
+            // dividers: a row reads as something to tap, and the empty ring beside every option
+            // says "pick one" before anybody has. The row that is set is tinted and ringed in
+            // Primary with a filled check, so the current answer is visible from across the
+            // sheet — the bare tick on the old list was easy to miss beside four plain rows.
             var row = new Grid
             {
                 ColumnDefinitions =
@@ -55,7 +68,7 @@ public partial class ChoiceSheetPage : ContentPage
                 },
                 ColumnSpacing = 12,
                 MinimumHeightRequest = RowHeight,
-                Padding = new Thickness(4, 6),
+                Padding = new Thickness(14, 8),
             };
 
             var label = new Label
@@ -70,30 +83,56 @@ public partial class ChoiceSheetPage : ContentPage
             Grid.SetColumn(label, 0);
             row.Add(label);
 
-            // The same tick the alert card acknowledges with, in the same Primary.
-            var tick = new Image
-            {
-                Source = "icon_action_check.svg",
-                WidthRequest = 20,
-                HeightRequest = 20,
-                VerticalOptions = LayoutOptions.Center,
-                IsVisible = selected,
-            };
-            Grid.SetColumn(tick, 1);
-            row.Add(tick);
+            View mark = selected
+                ? new Border
+                {
+                    WidthRequest = 20,
+                    HeightRequest = 20,
+                    StrokeThickness = 0,
+                    BackgroundColor = primary,
+                    StrokeShape = new Ellipse(),
+                    VerticalOptions = LayoutOptions.Center,
+                    Content = new Image
+                    {
+                        Source = "icon_check_white.svg",
+                        WidthRequest = 12,
+                        HeightRequest = 12,
+                        HorizontalOptions = LayoutOptions.Center,
+                        VerticalOptions = LayoutOptions.Center,
+                    },
+                }
+                : new Border
+                {
+                    WidthRequest = 20,
+                    HeightRequest = 20,
+                    Stroke = radioRing,
+                    StrokeThickness = 2,
+                    BackgroundColor = Colors.Transparent,
+                    StrokeShape = new Ellipse(),
+                    VerticalOptions = LayoutOptions.Center,
+                };
+            Grid.SetColumn(mark, 1);
+            row.Add(mark);
 
-            SemanticProperties.SetDescription(row, selected ? $"{options[i]}, selected" : options[i]);
+            var card = new Border
+            {
+                BackgroundColor = selected ? selectedFill : rowFill,
+                Stroke = selected ? primary : Colors.Transparent,
+                StrokeThickness = selected ? 1.5 : 0,
+                StrokeShape = new RoundRectangle { CornerRadius = 6 },
+                Content = row,
+            };
+
+            SemanticProperties.SetDescription(card, selected ? $"{options[i]}, selected" : options[i]);
 
             var tap = new TapGestureRecognizer();
             tap.Tapped += async (_, _) => await CloseAsync(index);
-            row.GestureRecognizers.Add(tap);
+            card.GestureRecognizers.Add(tap);
 
-            if (i > 0)
-                OptionsHost.Add(new BoxView { HeightRequest = 1, BackgroundColor = divider });
-            OptionsHost.Add(row);
+            OptionsHost.Add(card);
 
             if (selected)
-                _selectedRow = row;
+                _selectedRow = card;
         }
     }
 

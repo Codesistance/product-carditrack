@@ -34,6 +34,11 @@
                 <Label x:Name="TitleLabel"
                        Style="{StaticResource Heading3}"
                        HorizontalTextAlignment="Center"/>
+                <Label x:Name="HintLabel"
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Center"
+                       Margin="0,2,0,0"
+                       IsVisible="False"/>
 
                 <!-- Unlike the chooser, this list scrolls: the alarm builder's readings run to
                      eight or more rows and a card that grew to hold them would leave the phone.
@@ -44,7 +49,7 @@
                 <ScrollView x:Name="OptionsScroll"
                             Margin="0,12,0,0"
                             HorizontalScrollBarVisibility="Never">
-                    <VerticalStackLayout x:Name="OptionsHost" Spacing="0"/>
+                    <VerticalStackLayout x:Name="OptionsHost" Spacing="6"/>
                 </ScrollView>
 
                 <Button x:Name="CancelBtn"

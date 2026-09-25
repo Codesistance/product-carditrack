@@ -9,7 +9,12 @@ public static class NameFormatting
     /// <summary>First + last initial ("Margaret Doe" → "MD"). Photos are not stored yet.</summary>
     public static string Initials(string? name)
     {
-        var parts = (name ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        // Words that start with a letter only: "Test Member (Claude)" gave "T(", and a nickname in
+        // quotes or a trailing "Jr." in brackets would do the same.
+        var parts = (name ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(part => char.IsLetter(part[0]))
+            .ToArray();
         return parts.Length switch
         {
             0 => "?",

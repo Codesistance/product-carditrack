@@ -61,14 +61,14 @@ public sealed class PopupService : IPopupService
             }
         });
 
-    public Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex) =>
+    public Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex, string? hint = null) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {
             var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
             if (page is null)
                 return null;
 
-            var sheet = new ChoiceSheetPage(title, options, selectedIndex);
+            var sheet = new ChoiceSheetPage(title, options, selectedIndex, hint);
             Interlocked.Increment(ref _open);
             try
             {

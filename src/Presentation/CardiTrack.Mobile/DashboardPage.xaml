@@ -191,16 +191,31 @@
                         </Border>
 
                         <!-- No device connected (M1-09d) -->
+                        <!-- Figma M1-09 D: the watch-with-a-cross, a title that names the state,
+                             one line naming the member, and the filled primary button — connecting
+                             a device is the next step for this member, not an optional aside, so it
+                             does not wear the outline style of one. -->
                         <Border x:Name="NoDeviceCard"
                                 IsVisible="False"
-                                Style="{StaticResource ElevatedCard}">
-                            <VerticalStackLayout Spacing="8">
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="16,20">
+                            <VerticalStackLayout Spacing="6" HorizontalOptions="Center">
+                                <Image Source="illustration_no_device.png"
+                                       WidthRequest="72" HeightRequest="72"
+                                       HorizontalOptions="Center"
+                                       SemanticProperties.Description="No device connected"/>
+                                <Label Text="No device connected"
+                                       Style="{StaticResource Heading3}"
+                                       HorizontalTextAlignment="Center"
+                                       Margin="0,4,0,0"/>
                                 <Label x:Name="NoDeviceLabel"
-                                       Style="{StaticResource Body2Medium}"
-                                       TextColor="{StaticResource HeadingText}"/>
+                                       Style="{StaticResource Body2}"
+                                       HorizontalTextAlignment="Center"/>
                                 <Button Text="Connect a device"
-                                        Style="{StaticResource SecondaryOutlineButton}"
-                                        HorizontalOptions="Start"
+                                        Style="{StaticResource PrimaryGradientButton}"
+                                        HorizontalOptions="Center"
+                                        Padding="28,0"
+                                        Margin="0,10,0,0"
                                         Clicked="OnConnectDeviceClicked"/>
                             </VerticalStackLayout>
                         </Border>

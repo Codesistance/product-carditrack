@@ -144,6 +144,8 @@
 		<MauiImage Update="Resources\Images\device_samsung.png" Resize="True" BaseSize="85,96" />
 		<MauiImage Update="Resources\Images\device_withings.png" Resize="True" BaseSize="96,96" />
 		<MauiImage Update="Resources\Images\device_other.png" Resize="True" BaseSize="85,96" />
+		<!-- Figma M1-09 D's watch-with-a-cross, the original 300px fill; drawn at 72dp. -->
+		<MauiImage Update="Resources\Images\illustration_no_device.png" Resize="True" BaseSize="72,72" />
 		
 		<!-- Custom Fonts -->
 		<MauiFont Include="Resources\Fonts\*" />

@@ -110,7 +110,11 @@ public interface IPopupService
     /// back a label: a field's options can repeat a label legitimately, and its page addresses
     /// them by index, as it did with the Picker.
     /// </remarks>
-    Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex);
+    /// <param name="hint">
+    /// One line under the title for a question the options cannot answer alone — "Parent" says
+    /// nothing about which way round the relationship runs. Null for none.
+    /// </param>
+    Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex, string? hint = null);
 
     /// <summary>
     /// The Family tab's switcher drawer: the families the caregiver is in, the asks they are
