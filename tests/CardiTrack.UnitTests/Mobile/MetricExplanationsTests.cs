@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Charts;
 
 namespace CardiTrack.UnitTests.Mobile;
@@ -68,7 +69,7 @@ public class MetricExplanationsTests
 
     [Theory]
     [InlineData("Activity", "Their usual day")]
-    [InlineData("Heart Rate", "Their own normal")]
+    [InlineData("Heart Rate", "Their usual")]
     [InlineData("Sleep", "Their usual night")]
     [InlineData("Skin Temp", "Their nightly normal")]
     public void The_legend_key_is_the_footer_phrase_in_sentence_case(string name, string expected)
@@ -124,7 +125,60 @@ public class MetricExplanationsTests
         var (footer, _) = MetricExplanations.For(
             "Heart Rate", Metric(baseline: 68, reference: Reference(60, 100, "AHA")), "{0:N0}");
 
-        Assert.Equal("Dashes: their own normal. Band 60–100 (AHA).", footer);
+        Assert.Equal("Dashes: their usual. Band 60–100 (AHA).", footer);
+    }
+
+    // ---- A published range that is the normal is named as the normal, and named first ----
+
+    [Fact]
+    public void A_band_that_is_the_normal_is_named_first_and_as_the_normal()
+    {
+        var aha = Reference(60, 100, "AHA");
+        aha.IsPublishedNormal = true;
+
+        var (footer, _) = MetricExplanations.For("Heart Rate", Metric(baseline: 68, reference: aha), "{0:N0}");
+
+        Assert.Equal("Normal range 60–100 (AHA). Dashes: their usual.", footer);
+    }
+
+    /// <summary>
+    /// The regression the band-first decision (2026-09-25) exposed: the heart-rate panel told a
+    /// caregiver their own normal was "the more useful of the two" and that a rate outside the
+    /// published band could be "perfectly ordinary for them" — the opposite of how the app now
+    /// judges it.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData(68.0)]
+    public void The_heart_rate_panel_says_a_rate_outside_the_band_is_worth_a_look(double? baseline)
+    {
+        var aha = Reference(60, 100, "AHA");
+        aha.IsPublishedNormal = true;
+
+        var (_, panel) = MetricExplanations.For(
+            "Heart Rate", Metric(baseline: (decimal?)baseline, reference: aha), "{0:N0}", "Dad");
+
+        Assert.StartsWith("The shaded band is the normal adult resting heart rate published by AHA (60–100 bpm).", panel);
+        Assert.Contains("worth a look, even when it is usual for Dad", panel);
+        Assert.DoesNotContain("perfectly ordinary", panel);
+        Assert.DoesNotContain("more useful", panel);
+    }
+
+    [Fact]
+    public void The_sleep_panel_explains_the_awake_diamond_only_when_the_window_has_one()
+    {
+        var withAwake = Metric(baseline: 6.5m, reference: Reference(7, 9, "NSF"));
+        withAwake.Series =
+        [
+            new MetricPoint { Date = new DateOnly(2026, 9, 24), Value = 7m, NightStatus = NightSleepStatus.Slept },
+            new MetricPoint { Date = new DateOnly(2026, 9, 25), Value = 0m, NightStatus = NightSleepStatus.Awake },
+        ];
+
+        var (_, panel) = MetricExplanations.For("Sleep", withAwake, "{0:0.#}");
+        var (_, plain) = MetricExplanations.For("Sleep", Metric(baseline: 6.5m, reference: Reference(7, 9, "NSF")), "{0:0.#}");
+
+        Assert.Contains("A diamond marks a night the watch was worn with no sleep recorded", panel);
+        Assert.DoesNotContain("diamond", plain);
     }
 
     // ---- Every panel closes the same way ----

@@ -87,9 +87,13 @@ public sealed class MetricTrendCard : ContentView
     private readonly Label _noDataKey = new();
     private readonly TrendLegendSwatch _baselineSwatch = new(TrendLegendMark.Baseline);
     private readonly TrendLegendSwatch _noDataSwatch = new(TrendLegendMark.NoData);
+    private readonly TrendLegendSwatch _referenceSwatch = new(TrendLegendMark.Reference);
+    private readonly TrendLegendSwatch _awakeSwatch = new(TrendLegendMark.Awake);
+    private readonly Label _awakeKey = new();
     private readonly HorizontalStackLayout _baselineLegend;
     private readonly HorizontalStackLayout _referenceLegend;
     private readonly HorizontalStackLayout _noDataLegend;
+    private readonly HorizontalStackLayout _awakeLegend;
     private readonly Grid _legend;
     private readonly Label _footer = new();
 
@@ -141,6 +145,11 @@ public sealed class MetricTrendCard : ContentView
         _period.HorizontalTextAlignment = TextAlignment.End;
         // Tucked under the value's own line box rather than a line away from it.
         _period.Margin = new Thickness(0, -2, 0, 0);
+        // Capped and wrapped: the header's reading column is as wide as what it holds, and sleep's
+        // "night before · last night not arrived yet" would otherwise take the width the metric's
+        // name needs.
+        _period.MaximumWidthRequest = 150;
+        _period.LineBreakMode = LineBreakMode.WordWrap;
         ApplyStyle(_pillText, "StatusPillText");
 
         _pill = new Border
@@ -251,7 +260,7 @@ public sealed class MetricTrendCard : ContentView
         // published range — and neither carries its own label on a plot this size, so the key
         // names them and quotes the numbers behind them.
         _baselineLegend = BuildLegendEntry(_baselineSwatch, _baselineKey);
-        _referenceLegend = BuildLegendEntry(new TrendLegendSwatch(TrendLegendMark.Reference), _referenceKey);
+        _referenceLegend = BuildLegendEntry(_referenceSwatch, _referenceKey);
 
         // The break marks get named on a line of their own rather than squeezed in beside the other
         // two: they appear only on a window with a gap in it, and a third column would cost the
@@ -264,10 +273,20 @@ public sealed class MetricTrendCard : ContentView
         // highest step count of the fortnight was inside them (#532).
         _noDataKey.Text = "No readings received";
 
+        // Sleep only, and only on a window holding an awake night: the diamond is the one mark on
+        // the chart that is a reading, and it needs its name as much as the band does.
+        _awakeLegend = BuildLegendEntry(_awakeSwatch, _awakeKey);
+        _awakeKey.Text = NightReading.AwakeCallout;
+
         _legend = new Grid
         {
             ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
-            RowDefinitions = [new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto)],
+            RowDefinitions =
+            [
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+            ],
             ColumnSpacing = 14,
             RowSpacing = 4,
         };
@@ -275,10 +294,13 @@ public sealed class MetricTrendCard : ContentView
         _legend.Add(_referenceLegend, 1);
         _legend.Add(_noDataLegend, 0, 1);
         Grid.SetColumnSpan(_noDataLegend, 2);
+        _legend.Add(_awakeLegend, 0, 2);
+        Grid.SetColumnSpan(_awakeLegend, 2);
 
         // The key names the two marks; this says what they mean. Naming is not explaining — that a
-        // member's own normal matters more than the published one, or that a wrist wearable is not
-        // taking anyone's temperature, is the part a non-clinical reader actually needs.
+        // published range is the normal for some readings and background for others, or that a
+        // wrist wearable is not taking anyone's temperature, is the part a non-clinical reader
+        // actually needs.
         var footerBlock = BuildFooter();
 
         // The chart's row is the only Star one: everything else on the card is as tall as its own
@@ -397,6 +419,16 @@ public sealed class MetricTrendCard : ContentView
         // swatch falls back to a neutral grey while the chart shades in the metric's opposing
         // hue, and the key sends them hunting for a mark that is not on the plot.
         _noDataSwatch.Ink = ink;
+        _awakeSwatch.Ink = ink;
+
+        // Where the band is the normal the chart draws it first and the usual second, and the key
+        // follows the chart: same weights, and the band named first — read left to right, the key
+        // is then in the order the chart asks to be read in.
+        var bandIsNormal = reference is { IsPublishedNormal: true };
+        _baselineSwatch.ReferenceIsNormal = bandIsNormal;
+        _referenceSwatch.ReferenceIsNormal = bandIsNormal;
+        Grid.SetColumn(_referenceLegend, bandIsNormal ? 0 : 1);
+        Grid.SetColumn(_baselineLegend, bandIsNormal ? 1 : 0);
 
         // The axis labels name the extent the chart actually plots over, which the baseline and
         // the reference band get a say in — so both are read off the one scale rather than the
@@ -437,12 +469,14 @@ public sealed class MetricTrendCard : ContentView
         // the key can never claim a mark the plot did not draw.
         var hasGap = TrendChart.HasMissingDays(points);
         _noDataLegend.IsVisible = hasGap;
+        var hasAwake = _trend.HasAwakeNight;
+        _awakeLegend.IsVisible = hasAwake;
 
         // A hidden entry leaves its column empty rather than absent, and the gap either side of it
         // would read as an indent on a key that starts with its swatch. Its row costs the spacing
         // the same way, so that goes with it.
         _legend.ColumnSpacing = _baselineLegend.IsVisible && _referenceLegend.IsVisible ? 14 : 0;
-        _legend.RowSpacing = hasGap ? 4 : 0;
+        _legend.RowSpacing = hasGap || hasAwake ? 4 : 0;
 
         var (footer, explanation) = MetricExplanations.For(_trend.Name, _trend.Metric, _trend.AxisFormat, _trend.MemberFirstName);
         _footer.Text = footer;
@@ -452,8 +486,11 @@ public sealed class MetricTrendCard : ContentView
         // besides the readings has to reach one through the card's own description.
         var comparisons = string.Join(", ", new[]
         {
-            _trend.BaselineText,
-            _trend.ReferenceText,
+            bandIsNormal ? _trend.ReferenceText : _trend.BaselineText,
+            bandIsNormal ? _trend.BaselineText : _trend.ReferenceText,
+            // The diamond is invisible to a screen reader like every other mark here, and without
+            // this the 0 it stands on would be the only account of that night.
+            hasAwake ? "one or more nights in this window awake all night" : null,
             // The break marks say this on the plot. A reader who cannot see them would otherwise be
             // told a run of days held steady when nothing was recorded on any of them.
             hasGap ? "some days in this window have no reading" : null,
@@ -706,7 +743,7 @@ public sealed class MetricTrendCard : ContentView
         try
         {
             await Services.ServiceHelper.GetRequiredService<Services.IPopupService>()
-                .ShowInfoAsync(span.Description, "No readings");
+                .ShowInfoAsync(span.Description, span.Pending ? "Not arrived yet" : "No readings");
         }
         catch (Exception)
         {

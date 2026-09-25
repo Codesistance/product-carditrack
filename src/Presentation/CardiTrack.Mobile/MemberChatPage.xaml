@@ -224,7 +224,7 @@
                                                  they moved down beside the dots it was just
                                                  dead space under the legend. -->
                                             <CarouselView ItemsSource="{Binding Charts}"
-                                                          HeightRequest="175"
+                                                          HeightRequest="{Binding ChartsHeight}"
                                                           Loop="{Binding ChartsLoop}"
                                                           IsSwipeEnabled="{Binding ChartsLoop}"
                                                           IndicatorView="ChartDots">

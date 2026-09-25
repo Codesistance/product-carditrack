@@ -28,7 +28,7 @@ public sealed class MetricTrend : INotifyPropertyChanged
         IconSource = iconSource;
         InkKey = inkKey;
         Name = name;
-        PeriodText = periodText;
+        _periodText = periodText;
         AxisFormat = axisFormat;
         MemberFirstName = memberFirstName;
         _valueFormat = valueFormat;
@@ -64,7 +64,19 @@ public sealed class MetricTrend : INotifyPropertyChanged
     /// What that reading covers, said under it: a step count is today adding up, a night's sleep
     /// is finished. See <see cref="TrendMetricCatalogue"/> for why it is per metric.
     /// </summary>
-    public string PeriodText { get; }
+    /// <remarks>
+    /// Sleep's "last night" is not always true: while last night has yet to sync the headline is
+    /// the night before's, and says so in the words the dashboard tile uses (see
+    /// <see cref="NightReading"/>).
+    /// </remarks>
+    public string PeriodText =>
+        NightReading.LastNightPending(Metric)
+            ? LowerFirst(Metric.Value is null ? NightReading.PendingCaption : NightReading.NightBeforeCaption)
+            : _periodText;
+
+    private readonly string _periodText;
+
+    private static string LowerFirst(string text) => char.ToLowerInvariant(text[0]) + text[1..];
 
     /// <summary>Format for the chart's own min/max labels — the same number without its unit.</summary>
     public string AxisFormat { get; }
@@ -118,11 +130,18 @@ public sealed class MetricTrend : INotifyPropertyChanged
     /// The legend entry for the published typical-adult range, attributed to whoever publishes it,
     /// or null for a metric no standards body publishes one for.
     /// </summary>
+    /// <remarks>
+    /// "Normal" where the range is what normal means (sleep, resting heart rate, blood oxygen),
+    /// "Typical" where it is only background — see <see cref="ReferenceBands"/>.
+    /// </remarks>
     public string? ReferenceText =>
         Metric.Reference is { } reference
-            ? $"Typical {string.Format(AxisFormat, reference.Low)}–{string.Format(AxisFormat, reference.High)}"
-                + $" ({reference.Source})"
+            ? $"{ReferenceBands.Noun(reference)} {string.Format(AxisFormat, reference.Low)}–"
+                + $"{string.Format(AxisFormat, reference.High)} ({reference.Source})"
             : null;
+
+    /// <summary>Whether the window on screen holds an awake night, whose mark the key then names.</summary>
+    public bool HasAwakeNight => Window.Any(NightReading.IsAwake);
 
     /// <summary>How many days of the series the card shows; one of <see cref="TrendWindowSelector.Windows"/>.</summary>
     public int Days
@@ -143,7 +162,10 @@ public sealed class MetricTrend : INotifyPropertyChanged
     /// is shorter than the window asked for simply shows everything it has.
     /// </summary>
     private string Format(DashboardMetric metric) =>
-        metric.Value is { } value ? string.Format(_valueFormat, value) : "—";
+        // An awake night's 0 is named, never printed — see NightReading.
+        NightReading.IsAwake(metric) ? NightReading.AwakeValue
+        : metric.Value is { } value ? string.Format(_valueFormat, value)
+        : "—";
 
     public IReadOnlyList<MetricPoint> Window =>
         Metric.Series.Count <= _days

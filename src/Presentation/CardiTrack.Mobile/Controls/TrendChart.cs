@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Services;
 using CardiTrack.Mobile.Core.Charts;
 
 namespace CardiTrack.Mobile.Controls;
@@ -140,7 +141,9 @@ public sealed class TrendChart : GraphicsView
     /// </param>
     /// <param name="reference">
     /// The published typical-adult range, shaded behind the line, or null for a metric no
-    /// standards body publishes one for.
+    /// standards body publishes one for. One that <see cref="MetricReference.IsPublishedNormal"/>
+    /// is drawn as the chart's primary reference and the baseline steps back — see
+    /// <see cref="TrendChartInk"/>.
     /// </param>
     /// <param name="flaggedDates">
     /// Days to paint in <paramref name="flagColor"/> rather than the line's ink — the reading an
@@ -169,6 +172,7 @@ public sealed class TrendChart : GraphicsView
         _drawable.Baseline = baseline is { } value ? (double)value : null;
         _drawable.ReferenceLow = reference is not null ? (double)reference.Low : null;
         _drawable.ReferenceHigh = reference is not null ? (double)reference.High : null;
+        _drawable.ReferenceIsNormal = reference is { IsPublishedNormal: true };
         _drawable.FlaggedDates = flaggedDates ?? NoFlaggedDates;
         _drawable.FlagColor = flagColor;
         Invalidate();
@@ -191,15 +195,20 @@ public sealed class TrendChart : GraphicsView
     /// explain — but the shade means "nothing was recorded here", which is exactly what those days
     /// are, and it is what explains a line that starts partway across the window.
     /// </para>
+    /// <para>
+    /// A night still waiting to arrive at the end of the window is not a gap: it is left unshaded
+    /// (see <see cref="TrendChartDrawable"/>), so the key must not name a shade for it either.
+    /// </para>
     /// </remarks>
     public static bool HasMissingDays(IReadOnlyList<MetricPoint> points)
     {
         var reported = false;
         var missing = false;
+        var settled = points.Count - NightReading.TrailingPending(points);
 
-        foreach (var point in points)
+        for (var i = 0; i < settled; i++)
         {
-            if (point.Value is not null)
+            if (points[i].Value is not null)
                 reported = true;
             else
                 missing = true;
@@ -234,15 +243,19 @@ public sealed class TrendChart : GraphicsView
 /// <summary>One reported reading as drawn: where it landed, which day, its value, whether it
 /// is the day an alert is about, and which slot in the series it came from — what tap-to-inspect
 /// selects and the callout names. The series index is the identity a granular hour needs: those
-/// samples share one civil day, so a date alone would always resolve to the first of them.</summary>
+/// samples share one civil day, so a date alone would always resolve to the first of them.
+/// <see cref="Awake"/> marks a night the watch was worn through with no sleep, whose 0 the callout
+/// names in words rather than as a figure.</summary>
 public readonly record struct ChartDataPoint(
-    PointF At, DateOnly Date, double Value, bool Flagged = false, int SeriesIndex = 0);
+    PointF At, DateOnly Date, double Value, bool Flagged = false, int SeriesIndex = 0, bool Awake = false);
 
 /// <summary>
-/// One shaded run of days with no reading: where it was drawn, and which days it covers.
+/// One run of days with no reading: where it was drawn, and which days it covers. A
+/// <see cref="Pending"/> run is the night or nights at the end of the window still waiting on a
+/// sync — not shaded, because nothing is known to be missing yet, but still answered when tapped.
 /// </summary>
 internal readonly record struct NoDataSpan(
-    float Left, float Right, DateOnly From, DateOnly To, int Days, bool Bridged)
+    float Left, float Right, DateOnly From, DateOnly To, int Days, bool Bridged, bool Pending = false)
 {
     /// <summary>
     /// What a tap on the run says. Names the days rather than counting them alone: "no readings
@@ -261,6 +274,15 @@ internal readonly record struct NoDataSpan(
     {
         get
         {
+            // Said in the server's words (ReadingFigures.PendingNight), and with the one thing a
+            // caregiver can do about it: wait for the next sync rather than read it as a lost night.
+            if (Pending)
+            {
+                return Days == 1
+                    ? $"{From:MMM d}: sleep {ReadingFigures.PendingNight}. It may still come in with the next sync."
+                    : $"{From:MMM d} to {To:MMM d}: sleep {ReadingFigures.PendingNight}. It may still come in with the next sync.";
+            }
+
             var days = Days == 1
                 ? $"No readings on {From:MMM d}."
                 : $"No readings from {From:MMM d} to {To:MMM d} — {Days} days.";
@@ -293,12 +315,30 @@ internal readonly record struct NoDataSpan(
 /// <see cref="BaselineAlpha"/> are what keep the two apart. The reference band stays neutral: it
 /// is published by somebody else and belongs to no metric in particular.
 /// </para>
+/// <para>
+/// Where the band is the normal (<see cref="MetricReference.IsPublishedNormal"/> — sleep, resting
+/// heart rate, blood oxygen) the order of the two flips: the band is the primary reference, so it
+/// is filled more strongly and edged with a solid rule, and the member's usual steps back to
+/// <see cref="SecondaryBaselineAlpha"/>. Neither changes colour — the band is still nobody's
+/// metric, and the rule is still this one's.
+/// </para>
 /// </remarks>
 internal static class TrendChartInk
 {
     public const float ReferenceFillAlpha = 0.12f;
     public const float ReferenceEdgeAlpha = 0.5f;
+
+    /// <summary>The band where it is the normal: a clearer fill, and solid edges at this alpha.</summary>
+    public const float NormalFillAlpha = 0.2f;
+
+    /// <inheritdoc cref="NormalFillAlpha"/>
+    public const float NormalEdgeAlpha = 0.65f;
+
     public const float BaselineAlpha = 0.7f;
+
+    /// <summary>The member's usual where the published band is the normal — still there, second.</summary>
+    public const float SecondaryBaselineAlpha = 0.45f;
+
     public const float BaselineThickness = 1.5f;
 
     public static readonly float[] ReferenceEdgeDashes = [3f, 3f];
@@ -361,11 +401,74 @@ internal static class TrendChartInk
     /// the chart and the <see cref="TrendLegendSwatch"/> that names it can never be handed
     /// different colours.
     /// </summary>
-    public static Color BaselineIn(Color metricInk) => metricInk.WithAlpha(BaselineAlpha);
+    public static Color BaselineIn(Color metricInk, bool secondary = false) =>
+        metricInk.WithAlpha(secondary ? SecondaryBaselineAlpha : BaselineAlpha);
 
     /// <summary>For a swatch drawn before its card has been bound to a metric.</summary>
     public static Color BaselineFallback =>
         MetricStatus.Resource("ChartBaselineRule", Colors.DarkGray).WithAlpha(BaselineAlpha);
+
+    /// <summary>
+    /// Fills and rules a published band across <paramref name="left"/>–<paramref name="right"/>,
+    /// between <paramref name="top"/> and <paramref name="bottom"/>, ruling only the edges asked
+    /// for. The chart and the legend swatch both draw it through here, so the key cannot drift
+    /// from the mark it names.
+    /// </summary>
+    public static void DrawBand(
+        ICanvas canvas, float left, float right, float top, float bottom,
+        bool isNormal, bool ruleTop = true, bool ruleBottom = true)
+    {
+        var ink = Reference;
+        canvas.FillColor = ink.WithAlpha(isNormal ? NormalFillAlpha : ReferenceFillAlpha);
+        canvas.FillRectangle(left, top, right - left, bottom - top);
+
+        canvas.StrokeColor = ink.WithAlpha(isNormal ? NormalEdgeAlpha : ReferenceEdgeAlpha);
+        canvas.StrokeSize = 1f;
+        canvas.StrokeDashPattern = isNormal ? null : ReferenceEdgeDashes;
+        if (ruleTop)
+            canvas.DrawLine(left, top, right, top);
+        if (ruleBottom)
+            canvas.DrawLine(left, bottom, right, bottom);
+        canvas.StrokeDashPattern = null;
+    }
+
+    /// <summary>
+    /// The mark for a night the watch was worn through with no sleep: a hollow diamond in the
+    /// metric's ink, where every other reading is a circle.
+    /// </summary>
+    /// <remarks>
+    /// The night is plotted at its true 0 — it is a night of no sleep, and the averages count it —
+    /// so the line is left alone and only its mark says what the 0 is. A diamond rather than a
+    /// colour because the colours on this chart are already spoken for (the metric's identity,
+    /// and on the alert chart the severity of the flagged day), and a shape survives a
+    /// colour-blind reader and a greyscale print where a hue would not. Not in the Figma file:
+    /// the smallest honest mark, pending design sync.
+    /// </remarks>
+    public static void DrawAwakeMark(ICanvas canvas, PointF at, float radius, Color ink)
+    {
+        var diamond = AwakeDiamond(at, radius);
+        canvas.FillColor = Colors.White;
+        canvas.FillPath(diamond);
+        canvas.StrokeColor = ink;
+        canvas.StrokeSize = 2f;
+        canvas.StrokeLineJoin = LineJoin.Miter;
+        canvas.DrawPath(diamond);
+        canvas.StrokeLineJoin = LineJoin.Round;
+    }
+
+    /// <summary>The diamond itself, centred on <paramref name="at"/>.</summary>
+    public static PathF AwakeDiamond(PointF at, float radius)
+    {
+        // A diamond reads smaller than a circle of the same radius, so it is drawn a little out.
+        var r = radius * 1.2f;
+        var diamond = new PathF();
+        diamond.MoveTo(at.X, at.Y - r);
+        diamond.LineTo(at.X + r, at.Y);
+        diamond.LineTo(at.X, at.Y + r);
+        diamond.LineTo(at.X - r, at.Y);
+        diamond.Close();
+        return diamond;
+    }
 }
 
 /// <summary>
@@ -512,6 +615,9 @@ internal sealed class TrendChartDrawable : IDrawable
     public double? ReferenceLow { get; set; }
     public double? ReferenceHigh { get; set; }
 
+    /// <summary>Whether the band is the normal rather than background — see <see cref="TrendChartInk"/>.</summary>
+    public bool ReferenceIsNormal { get; set; }
+
     /// <summary>Days painted in <see cref="FlagColor"/> — the reading an alert is about.</summary>
     public IReadOnlySet<DateOnly> FlaggedDates { get; set; } = new HashSet<DateOnly>();
 
@@ -562,6 +668,14 @@ internal sealed class TrendChartDrawable : IDrawable
         // Flagged readings are drawn even when the rest of the markers are off: a 28-day window
         // still has to show which day raised the alert, or the colour-coding has nothing to land on.
         var flagged = new List<PointF>();
+        // Awake nights keep their own mark at every window length, for the reason flagged ones do:
+        // the mark is the only thing that says what their 0 is.
+        var awake = new HashSet<PointF>();
+
+        // Nights still waiting on a sync at the end of the window. The line stops at the last
+        // night that arrived rather than being carried flat into them: a flat run there would
+        // read as a night measured at the same length as the one before.
+        var settledCount = Points.Count - NightReading.TrailingPending(Points);
 
         var latestMarker = default(PointF);
         var hasMarker = false;
@@ -575,7 +689,7 @@ internal sealed class TrendChartDrawable : IDrawable
         // rather than in mid-air.
         var previous = default(PointF);
 
-        for (var i = 0; i < Points.Count; i++)
+        for (var i = 0; i < settledCount; i++)
         {
             var value = Points[i].Value;
             var isPartial = Points[i].IsPartial;
@@ -635,9 +749,12 @@ internal sealed class TrendChartDrawable : IDrawable
                 latestMarker = point;
                 hasMarker = true;
                 var isFlagged = FlaggedDates.Contains(Points[i].Date);
+                var isAwake = NightReading.IsAwake(Points[i]);
                 // Every reported reading is inspectable, partial included — the callout is how a
                 // caregiver asks "what is this exactly?", and today-so-far is a fair question.
-                _dataPoints.Add(new ChartDataPoint(point, Points[i].Date, (double)value!, isFlagged, i));
+                _dataPoints.Add(new ChartDataPoint(point, Points[i].Date, (double)value!, isFlagged, i, isAwake));
+                if (isAwake)
+                    awake.Add(point);
                 // A running total is not one of the readings the window is made of, so it does not
                 // get an ordinary day marker — the dashed run is what says it is there. A flagged
                 // partial still gets the coloured mark: that is the day the alert is about, and
@@ -683,13 +800,21 @@ internal sealed class TrendChartDrawable : IDrawable
         if (markers is not null)
         {
             foreach (var marker in markers)
-                DrawMarker(canvas, marker, MarkerRadius, LineColor);
+                DrawReading(canvas, marker, MarkerRadius, LineColor, awake);
+        }
+
+        // Awake nights the markers above skipped — a window too long for per-day marks, or a
+        // flagged night, which is drawn below in its own colour and shape.
+        foreach (var night in awake)
+        {
+            if (markers is null && !flagged.Contains(night))
+                TrendChartInk.DrawAwakeMark(canvas, night, MarkerRadius, LineColor);
         }
 
         foreach (var mark in flagged)
         {
             var radius = hasSettled && mark == lastSettled ? LatestMarkerRadius : MarkerRadius + 1f;
-            DrawFlaggedMarker(canvas, mark, radius);
+            DrawFlaggedMarker(canvas, mark, radius, awake.Contains(mark));
         }
 
         // The most recent reading is always marked, whatever the window: it is the number the
@@ -697,11 +822,23 @@ internal sealed class TrendChartDrawable : IDrawable
         // window ends on a day in progress the headline quotes the last finished day instead, so
         // that is the point the emphasis belongs to. A flagged latest is already drawn above.
         if (hasSettled && !flagged.Contains(lastSettled))
-            DrawMarker(canvas, lastSettled, LatestMarkerRadius, LineColor);
+            DrawReading(canvas, lastSettled, LatestMarkerRadius, LineColor, awake);
         else if (!hasSettled && hasMarker && flagged.Count == 0)
-            DrawMarker(canvas, latestMarker, LatestMarkerRadius, LineColor);
+            DrawReading(canvas, latestMarker, LatestMarkerRadius, LineColor, awake);
 
         DrawSelection(canvas, dirtyRect);
+    }
+
+    /// <summary>
+    /// One reading's mark: the circle every reading gets, or the diamond an awake night gets
+    /// instead — see <see cref="TrendChartInk.DrawAwakeMark"/>.
+    /// </summary>
+    private void DrawReading(ICanvas canvas, PointF at, float radius, Color ink, IReadOnlySet<PointF> awake)
+    {
+        if (awake.Contains(at))
+            TrendChartInk.DrawAwakeMark(canvas, at, radius, ink);
+        else
+            DrawMarker(canvas, at, radius, ink);
     }
 
     /// <summary>
@@ -726,11 +863,18 @@ internal sealed class TrendChartDrawable : IDrawable
         }
 
         var selected = _dataPoints[index];
-        var label = $"{ValueFormatter?.Invoke(selected.Value) ?? selected.Value.ToString("0.#")} · {selected.Date:MMM d}";
+        // An awake night's 0 is named, never printed: "0 · Mar 3" reads as a figure with its
+        // digits missing. See NightReading.
+        var figure = selected.Awake
+            ? NightReading.AwakeCallout
+            : ValueFormatter?.Invoke(selected.Value) ?? selected.Value.ToString("0.#");
+        var label = $"{figure} · {selected.Date:MMM d}";
         var ink = selected.Flagged ? (FlagColor ?? LineColor) : LineColor;
 
         if (selected.Flagged)
-            DrawFlaggedMarker(canvas, selected.At, LatestMarkerRadius + 1.5f);
+            DrawFlaggedMarker(canvas, selected.At, LatestMarkerRadius + 1.5f, selected.Awake);
+        else if (selected.Awake)
+            TrendChartInk.DrawAwakeMark(canvas, selected.At, LatestMarkerRadius + 1.5f, ink);
         else
             DrawMarker(canvas, selected.At, LatestMarkerRadius + 1.5f, ink);
 
@@ -791,18 +935,9 @@ internal sealed class TrendChartDrawable : IDrawable
         if (bandBottom <= bandTop)
             return;
 
-        var ink = TrendChartInk.Reference;
-        canvas.FillColor = ink.WithAlpha(TrendChartInk.ReferenceFillAlpha);
-        canvas.FillRectangle(dirtyRect.Left, bandTop, dirtyRect.Width, bandBottom - bandTop);
-
-        canvas.StrokeColor = ink.WithAlpha(TrendChartInk.ReferenceEdgeAlpha);
-        canvas.StrokeSize = 1f;
-        canvas.StrokeDashPattern = TrendChartInk.ReferenceEdgeDashes;
-        if (scale.Contains(high))
-            canvas.DrawLine(dirtyRect.Left, bandTop, dirtyRect.Right, bandTop);
-        if (scale.Contains(low))
-            canvas.DrawLine(dirtyRect.Left, bandBottom, dirtyRect.Right, bandBottom);
-        canvas.StrokeDashPattern = null;
+        TrendChartInk.DrawBand(
+            canvas, dirtyRect.Left, dirtyRect.Right, bandTop, bandBottom, ReferenceIsNormal,
+            ruleTop: scale.Contains(high), ruleBottom: scale.Contains(low));
     }
 
     /// <summary>
@@ -871,8 +1006,20 @@ internal sealed class TrendChartDrawable : IDrawable
                 dirtyRect.Left, opensAt, Points[0].Date, Points[first - 1].Date, first, Bridged: false));
         }
 
+        // Nights at the end still waiting on a sync are not a missing run: nothing is known to be
+        // missing yet. They get no shade — the line simply has not reached them — but a tap there
+        // is still answered, so the empty stretch is explained rather than left to be guessed at.
+        var settled = Points.Count - NightReading.TrailingPending(Points);
+        var pendingLeft = settled < Points.Count ? (X(settled - 1) + X(settled)) / 2f : dirtyRect.Right;
+        if (settled < Points.Count)
+        {
+            _noDataSpans.Add(new NoDataSpan(
+                pendingLeft, dirtyRect.Right, Points[settled].Date, Points[^1].Date,
+                Points.Count - settled, Bridged: false, Pending: true));
+        }
+
         var at = first + 1;
-        while (at < Points.Count)
+        while (at < settled)
         {
             if (Points[at].Value is not null)
             {
@@ -881,7 +1028,7 @@ internal sealed class TrendChartDrawable : IDrawable
             }
 
             var runStart = at;
-            while (at < Points.Count && Points[at].Value is null)
+            while (at < settled && Points[at].Value is null)
                 at++;
             var runEnd = at - 1;
 
@@ -895,9 +1042,10 @@ internal sealed class TrendChartDrawable : IDrawable
             // looking measured when they were not.
             var from = X(runStart - 1);
             // A run still missing at the end of the window has no closing reading to meet, so it
-            // runs to the edge — which is what it does.
-            var openEnded = runEnd >= Points.Count - 1;
-            var to = openEnded ? dirtyRect.Right : X(runEnd + 1);
+            // runs to the edge — which is what it does — or to where the nights still on their
+            // way begin.
+            var openEnded = runEnd >= settled - 1;
+            var to = openEnded ? pendingLeft : X(runEnd + 1);
 
             canvas.FillColor = shade.WithAlpha(TrendChartInk.NoDataFillAlpha);
             canvas.FillRectangle(from, dirtyRect.Top, to - from, dirtyRect.Height);
@@ -928,7 +1076,7 @@ internal sealed class TrendChartDrawable : IDrawable
             return;
 
         var at = y(baseline);
-        canvas.StrokeColor = TrendChartInk.BaselineIn(LineColor);
+        canvas.StrokeColor = TrendChartInk.BaselineIn(LineColor, secondary: ReferenceIsNormal);
         canvas.StrokeSize = TrendChartInk.BaselineThickness;
         canvas.StrokeDashPattern = TrendChartInk.BaselineDashes;
         canvas.DrawLine(dirtyRect.Left, at, dirtyRect.Right, at);
@@ -947,14 +1095,26 @@ internal sealed class TrendChartDrawable : IDrawable
     /// <summary>
     /// The day this alert is about: filled in the severity colour so it reads as the flagged
     /// reading rather than as one more point on the line. White ring, so it still sits on the
-    /// stroke the way the ordinary markers do.
+    /// stroke the way the ordinary markers do. An awake night keeps its diamond — the colour says
+    /// which night the alert is about, the shape says what that night was.
     /// </summary>
-    private void DrawFlaggedMarker(ICanvas canvas, PointF at, float radius)
+    private void DrawFlaggedMarker(ICanvas canvas, PointF at, float radius, bool awake = false)
     {
         canvas.FillColor = FlagColor ?? LineColor;
-        canvas.FillCircle(at.X, at.Y, radius);
         canvas.StrokeColor = Colors.White;
         canvas.StrokeSize = 2f;
+
+        if (awake)
+        {
+            var diamond = TrendChartInk.AwakeDiamond(at, radius);
+            canvas.FillPath(diamond);
+            canvas.StrokeLineJoin = LineJoin.Miter;
+            canvas.DrawPath(diamond);
+            canvas.StrokeLineJoin = LineJoin.Round;
+            return;
+        }
+
+        canvas.FillCircle(at.X, at.Y, radius);
         canvas.DrawCircle(at.X, at.Y, radius);
     }
 
