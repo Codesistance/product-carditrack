@@ -244,7 +244,23 @@ public partial class DeviceCard : ContentView
             });
         }
 
-        var pill = Pill(background, new Label { FormattedText = text });
+        // The family's glyph in the pill's own ink, so the row reads at a glance — a heart, a
+        // moon, a runner — before the words are read. Decorative: the pill's description says it.
+        var pill = Pill(background, new HorizontalStackLayout
+        {
+            Spacing = 5,
+            Children =
+            {
+                new Image
+                {
+                    Source = IconFor(group.Family),
+                    WidthRequest = 14,
+                    HeightRequest = 14,
+                    VerticalOptions = LayoutOptions.Center,
+                },
+                new Label { FormattedText = text, VerticalOptions = LayoutOptions.Center },
+            },
+        });
 
         // "Activity  5" is only unambiguous once you can see the colour grouping; spell it out
         // for a screen reader, which gets the pills one after another with no row to compare.
@@ -270,7 +286,16 @@ public partial class DeviceCard : ContentView
         });
     }
 
-    private static Border Pill(Color background, Label content) => new()
+    private static string IconFor(DatasetFamily family) => family switch
+    {
+        DatasetFamily.Activity => "icon_dataset_activity.svg",
+        DatasetFamily.Heart => "icon_dataset_heart.svg",
+        DatasetFamily.Sleep => "icon_dataset_sleep.svg",
+        DatasetFamily.Body => "icon_dataset_body.svg",
+        _ => "icon_dataset_other.svg",
+    };
+
+    private static Border Pill(Color background, View content) => new()
     {
         StrokeThickness = 0,
         BackgroundColor = background,

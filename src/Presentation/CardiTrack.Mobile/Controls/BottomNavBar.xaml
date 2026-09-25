@@ -32,7 +32,24 @@
         <!-- Five columns since D-18 put Family in the third slot, which is where the original
              Family stub sat before the Journal took it. Five is the platform ceiling and this is
              the last tab the bar can take. -->
-        <Grid ColumnDefinitions="*,*,*,*,*" Padding="0,14,0,0" VerticalOptions="Start">
+        <Grid x:Name="TabsGrid" ColumnDefinitions="*,*,*,*,*" Padding="0,14,0,0" VerticalOptions="Start">
+
+            <!-- The selection pill: one tinted shape in the first column, slid under whichever
+                 tab is selected (TranslationX, whole columns at a time), declared first so the
+                 tabs draw over it. Not in Figma 101:2949, which marks the selection with the
+                 filled glyph and its shadow only — both kept; see the design-sync backlog. -->
+            <Border x:Name="SelectionPill"
+                    Grid.Column="0"
+                    Margin="8,-7,8,0"
+                    HeightRequest="60"
+                    VerticalOptions="Start"
+                    StrokeThickness="0"
+                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                    InputTransparent="True">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="18"/>
+                </Border.StrokeShape>
+            </Border>
 
             <VerticalStackLayout x:Name="DashboardTab" Grid.Column="0" Spacing="4">
                 <VerticalStackLayout.GestureRecognizers>

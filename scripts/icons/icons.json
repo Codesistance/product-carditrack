@@ -285,6 +285,56 @@
    "tokens": [
     "ActionAmberInk"
    ]
+  },
+  "datasetActivity": {
+   "title": "Sharing pill · Activity",
+   "style": "linear",
+   "slots": [
+    "#10659F"
+   ],
+   "tokens": [
+    "DatasetActivityText"
+   ]
+  },
+  "datasetHeart": {
+   "title": "Sharing pill · Heart",
+   "style": "linear",
+   "slots": [
+    "#B93A55"
+   ],
+   "tokens": [
+    "DatasetHeartText"
+   ]
+  },
+  "datasetSleep": {
+   "title": "Sharing pill · Sleep",
+   "style": "linear",
+   "slots": [
+    "#5A4EBF"
+   ],
+   "tokens": [
+    "DatasetSleepText"
+   ]
+  },
+  "datasetBody": {
+   "title": "Sharing pill · Body",
+   "style": "linear",
+   "slots": [
+    "#1F8A72"
+   ],
+   "tokens": [
+    "DatasetBodyText"
+   ]
+  },
+  "datasetOther": {
+   "title": "Sharing pill · Settings and other",
+   "style": "linear",
+   "slots": [
+    "#5C6672"
+   ],
+   "tokens": [
+    "DatasetOtherText"
+   ]
   }
  },
  "icons": [
@@ -993,6 +1043,41 @@
    "source": "iconpark",
    "name": "check-one",
    "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_dataset_activity.svg",
+   "source": "iconpark",
+   "name": "sport",
+   "group": "datasetActivity",
+   "size": 24
+  },
+  {
+   "file": "icon_dataset_heart.svg",
+   "source": "iconpark",
+   "name": "heart-rate",
+   "group": "datasetHeart",
+   "size": 24
+  },
+  {
+   "file": "icon_dataset_sleep.svg",
+   "source": "iconpark",
+   "name": "sleep",
+   "group": "datasetSleep",
+   "size": 24
+  },
+  {
+   "file": "icon_dataset_body.svg",
+   "source": "iconpark",
+   "name": "people",
+   "group": "datasetBody",
+   "size": 24
+  },
+  {
+   "file": "icon_dataset_other.svg",
+   "source": "iconpark",
+   "name": "setting-two",
+   "group": "datasetOther",
    "size": 24
   }
  ]

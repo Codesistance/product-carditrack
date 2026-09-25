@@ -613,9 +613,6 @@ public partial class DashboardPage : ContentPage
     /// </summary>
     private void Apply(DashboardResponse data)
     {
-        ChatBot.MemberId = data.CardiMemberId;
-        ChatBot.MemberFirstName = data.DisplayFirstName();
-
         CardFor(data.CardiMemberId).Apply(data, _popups);
         ArrangeCards();
         ApplyAlerts();
@@ -659,6 +656,14 @@ public partial class DashboardPage : ContentPage
         var several = ordered.Count > 1;
         foreach (var card in ordered)
             card.SetStacking(several, pinned.Contains(card.Data!.CardiMemberId));
+
+        // The chat is about one member when one is on screen. With several stacked no card is
+        // "the" member — the primary the page loads first is only the first to arrive — so the
+        // launcher is left without one and asks "Ask about who?" on tap, as on the pages that
+        // have no single member.
+        var only = several ? null : ordered.FirstOrDefault()?.Data;
+        ChatBot.MemberId = only?.CardiMemberId ?? Guid.Empty;
+        ChatBot.MemberFirstName = only?.DisplayFirstName();
 
         if (MemberCards.Children.SequenceEqual(ordered))
             return;

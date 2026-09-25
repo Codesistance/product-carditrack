@@ -847,7 +847,7 @@
                              changes anything about the member.
 
                              Named for the whole setting rather than the one question on the page,
-                             so the row reads as a destination beside Manage Device rather than a
+                             so the row reads as a destination beside Device Management rather than a
                              sentence fragment beside it. -->
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
@@ -870,7 +870,7 @@
                             </Grid>
                         </Border>
 
-                        <!-- Manage Device, which used to be one of a pair of outline buttons
+                        <!-- Device Management, which used to be one of a pair of outline buttons
                              halfway up the page. It is the same kind of thing as the rows either
                              side of it — a way in to managing this member rather than a fact about
                              them — and like the alert rules above it, it changes nothing on its
@@ -883,7 +883,7 @@
                                 <Image Grid.Column="0" Source="icon_watch.svg"
                                        WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
-                                       Text="Manage Device"
+                                       Text="Device Management"
                                        Style="{StaticResource Body1SemiBoldDark}"
                                        VerticalTextAlignment="Center"/>
                                 <Image Grid.Column="2" Source="icon_chevron.svg"

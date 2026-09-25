@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**117 icons**, **35 distinct colours**, **5 referenced nowhere**.
+**122 icons**, **39 distinct colours**, **3 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -33,12 +33,13 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#36C09B` | 7 | StatusGreen |
 | `#727272` | 7 | Body / Body2 ink |
 | `#FBE4E4` | 7 | derived: StatusRed at 14% over white |
-| `#1F8A72` | 5 | MetricTemperatureInk / DatasetBodyText |
+| `#1F8A72` | 6 | MetricTemperatureInk / DatasetBodyText |
 | `#D9DCE1` | 5 | — |
 | `#B45309` | 3 | severity orange ink |
 | `#5A3300` | 2 | — |
 | `#861B1B` | 2 | — |
 | `#A9741A` | 2 | DatasetWarningText |
+| `#10659F` | 1 | DatasetActivityText |
 | `#123A5F` | 1 | — |
 | `#1A6CB0` | 1 | — |
 | `#2FA6C4` | 1 | — |
@@ -46,8 +47,11 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#34A853` | 1 | — |
 | `#3E8AC7` | 1 | MetricBreathingInk |
 | `#4285F4` | 1 | — |
+| `#5A4EBF` | 1 | DatasetSleepText |
+| `#5C6672` | 1 | — |
 | `#7C6FDC` | 1 | MetricSleepInk |
 | `#9FEBFF` | 1 | — |
+| `#B93A55` | 1 | DatasetHeartText |
 | `#B9F1FF` | 1 | — |
 | `#C9E1FF` | 1 | MetricTileTint, opaque (brand internal fill) |
 | `#E4F6F2` | 1 | DatasetBodyBackground |
@@ -65,8 +69,6 @@ In the tree, used by nothing. Candidates for deletion — but check the history 
 icon can be staged ahead of a screen that has not shipped.
 
 - `icon_caution_danger.svg`
-- `icon_pin.svg`
-- `icon_pin_on.svg`
 - `icon_status_critical.svg`
 - `icon_status_urgent.svg`
 
@@ -149,7 +151,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_caret_down.svg` | `#343434` | FilterChipBar |
 | `icon_caret_down_white.svg` | `#FFFFFF` | FamilyPage, FilterChipBar, MemberChatPage |
 | `icon_chevron.svg` | `#939DAA` | AlertDetailPage, CardiMemberDetailPage, DeviceCard, FamilyPage, MemberChatPage |
-| `icon_chevron_down.svg` | `#939DAA` | AccordionSection, AlertListCard, ChoiceField, DeviceCard, DeviceManagementPage, MedicalInformationPage |
+| `icon_chevron_down.svg` | `#939DAA` | AccordionSection, AlertListCard, ChoiceField, DeviceCard, DeviceManagementPage, MedicalInformationPage, MemberDashboardCard |
 | `icon_chevron_down_white.svg` | `#FFFFFF` | MemberChatPage |
 
 ### Brand and third party
@@ -191,6 +193,11 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_check_white.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, AlertRespondPage, AppPasswordPage, ChoiceSheetPage |
 | `icon_clipboard.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, InviteWaitPage |
 | `icon_clipboard_ink.svg` | `#D9DCE1` `#727272` | CardiMemberDetailPage |
+| `icon_dataset_activity.svg` | `#10659F` | DeviceCard |
+| `icon_dataset_body.svg` | `#1F8A72` | DeviceCard |
+| `icon_dataset_heart.svg` | `#B93A55` | DeviceCard |
+| `icon_dataset_other.svg` | `#5C6672` | DeviceCard |
+| `icon_dataset_sleep.svg` | `#5A4EBF` | DeviceCard |
 | `icon_device_off.svg` | `#C42F2F` | StatusHeroCard |
 | `icon_edit.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_expand.svg` | `#153D66` | MetricTrendCard |
@@ -215,8 +222,8 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_open.svg` | `#153D66` | ExportDeliveryPopupPage |
 | `icon_pause.svg` | `#B45309` | CardiMemberDetailPage |
 | `icon_person_remove.svg` | `#FBE4E4` `#C42F2F` | CardiMemberDetailPage, FamilyPage |
-| `icon_pin.svg` | `#939DAA` | **nothing** |
-| `icon_pin_on.svg` | `#3175B9` `#153D66` | **nothing** |
+| `icon_pin.svg` | `#939DAA` | StatusHeroCard |
+| `icon_pin_on.svg` | `#3175B9` `#153D66` | StatusHeroCard |
 | `icon_plus.svg` | `#153D66` | ConnectionSuccessPage, DeviceManagementPage, FamilyPage |
 | `icon_power_red.svg` | `#C42F2F` | SettingsPage |
 | `icon_power_white.svg` | `#FFFFFF` | DashboardPage, SettingsPage |

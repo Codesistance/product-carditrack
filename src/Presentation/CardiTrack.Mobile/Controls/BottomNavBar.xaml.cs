@@ -34,26 +34,66 @@ public partial class BottomNavBar : ContentView
         set => SetValue(TabProperty, value);
     }
 
+    /// <summary>How long the pill takes to slide to a tapped tab, and the navigation waits for it.</summary>
+    private const uint SlideMs = 240;
+
+    /// <summary>The selected glyph's size against the others — the magnification.</summary>
+    private const double SelectedIconScale = 1.15;
+
+    private bool _navigating;
+
     public BottomNavBar()
     {
         InitializeComponent();
         ApplySelection();
+        TabsGrid.SizeChanged += (_, _) => SnapPill(Tab);
     }
 
-    private void ApplySelection()
+    private Image IconFor(NavTab tab) => tab switch
+    {
+        NavTab.Alerts => AlertsIcon,
+        NavTab.Family => FamilyIcon,
+        NavTab.Journal => JournalIcon,
+        NavTab.Settings => SettingsIcon,
+        _ => DashboardIcon,
+    };
+
+    /// <summary>One column's width: the pill moves in whole columns.</summary>
+    private double ColumnWidth => TabsGrid.Width / TabsGrid.ColumnDefinitions.Count;
+
+    /// <summary>Puts the pill under <paramref name="tab"/> with no animation — layout, and a hidden bar coming back.</summary>
+    private void SnapPill(NavTab tab)
+    {
+        if (TabsGrid.Width <= 0)
+            return;
+
+        this.AbortAnimation("pill");
+        SelectionPill.TranslationX = (int)tab * ColumnWidth;
+    }
+
+    private void ApplySelection() => ApplySelection(Tab);
+
+    /// <param name="shown">
+    /// The tab to draw as selected — <see cref="Tab"/>, except for the moment between a tap and
+    /// the navigation it starts, when this bar already shows the tab it is on its way to.
+    /// </param>
+    private void ApplySelection(NavTab shown, bool snapPill = true)
     {
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         var selectedColor = (Color)resources["PrimaryDark"];
         var unselectedColor = (Color)resources["MutedText"];
 
-        Style(DashboardIcon, DashboardLabel, "icon_tab_home", Tab == NavTab.Dashboard);
-        Style(AlertsIcon, AlertsLabel, "icon_tab_alerts", Tab == NavTab.Alerts);
-        Style(FamilyIcon, FamilyLabel, "icon_tab_family", Tab == NavTab.Family);
-        Style(JournalIcon, JournalLabel, "icon_tab_journal", Tab == NavTab.Journal);
-        Style(SettingsIcon, SettingsLabel, "icon_tab_settings", Tab == NavTab.Settings);
+        Style(DashboardIcon, DashboardLabel, "icon_tab_home", shown == NavTab.Dashboard);
+        Style(AlertsIcon, AlertsLabel, "icon_tab_alerts", shown == NavTab.Alerts);
+        Style(FamilyIcon, FamilyLabel, "icon_tab_family", shown == NavTab.Family);
+        Style(JournalIcon, JournalLabel, "icon_tab_journal", shown == NavTab.Journal);
+        Style(SettingsIcon, SettingsLabel, "icon_tab_settings", shown == NavTab.Settings);
+        if (snapPill)
+            SnapPill(shown);
 
         void Style(Image icon, Label label, string iconStem, bool isSelected)
         {
+            icon.Scale = isSelected ? SelectedIconScale : 1;
             icon.Source = isSelected ? $"{iconStem}_active.svg" : $"{iconStem}.svg";
             // Figma puts a drop shadow under the selected glyph only. It lives here rather than
             // in the SVG because Resizetizer rasterises these at build time and drops filters.
@@ -100,7 +140,7 @@ public partial class BottomNavBar : ContentView
     /// the tap is swallowed — but announced first, for a tab that has something to say about
     /// being tapped twice.
     /// </remarks>
-    private void GoTo(NavTab tab, string route)
+    private async void GoTo(NavTab tab, string route)
     {
         var isTabRoot = Shell.Current.Navigation.NavigationStack.Count <= 1;
         if (Tab == tab && isTabRoot)
@@ -109,12 +149,81 @@ public partial class BottomNavBar : ContentView
             return;
         }
 
+        // A second tap while the pill is still travelling would start a second navigation.
+        if (_navigating)
+            return;
+        _navigating = true;
+
         // Choosing a tab ends whatever journey a content affordance had started. The bar
         // deliberately records no origin of its own (see TabNavigation), but it must cancel one
         // still pending, or a back press at the tab the caregiver just chose would return them to
         // a page they left two navigations ago and undo the tap that brought them here.
         Services.TabNavigation.Origin.Clear();
 
-        _ = Shell.Current.GoToAsync(route);
+        try
+        {
+            Tick();
+
+            // Each tab page carries its own bar, so the slide can only be seen on this one: it
+            // plays here first and the page changes once it lands, where the new page's bar
+            // already draws its pill in the same place. A tap on the tab already selected (from
+            // a page deeper in its stack) has nowhere to slide, so it goes straight away.
+            if (tab != Tab)
+                await SlideToAsync(tab);
+
+            await Shell.Current.GoToAsync(route);
+        }
+        finally
+        {
+            // This bar stays on a page that is now hidden (Shell keeps tab pages). Put it back
+            // as its own tab, so coming back to the page doesn't show another tab selected.
+            ApplySelection();
+            _navigating = false;
+        }
+    }
+
+    /// <summary>
+    /// Slides the pill under <paramref name="tab"/> and magnifies its glyph — overshooting, then
+    /// settling at <see cref="SelectedIconScale"/> — while the one it leaves shrinks back.
+    /// </summary>
+    private async Task SlideToAsync(NavTab tab)
+    {
+        var from = Tab;
+        ApplySelection(tab, snapPill: false);
+
+        var leaving = IconFor(from);
+        var arriving = IconFor(tab);
+        leaving.Scale = SelectedIconScale;
+        arriving.Scale = 1;
+
+        var start = SelectionPill.TranslationX;
+        var end = (int)tab * ColumnWidth;
+        var slide = new TaskCompletionSource();
+        this.AbortAnimation("pill");
+        new Animation(v => SelectionPill.TranslationX = v, start, end)
+            .Commit(this, "pill", 16, SlideMs, Easing.CubicOut, (_, _) => slide.TrySetResult());
+
+        await Task.WhenAll(
+            slide.Task,
+            leaving.ScaleToAsync(1, SlideMs, Easing.CubicOut),
+            MagnifyAsync(arriving));
+    }
+
+    private static async Task MagnifyAsync(Image icon)
+    {
+        await icon.ScaleToAsync(1.3, SlideMs / 2, Easing.CubicOut);
+        await icon.ScaleToAsync(SelectedIconScale, SlideMs / 2, Easing.SpringOut);
+    }
+
+    /// <summary>The light tick a tap gives. Best-effort: a device without haptics just doesn't.</summary>
+    private static void Tick()
+    {
+        try
+        {
+            HapticFeedback.Default.Perform(HapticFeedbackType.Click);
+        }
+        catch (Exception ex) when (ex is FeatureNotSupportedException or PermissionException)
+        {
+        }
     }
 }
