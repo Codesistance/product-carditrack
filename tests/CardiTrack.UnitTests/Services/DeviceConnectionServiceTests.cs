@@ -421,7 +421,8 @@ public class DeviceConnectionServiceTests
     public async Task CompleteConnection_KeepsStoredRefreshToken_WhenProviderIssuesNone()
     {
         // Google only issues a refresh token alongside a consent prompt, so a reconnect comes
-        // back without one — nulling the stored token would strand the next silent refresh.
+        // back without one — nulling the stored token would strand the next silent refresh. Kept
+        // because the grant is positively the account that token belongs to.
         var existing = new DeviceConnection
         {
             CardiMemberId = _memberId,
@@ -431,8 +432,10 @@ public class DeviceConnectionServiceTests
             ConnectionStatus = ConnectionStatus.Connected,
             AccessToken = "enc(old_access)",
             RefreshToken = "enc(old_refresh)",
+            HealthUserId = "ACCOUNT_A",
         };
         _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        GrantIsForAccount("ACCOUNT_A");
         GrantReturns(access: "new_access", refresh: null);
 
         await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id));
@@ -1827,6 +1830,77 @@ public class DeviceConnectionServiceTests
         await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id));
 
         Assert.Null(existing.Metadata);
+    }
+
+    // Copilot review round 4 on #1290.
+
+    [Fact]
+    public async Task CompleteConnection_Reconnect_DropsTheStoredRefreshToken_WhenTheAccountCannotBeConfirmed()
+    {
+        // The new access token may be another account's; paired with the old account's refresh
+        // token, the next expiry would switch the card back to that account.
+        var existing = SeedAccount("ACCOUNT_A");
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        GrantIsForAccount(null);
+        GrantReturns(access: "new_access", refresh: null);
+
+        await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id));
+
+        Assert.Equal("enc(new_access)", existing.AccessToken);
+        Assert.Null(existing.RefreshToken);
+    }
+
+    [Fact]
+    public async Task CompleteConnection_RefusedReconnect_RevokesTheGrantItCouldNotStore()
+    {
+        var existing = SeedAccount("ACCOUNT_A", status: ConnectionStatus.TokenExpired);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns(access: "b_access", refresh: "b_refresh");
+
+        await Assert.ThrowsAsync<DeviceConnectionException>(() =>
+            ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, existing.Id)));
+
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.HealthUserId == "ACCOUNT_B" && c.RefreshToken == "enc(b_refresh)"),
+            Arg.Any<CancellationToken>());
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        _unitOfWork.Received(1).ClearTracking();
+    }
+
+    [Fact]
+    public async Task CompleteConnection_RefusedReplace_KeepsTheGrant_OfTheSiblingThatHoldsTheAccount()
+    {
+        // The account is already connected on another device: the grant is that device's own,
+        // re-issued, and revoking it would cut the sibling off.
+        var old = SeedAccount("ACCOUNT_A", isPrimary: true);
+        var sibling = SeedAccount("ACCOUNT_B");
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old, sibling]);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns();
+
+        await Assert.ThrowsAsync<DeviceConnectionException>(() =>
+            ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id)));
+
+        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task CompleteConnection_Add_DoesNotMatch_OnOneIdentifierWhenTheOtherConflicts()
+    {
+        // A row carrying a stale provider user id beside a current health-user id must not catch a
+        // grant for another account that happens to share the stale one.
+        var existing = SeedAccount("ACCOUNT_A", isPrimary: true);
+        existing.Metadata = """{"providerUserId":"STALE"}""";
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns(providerUserId: "STALE");
+
+        var device = await ConnectAsync(CreateSut(), FitbitRequest());
+
+        await _unitOfWork.DeviceConnections.Received(1).AddAsync(Arg.Any<DeviceConnection>());
+        Assert.False(device.AlreadyConnected);
+        Assert.Equal("enc(access)", existing.AccessToken);
     }
 
     [Fact]

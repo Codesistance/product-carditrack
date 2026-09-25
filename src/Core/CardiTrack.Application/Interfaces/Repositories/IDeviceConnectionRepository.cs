@@ -125,4 +125,12 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// </remarks>
     Task LockMemberDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Whether the connection is suspended right now, read from the database rather than from an
+    /// entity loaded earlier. The collection queries leave suspended connections out, but a batch
+    /// selected before a suspension committed still holds them; this is the check each pull makes
+    /// when it actually runs.
+    /// </summary>
+    Task<bool> IsSuspendedAsync(Guid id);
+
 }

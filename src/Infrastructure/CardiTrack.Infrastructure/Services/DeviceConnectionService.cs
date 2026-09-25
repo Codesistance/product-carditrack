@@ -15,6 +15,8 @@ using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared.Json;
 using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -52,6 +54,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     private readonly List<DeviceProviderSettings> _providerConfigs;
     private readonly IOAuthGrantRevoker _grantRevoker;
     private readonly IDeviceAccountIdentityResolver _accountIdentity;
+    private readonly ILogger<DeviceConnectionService> _logger;
 
     public DeviceConnectionService(
         IUnitOfWork unitOfWork,
@@ -63,10 +66,12 @@ public class DeviceConnectionService : IDeviceConnectionService
         INotificationGapResolver gapResolver,
         IOptions<List<DeviceProviderSettings>> providerConfigs,
         IOAuthGrantRevoker grantRevoker,
-        IDeviceAccountIdentityResolver accountIdentity)
+        IDeviceAccountIdentityResolver accountIdentity,
+        ILogger<DeviceConnectionService>? logger = null)
     {
         _grantRevoker = grantRevoker;
         _accountIdentity = accountIdentity;
+        _logger = logger ?? NullLogger<DeviceConnectionService>.Instance;
         _unitOfWork = unitOfWork;
         _encryption = encryption;
         _cache = cache;
@@ -506,9 +511,15 @@ public class DeviceConnectionService : IDeviceConnectionService
             connection.ConnectionStatus = ConnectionStatus.Connected;
             connection.AccessToken = _encryption.Encrypt(tokens.AccessToken);
             // Providers that only issue a refresh token on the first grant (Google) send none on a
-            // reconnect — overwriting with null would strand the connection at the next expiry.
+            // reconnect — overwriting with null would strand the connection at the next expiry. But
+            // the stored token is only kept when the grant is positively the account it belongs to:
+            // a reconnect whose account could not be read may be someone else's, and pairing their
+            // access token with the old account's refresh token would switch the card back to that
+            // account at the next expiry. Cleared, the connection asks for a reconnect instead.
             if (tokens.RefreshToken is not null)
                 connection.RefreshToken = _encryption.Encrypt(tokens.RefreshToken);
+            else if (outcome.Connection is not null && !account.Matches(outcome.Connection))
+                connection.RefreshToken = null;
             connection.TokenExpiry = now.AddSeconds(tokens.ExpiresInSeconds);
             connection.Scopes = scopes;
             connection.IsActive = true;
@@ -546,6 +557,17 @@ public class DeviceConnectionService : IDeviceConnectionService
 
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+
+            // The code has been exchanged, so a grant is live at the provider that nothing here will
+            // ever hold a token for — a reconnect refused as another account, a replacement onto an
+            // account already connected, an invitation withdrawn while the wearer was consenting.
+            // Ended now, or it stays among the apps with access to that account's health data.
+            await RevokeUnstoredGrantAsync(payload, deviceType, tokens, account, ct);
+            throw;
         }
         catch
         {
@@ -736,6 +758,42 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// would fail its next sync and read <c>token_expired</c> — the caregiver is asked to reconnect,
     /// nothing is read under the wrong member.
     /// </remarks>
+    private async Task RevokeUnstoredGrantAsync(
+        OAuthStatePayload payload, DeviceType deviceType, OAuthTokenResult tokens, GrantAccount account,
+        CancellationToken ct)
+    {
+        // Only a grant whose account is known: an unknown one may be an account a live connection
+        // reads through, and revocation is grant-wide. RevokeUnlessSharedAsync then keeps it when a
+        // connection does — a replacement refused because a sibling holds the account is that
+        // sibling's own grant, re-issued, not an orphan.
+        if (account.HealthUserId is null)
+            return;
+
+        try
+        {
+            // The rolled-back writes are still tracked; the shared-grant check must read the
+            // database, not the abandoned changes.
+            _unitOfWork.ClearTracking();
+            await RevokeUnlessSharedAsync(new DeviceConnection
+            {
+                Id = Guid.NewGuid(),
+                CardiMemberId = payload.CardiMemberId,
+                DeviceType = deviceType,
+                HealthUserId = account.HealthUserId,
+                AccessToken = _encryption.Encrypt(tokens.AccessToken),
+                RefreshToken = tokens.RefreshToken is null ? null : _encryption.Encrypt(tokens.RefreshToken),
+            }, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Best effort: the caller is already being told why the grant was refused, and a failure
+            // here must not replace that with something less useful.
+            _logger.LogWarning(ex,
+                "Could not end an unstored {DeviceType} grant for CardiMember {CardiMemberId}.",
+                deviceType, payload.CardiMemberId);
+        }
+    }
+
     private async Task RevokeUnlessSharedAsync(DeviceConnection retired, CancellationToken ct)
     {
         var memberConnections = await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(retired.CardiMemberId);
@@ -1250,11 +1308,16 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// </summary>
     private sealed record GrantAccount(string? HealthUserId, string? ProviderUserId)
     {
-        /// <summary>Known to be the account <paramref name="connection"/> holds.</summary>
+        /// <summary>
+        /// Known to be the account <paramref name="connection"/> holds: one identifier agrees and
+        /// neither is known to disagree. A row can carry one stale identifier beside a current one,
+        /// and a match on the stale one alone would land a grant on the wrong connection.
+        /// </summary>
         public bool Matches(DeviceConnection connection) =>
-            (HealthUserId is not null && string.Equals(connection.HealthUserId, HealthUserId, StringComparison.Ordinal))
-            || (ProviderUserId is not null
-                && string.Equals(ReadProviderUserId(connection.Metadata), ProviderUserId, StringComparison.Ordinal));
+            !DiffersFrom(connection)
+            && ((HealthUserId is not null && string.Equals(connection.HealthUserId, HealthUserId, StringComparison.Ordinal))
+                || (ProviderUserId is not null
+                    && string.Equals(ReadProviderUserId(connection.Metadata), ProviderUserId, StringComparison.Ordinal)));
 
         /// <summary>
         /// Known to be a different account from the one <paramref name="connection"/> holds. Not the

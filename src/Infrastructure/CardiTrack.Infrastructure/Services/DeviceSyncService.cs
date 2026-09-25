@@ -70,6 +70,11 @@ public class DeviceSyncService : IDeviceSyncService
 
     public async Task SyncCardiMemberAsync(DeviceConnection connection, SyncScope scope = SyncScope.Routine)
     {
+        // The connection may have been suspended since the worker, the webhook drain or the audit
+        // selected it; the caregiver's suspension wins over a pull that was merely queued.
+        if (await _deviceConnections.IsSuspendedAsync(connection.Id))
+            return;
+
         var providerConfig = ResolveProviderConfig(connection);
 
         // RefreshIfExpiredAsync marks the connection itself when the provider refuses the grant;
@@ -147,6 +152,9 @@ public class DeviceSyncService : IDeviceSyncService
 
     public async Task AuditSyncAsync(DeviceConnection connection)
     {
+        if (await _deviceConnections.IsSuspendedAsync(connection.Id))
+            return;
+
         var providerConfig = ResolveProviderConfig(connection);
         var accessToken = await _tokenRefresh.RefreshIfExpiredAsync(connection, providerConfig);
 

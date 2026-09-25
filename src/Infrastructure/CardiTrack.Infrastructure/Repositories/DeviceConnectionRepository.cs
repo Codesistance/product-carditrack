@@ -350,6 +350,11 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
             $"SELECT pg_advisory_xact_lock(hashtextextended({key}, 0))", ct);
     }
 
+    public async Task<bool> IsSuspendedAsync(Guid id)
+    {
+        return await _dbSet.AnyAsync(dc => dc.Id == id && dc.SuspendedAt != null);
+    }
+
     private IQueryable<DeviceConnection> WhereMemberAllowsCollection(
         IQueryable<DeviceConnection> connections, DateTime now) =>
         connections

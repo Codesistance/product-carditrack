@@ -407,11 +407,15 @@ The state token carries the initiation's `mode` and `deviceId`; the grant's prov
 |------|-------------|--------|
 | `add` | one the member already has connected | That connection is refreshed; `alreadyConnected: true` |
 | `add` | new, or could not be read | A **new connection**. Primary only if the member has no primary |
-| `reconnect` | the connection's own, or could not be compared | That connection gets fresh tokens and returns to `active`. If the account could not be read, its stored `HealthUserId` is cleared rather than kept, so the next sync captures the right one |
+| `reconnect` | the connection's own, or could not be compared | That connection gets fresh tokens and returns to `active`. If the account could not be read, its stored `HealthUserId` is cleared rather than kept, so the next sync captures the right one. When Google also sends no new refresh token, the stored one is kept **only if the account positively matches**. Otherwise it is dropped: the new access token may be another account's, and the old refresh token would switch the card back at the next expiry. The connection then asks for a reconnect when the access token expires |
 | `reconnect` | a different one | **409**. Nothing is stored — switching the account under an existing card would show a stranger's data under this member. The app offers "Change device" instead |
 | `replace` | the replaced connection's own | Just a reconnect of it; `replacedDeviceId: null` |
 | `replace` | another of the member's connections' | **409**. Two cards would read one data stream |
 | `replace` | new, or could not be read | A new connection that **takes over the replaced one's primary flag**, and the replaced connection is removed (soft-deleted, tokens discarded) **in the same save**. After the save, its grant is revoked at the provider — but only when the new account is *known* to differ and the old grant may not be shared (same rule as `DELETE`, below). Revoking a Google refresh token ends the whole grant, so doing it when unsure could take the new connection down with it |
+
+**A refused grant is revoked.** When completion is refused after the code exchange, a grant is live at Google that nothing here will ever hold. That covers a reconnect on another account, a replacement onto an account already held, and an invitation withdrawn mid-consent. So it is revoked, under the same shared-grant rule as `DELETE`. That rule keeps it in the account-already-held case, where the grant is the sibling's own. An account that could not be read is never revoked.
+
+An account **matches** a connection when one identifier agrees and neither is known to disagree. A row can carry one stale identifier beside a current one.
 
 **Changes to a member's devices are serialized.** The rules over a member's devices each span the whole set: one primary, one connection per account, never the last collecting device suspended. Each is a read followed by a write, so two changes interleaving could each pass and together break the rule. Examples: two replacements both promoting their new device, or two suspensions each seeing the other device still collecting. Every change therefore runs in a transaction that holds a per-member advisory lock (`pg_advisory_xact_lock` on a `device-connections:{memberId}` key) before it reads. That covers a callback storing a grant, delete, set-primary, suspend and resume. A lock rather than `FOR UPDATE` on the member row, which the member write guard and erasure already coordinate on.
 
@@ -490,6 +494,8 @@ Stops the device collecting while keeping its tokens and its history. It is skip
 Stored as `DeviceConnection.SuspendedAt` / `SuspendedByUserId`, **beside** `ConnectionStatus` rather than as another value of it. The sync and auth-recovery paths write that status as they learn about the grant. A suspension stored there would be overwritten, or would hide that the grant expired while suspended.
 
 **Open-ended**, unlike Pause Monitoring: the member's other devices go on collecting. For the same reason it is **refused with 409 (`LAST_ACTIVE_DEVICE`)** when no *other* device is collecting — that is, unsuspended with its grant `active`. A device waiting on a reconnect does not count. Stopping a member's only data feed is what Pause Monitoring is for, and that is bounded (1 hour to 7 days).
+
+The queries that select devices for collection leave suspended ones out. The sync (routine, webhook-triggered and audit) and auth recovery also re-check `SuspendedAt` when they run, so a batch selected just before the suspension committed does not still pull. Only a pull already in flight at that moment completes.
 
 If the suspended device was primary, the flag moves to another collecting device.
 

@@ -106,6 +106,11 @@ public class DeviceAuthRecoveryService : IDeviceAuthRecoveryService
 
     private async Task<bool> TryRecoverAsync(DeviceConnection connection, DateTime utcNow, CancellationToken ct)
     {
+        // Suspended since this pass selected it: no provider call, and no backoff recorded either —
+        // resuming it should not inherit a penalty for an attempt that never ran.
+        if (await _unitOfWork.DeviceConnections.IsSuspendedAsync(connection.Id))
+            return false;
+
         var providerConfig = _providers.ConfigFor(connection.DeviceType);
         if (providerConfig is null)
         {
