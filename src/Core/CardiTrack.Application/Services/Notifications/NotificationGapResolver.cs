@@ -35,8 +35,14 @@ public class NotificationGapResolver : INotificationGapResolver
 
         // One member can be watched by several caregivers, and reconciliation is per user — each
         // owner's stored set has to be diffed against their own contexts.
+        //
+        // Scoped to this member's stored rows. The contexts cover this member only, and the
+        // reconciler resolves every stored row it has no context for — so diffing against the
+        // caregiver's whole inbox closed their other members' and account-level nudges as
+        // "gap closed" on every member-scoped call, only for the daily run to reopen (and, for
+        // the pushing rules, re-push) them.
         foreach (var group in contexts.GroupBy(c => c.User.Id))
-            await ApplyAsync(group.Key, [.. group], ct);
+            await ApplyAsync(group.Key, [.. group], ct, onlyCardiMemberId: cardiMemberId);
     }
 
     public async Task WithdrawForCardiMemberAsync(
@@ -61,12 +67,16 @@ public class NotificationGapResolver : INotificationGapResolver
         await _unitOfWork.SaveChangesAsync();
     }
 
-    private async Task ApplyAsync(Guid userId, IReadOnlyList<NudgeContext> contexts, CancellationToken ct)
+    private async Task ApplyAsync(
+        Guid userId, IReadOnlyList<NudgeContext> contexts, CancellationToken ct, Guid? onlyCardiMemberId = null)
     {
         if (contexts.Count == 0)
             return;
 
         var stored = await _unitOfWork.Notifications.GetForReconciliationAsync(userId, ct);
+        if (onlyCardiMemberId is { } memberId)
+            stored = [.. stored.Where(n => n.CardiMemberId == memberId)];
+
         var plan = NudgeReconciler.Reconcile(contexts, stored);
 
         if (plan.ToInsert.Count == 0 && plan.ToUpdate.Count == 0)
