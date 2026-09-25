@@ -181,4 +181,44 @@ public class MemberChatWindowAverageTests
             .GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(default!, default);
         Assert.NotEmpty(response.Charts);
     }
+
+    /// <summary>
+    /// A question about two readings where only one cleared the bar still goes to the clinical
+    /// read — and a reply that then gives the thin reading an average is withheld, because the
+    /// prompt refused to give one. Steps arrived on every finished day; sleep on three nights.
+    /// </summary>
+    [Fact]
+    public async Task AnAverageOfTooFewNights_IsWithheld_WhenAnotherReadingCarriedTheQuestion()
+    {
+        _planner.PlanAsync(
+                Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<DataQueryPlan>(
+                new DataQueryPlan
+                {
+                    Sources = [DataQueryKind.RecentActivity],
+                    RecentActivityDays = 7,
+                    ChartMetrics = [ChartMetricKind.Steps, ChartMetricKind.Sleep],
+                },
+                new AiUsage()));
+        int?[] nights = [null, null, null, null, 400, 250, 225];
+        _activity.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(nights
+                .Select((minutes, i) => new ActivityLog
+                {
+                    Date = _today.AddDays(i - nights.Length + 1),
+                    Steps = 4000 + (i * 100),
+                    SleepMinutes = minutes,
+                })
+                .ToList());
+        TheReadSays("Steps held near usual. Sleep reached us on three nights.");
+        TheRewriteSays("CardiTrackCardiMember's sleep averaged 4h 52m a night this week.");
+
+        var response = await CreateSut().SendMessageAsync(_userId, _memberId, "how were his steps and sleep this week?");
+
+        Assert.Equal(MemberChatService.CouldNotAnswerReply, response.Reply);
+        await _medicalAi.Received()
+            .GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
 }

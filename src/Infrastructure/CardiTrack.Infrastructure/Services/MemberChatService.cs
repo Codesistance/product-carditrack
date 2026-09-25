@@ -1106,7 +1106,7 @@ public class MemberChatService : IMemberChatService
         var voice = MemberVoice.For(member);
         var reply = ComposeReply(
             rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
-            fetched.RecentActivityWindow, today, SupportedSleepFigures(fetched));
+            fetched.RecentActivityWindow, today, SupportedSleepFigures(today, fetched));
 
         return new MemberChatWorkflowResult
         {
@@ -1196,7 +1196,7 @@ public class MemberChatService : IMemberChatService
         var voice = MemberVoice.For(member);
         var reply = ComposeReply(
             rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
-            fetched.RecentActivityWindow, today, SupportedSleepFigures(fetched));
+            fetched.RecentActivityWindow, today, SupportedSleepFigures(today, fetched));
 
         var calls = new List<AiCallRecord>
         {
@@ -1227,7 +1227,7 @@ public class MemberChatService : IMemberChatService
 
             var secondReply = ComposeReply(
                 reaskRewrite.Result, reasked.Result.Analysis, voice, reasked.Result.ReadingsFrom,
-                reasked.Result.ReadingsTo, fetched.RecentActivityWindow, today, SupportedSleepFigures(fetched));
+                reasked.Result.ReadingsTo, fetched.RecentActivityWindow, today, SupportedSleepFigures(today, fetched));
 
             if (MemberChatReplies.ClaimsSettled(secondReply))
             {
@@ -1337,7 +1337,7 @@ public class MemberChatService : IMemberChatService
         var reply = ComposeReply(
             rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             anchor.RecentActivityWindow ?? surroundings.RecentActivityWindow, today,
-            SupportedSleepFigures(anchor, surroundings));
+            SupportedSleepFigures(today, anchor, surroundings));
 
         return new MemberChatWorkflowResult
         {
@@ -2935,7 +2935,13 @@ public class MemberChatService : IMemberChatService
     /// <see cref="RewriteCopyGuards.SupportedSleepFigures"/>. Takes every fetch a rung made, since
     /// the investigation rung's nights can sit in either.
     /// </summary>
-    private static RewriteCopyGuards.SleepFigures SupportedSleepFigures(params FetchedMemberData[] fetches)
+    /// <remarks>
+    /// The nights' average counts as a figure only when the window's sleep cleared the coverage
+    /// bar — the same test <see cref="ChatWindowSummaryBlock"/> applies before it writes one, so the
+    /// guard never accepts an average the prompt refused to give.
+    /// </remarks>
+    private static RewriteCopyGuards.SleepFigures SupportedSleepFigures(
+        DateOnly today, params FetchedMemberData[] fetches)
     {
         var nights = fetches
             .SelectMany(f => f.RecentActivity)
@@ -2943,8 +2949,11 @@ public class MemberChatService : IMemberChatService
             .OrderBy(l => l.Date)
             .Select(l => l.SleepMinutes!.Value);
         var usual = fetches.Select(f => f.Baseline?.AvgSleepMinutes).FirstOrDefault(u => u is not null);
+        var covered = fetches.Any(f => f.RecentActivityWindow is { } window
+            && ReadingWindowSummaries.ForMetric(
+                ChartMetricKind.Sleep, f.RecentActivity, window, today, f.Baseline, ageYears: null) is { IsCovered: true });
 
-        return RewriteCopyGuards.SupportedSleepFigures(nights, usual);
+        return RewriteCopyGuards.SupportedSleepFigures(nights, usual, covered);
     }
 
     /// <summary>

@@ -199,14 +199,25 @@ internal static partial class RewriteCopyGuards
     /// adult ceiling to an older member's family is quoting the published range, not inventing a
     /// reading.
     /// </remarks>
-    internal static SleepFigures SupportedSleepFigures(IEnumerable<int> nightsMinutes, decimal? usualMinutes)
+    /// <param name="nightsMinutes">The nights the reply was written over, oldest first.</param>
+    /// <param name="usualMinutes">The member's usual, when one is learned.</param>
+    /// <param name="averagesAreCovered">
+    /// Whether enough of the window's nights arrived to average them
+    /// (<see cref="Application.Services.ReadingWindowSummary.IsCovered"/>). When they did not, the
+    /// averages are left out: the window summary refused to give one, and a reply that states the
+    /// average of three nights as the week's is the figure this guard exists to catch — a mixed
+    /// question whose other reading cleared the bar still reaches the clinical read with sleep
+    /// short of it.
+    /// </param>
+    internal static SleepFigures SupportedSleepFigures(
+        IEnumerable<int> nightsMinutes, decimal? usualMinutes, bool averagesAreCovered)
     {
         var nights = nightsMinutes.Select(n => (decimal)n).ToList();
         var anchors = new List<decimal>(nights);
 
-        if (nights.Count > 0)
+        if (averagesAreCovered && nights.Count > 0)
             anchors.Add(nights.Average());
-        if (nights.Count > 1)
+        if (averagesAreCovered && nights.Count > 1)
             anchors.Add(nights.SkipLast(1).Average());
 
         var yardsticks = new List<decimal> { 7m * 60, 8m * 60, 9m * 60 };

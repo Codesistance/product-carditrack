@@ -143,7 +143,8 @@ public class RewriteCopyGuardsTests
     /// the remarks above give. Averages 4h 48m over all seven, 4h 58m without last night.
     /// </summary>
     private static readonly RewriteCopyGuards.SleepFigures TheWeek =
-        RewriteCopyGuards.SupportedSleepFigures([10, 430, 400, 350, 340, 260, 225], usualMinutes: 345);
+        RewriteCopyGuards.SupportedSleepFigures(
+            [10, 430, 400, 350, 340, 260, 225], usualMinutes: 345, averagesAreCovered: true);
 
     /// <summary>The reply that prompted the sleep guard, in its own words and with this week's
     /// numbers around it: an average no night, pair of nights or yardstick could produce.</summary>
@@ -177,4 +178,21 @@ public class RewriteCopyGuardsTests
     [InlineData("Over the last 24 hours CardiTrackCardiMember slept 3h 45m.")]
     public void Durations_that_are_not_nights_are_not_judged(string copy) =>
         Assert.Null(RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(copy, TheWeek));
+
+    /// <summary>
+    /// Three nights of seven: the window summary gives no average, so neither may the reply. The
+    /// three-night average is 4h 52m, and "this week" makes it a claim about four nights that never
+    /// arrived — while each night itself is still a figure the reply may quote.
+    /// </summary>
+    [Fact]
+    public void An_average_of_too_few_nights_is_caught_while_the_nights_themselves_pass()
+    {
+        var thinWeek = RewriteCopyGuards.SupportedSleepFigures(
+            [400, 250, 225], usualMinutes: 345, averagesAreCovered: false);
+
+        Assert.Equal("4h 52m", RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(
+            "CardiTrackCardiMember's sleep averaged 4h 52m a night this week.", thinWeek));
+        Assert.Null(RewriteCopyGuards.StatesASleepFigureTheDataDoesNot(
+            "Last night CardiTrackCardiMember slept 3h 45m.", thinWeek));
+    }
 }
