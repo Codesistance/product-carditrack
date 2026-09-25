@@ -46,14 +46,29 @@
                     </HorizontalStackLayout>
                 </VerticalStackLayout>
 
-                <!-- The battery, top right, as a glyph filled to its level and the reading beside
+                <!-- The primary star, and under it the battery as a glyph filled to its level and the reading beside
                      it — where a phone shows its own. It was a tile beside "Today's data" lower
                      down, which spent a row of the card on two numbers. Hidden when the server
                      sends no reading (see ApplyBattery). -->
-                <HorizontalStackLayout Grid.Column="2" Spacing="10" VerticalOptions="Start">
+                <VerticalStackLayout Grid.Column="2" Spacing="2" VerticalOptions="Start">
+                <!-- Primary as a star above the battery: filled on the member's primary device,
+                     outlined on the others, where a tap makes that one primary — as the dashboard's
+                     pin works. It replaces a PRIMARY pill and a "Use as primary device" switch row
+                     that said the same thing twice. The tap area is the 32 box, not the glyph. -->
+                <Grid x:Name="PrimaryStar"
+                      WidthRequest="32" HeightRequest="32"
+                      Margin="0,-6,-6,0"
+                      HorizontalOptions="End">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnPrimaryStarTapped"/>
+                    </Grid.GestureRecognizers>
+                    <Image x:Name="PrimaryStarIcon"
+                           WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Grid>
                 <HorizontalStackLayout x:Name="BatteryBadge"
                                        Spacing="4"
-                                       VerticalOptions="Center"
+                                       HorizontalOptions="End"
                                        IsVisible="False">
                     <Image x:Name="BatteryIcon"
                            WidthRequest="18" HeightRequest="18"
@@ -63,23 +78,7 @@
                            FontSize="13"
                            VerticalOptions="Center"/>
                 </HorizontalStackLayout>
-
-                <!-- Primary as a star beside the battery: filled on the member's primary device,
-                     outlined on the others, where a tap makes that one primary — as the dashboard's
-                     pin works. It replaces a PRIMARY pill and a "Use as primary device" switch row
-                     that said the same thing twice. The tap area is the 32 box, not the glyph. -->
-                <Grid x:Name="PrimaryStar"
-                      WidthRequest="32" HeightRequest="32"
-                      Margin="0,-6,-6,0"
-                      VerticalOptions="Center">
-                    <Grid.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnPrimaryStarTapped"/>
-                    </Grid.GestureRecognizers>
-                    <Image x:Name="PrimaryStarIcon"
-                           WidthRequest="20" HeightRequest="20"
-                           HorizontalOptions="Center" VerticalOptions="Center"/>
-                </Grid>
-                </HorizontalStackLayout>
+                </VerticalStackLayout>
             </Grid>
 
             <!-- When it last sent and when it next will, as one sentence. These were a "synced"
@@ -96,12 +95,6 @@
                  folds it. One family at a time, so the card never grows by more than a line or
                  two, and the answer to "which heart readings?" sits under the pill that asked. -->
             <VerticalStackLayout Spacing="6">
-
-                <Label x:Name="SharingLabel"
-                       Text="SHARING"
-                       FontFamily="QuicksandSemiBold"
-                       FontSize="9"
-                       TextColor="{StaticResource MutedText}"/>
 
                 <FlexLayout x:Name="DatasetPills"
                             Direction="Row"

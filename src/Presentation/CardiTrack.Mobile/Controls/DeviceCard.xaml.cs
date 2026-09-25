@@ -199,14 +199,10 @@ public partial class DeviceCard : ContentView
 
         if (_groups.Count == 0)
         {
-            SharingLabel.Text = "SHARING";
             DatasetPills.Children.Add(BuildWarningPill("Not sharing any data"));
             SetOpenFamily(null);
             return;
         }
-
-        var readings = _groups.Sum(g => g.Datasets.Count);
-        SharingLabel.Text = readings == 1 ? "SHARING · 1 READING" : $"SHARING · {readings} READINGS";
 
         foreach (var group in _groups)
         {

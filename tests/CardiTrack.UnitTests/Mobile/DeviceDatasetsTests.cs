@@ -119,9 +119,9 @@ public class DeviceDatasetsTests
     public void For_UnknownScopeWithAnAcronym_KeepsTheAcronymUppercase()
     {
         var datasets = DeviceDatasets.For(
-            ["https://www.googleapis.com/auth/googlehealth.ecg.readonly", "HEALTH_API"]);
+            ["https://www.googleapis.com/auth/googlehealth.ecg.readonly", "irn", "HEALTH_API"]);
 
-        Assert.Equal(["ECG", "Health API"], datasets.Select(d => d.Name));
+        Assert.Equal(["ECG", "IRN", "Health API"], datasets.Select(d => d.Name));
     }
 
     [Fact]
