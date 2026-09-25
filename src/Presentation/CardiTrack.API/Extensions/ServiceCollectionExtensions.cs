@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<SaveMetricAlarmRequest>, SaveMetricAlarmValidator>();
         services.AddScoped<IValidator<CreateCardiMemberRequest>, CreateCardiMemberValidator>();
         services.AddScoped<IValidator<UpdateCardiMemberRequest>, UpdateCardiMemberValidator>();
+        services.AddScoped<IValidator<MedicalEntryRequest>, MedicalEntryValidator>();
         services.AddScoped<IValidator<PauseMonitoringRequest>, PauseMonitoringValidator>();
         services.AddScoped<IValidator<ConnectDeviceRequest>, ConnectDeviceValidator>();
         services.AddScoped<IValidator<CreateDeviceInviteRequest>, CreateDeviceInviteValidator>();
@@ -51,6 +52,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDigestQueryService, CardiTrack.Application.Services.DigestQueryService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IJournalSettingsService, CardiTrack.Application.Services.JournalSettingsService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IQuestionnaireService, CardiTrack.Application.Services.QuestionnaireService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IMedicalEntryService, CardiTrack.Application.Services.MedicalEntryService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAlertService, CardiTrack.Application.Services.AlertService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAlertPreferenceService, CardiTrack.Application.Services.AlertPreferenceService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IActivityLogAggregationService, CardiTrack.Application.Services.ActivityLogAggregationService>();
@@ -125,6 +127,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGenerationLeaseRepository, CardiTrack.Infrastructure.Repositories.GenerationLeaseRepository>();
         services.AddScoped<IDeviceHistoryRepullRepository, CardiTrack.Infrastructure.Repositories.DeviceHistoryRepullRepository>();
         services.AddScoped<IDeviceConnectionInviteRepository, CardiTrack.Infrastructure.Repositories.DeviceConnectionInviteRepository>();
+        services.AddScoped<IMedicalEntryRepository, CardiTrack.Infrastructure.Repositories.MedicalEntryRepository>();
 
         // Push delivery spine (notification_engine.md Phase 3) — the API both issues the
         // immediate-attempt send (nudge/alert writing paths, and the internal enqueue endpoint)

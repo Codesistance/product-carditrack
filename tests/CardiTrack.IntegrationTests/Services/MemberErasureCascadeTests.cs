@@ -114,6 +114,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         Assert.Equal(0, await db.GranularMetricHours.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MetricRollupsHourly.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberQuestionnaires.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.MedicalEntries.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Set<MemberAdvise>().CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberAdviseObservations.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Set<MemberInsight>().CountAsync(x => x.CardiMemberId == memberId));
@@ -266,6 +267,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "DeviceActivityLogs",
             "ActivityLogs",
             "MemberQuestionnaires",
+            "MedicalEntries",
             "MemberChatTurnUsages",
             "MemberChatTurns",
             "MemberChatSessions",
@@ -827,6 +829,21 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         {
             CardiMemberId = member.Id,
             QuestionText = "Has she been sleeping well?",
+        });
+        // A current line and one in the history: erasure takes both.
+        db.MedicalEntries.Add(new MedicalEntry
+        {
+            CardiMemberId = member.Id,
+            Kind = MedicalEntryKind.Allergy,
+            Text = "Penicillin",
+            AddedAtUtc = DateTime.UtcNow,
+        });
+        db.MedicalEntries.Add(new MedicalEntry
+        {
+            CardiMemberId = member.Id,
+            Text = "Old note",
+            AddedAtUtc = DateTime.UtcNow.AddDays(-30),
+            RemovedAtUtc = DateTime.UtcNow,
         });
         db.Set<MemberAdvise>().Add(new MemberAdvise
         {

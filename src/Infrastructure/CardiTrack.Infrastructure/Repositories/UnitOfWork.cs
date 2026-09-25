@@ -53,6 +53,7 @@ public class UnitOfWork : IUnitOfWork
     public IGenerationLeaseRepository GenerationLeases { get; }
     public IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
     public IDeviceConnectionInviteRepository DeviceConnectionInvites { get; }
+    public IMedicalEntryRepository MedicalEntries { get; }
     public IPendingGrantRevocationRepository PendingGrantRevocations { get; }
 
     public UnitOfWork(
@@ -100,6 +101,7 @@ public class UnitOfWork : IUnitOfWork
         IGenerationLeaseRepository generationLeases,
         IDeviceHistoryRepullRepository deviceHistoryRepulls,
         IDeviceConnectionInviteRepository deviceConnectionInvites,
+        IMedicalEntryRepository medicalEntries,
         ICardiMemberCreationKeyRepository cardiMemberCreationKeys,
         IPendingGrantRevocationRepository pendingGrantRevocations)
     {
@@ -147,6 +149,7 @@ public class UnitOfWork : IUnitOfWork
         GenerationLeases = generationLeases;
         DeviceHistoryRepulls = deviceHistoryRepulls;
         DeviceConnectionInvites = deviceConnectionInvites;
+        MedicalEntries = medicalEntries;
         CardiMemberCreationKeys = cardiMemberCreationKeys;
         PendingGrantRevocations = pendingGrantRevocations;
     }

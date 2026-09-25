@@ -164,6 +164,13 @@ public class AccountErasureCascadeTests : IAsyncLifetime
             .SingleAsync(q => q.CardiMemberId == seed.SharedMemberId);
         Assert.Null(questionnaire.AnsweredByUserId);
 
+        // A line of the member's medical information this caregiver wrote and later changed:
+        // the line stays for whoever still watches them, and only the caregiver's name goes.
+        var line = await db.MedicalEntries.SingleAsync(e => e.CardiMemberId == seed.SharedMemberId);
+        Assert.Null(line.AddedByUserId);
+        Assert.Null(line.RemovedByUserId);
+        Assert.Equal("v1:0000000000000000:not-real-ciphertext", line.Text);
+
         // The answer itself stays. It says what was done about a member somebody else is still
         // watching, and is what stops the next caregiver repeating a phone call this one made.
         var response = await db.AlertResponses.SingleAsync(r => r.AlertId == alert.Id);
@@ -788,6 +795,16 @@ public class AccountErasureCascadeTests : IAsyncLifetime
             CardiMemberId = shared.Id,
             QuestionText = "Did they sleep well last night?",
             AnsweredByUserId = leaving.Id,
+        });
+        db.MedicalEntries.Add(new MedicalEntry
+        {
+            CardiMemberId = shared.Id,
+            Kind = MedicalEntryKind.Medication,
+            Text = "v1:0000000000000000:not-real-ciphertext",
+            AddedAtUtc = DateTime.UtcNow.AddDays(-20),
+            AddedByUserId = leaving.Id,
+            RemovedAtUtc = DateTime.UtcNow.AddDays(-1),
+            RemovedByUserId = leaving.Id,
         });
 
         db.Subscriptions.Add(new Subscription
