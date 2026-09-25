@@ -1171,6 +1171,25 @@ public class DashboardServiceTests
     }
 
     [Fact]
+    public async Task EastOfUtc_TurnsTheAgeOverAtTheMembersMidnight()
+    {
+        // 06:00 on the 25th in Brisbane is the member's birthday; UTC is still the 24th.
+        AnchorMemberTo("Australia/Brisbane");
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 9, 25),
+            IsActive = true,
+        });
+
+        var result = await CreateSutAt(new DateTimeOffset(2026, 9, 24, 20, 0, 0, TimeSpan.Zero))
+            .GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal(78, result.Age);
+    }
+
+    [Fact]
     public async Task FallsBackToTheUtcDate_WhenNoCaregiverHasAZone()
     {
         AnchorMemberTo(timeZoneId: "");

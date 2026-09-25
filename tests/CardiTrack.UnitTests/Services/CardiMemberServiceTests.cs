@@ -554,6 +554,20 @@ public class CardiMemberServiceTests
         Assert.Equal(localToday, steps.Series[^1].Date);
     }
 
+    [Fact]
+    public async Task GetDetail_EastOfUtc_TurnsTheAgeOverAtTheMembersMidnight()
+    {
+        // 06:00 on the 25th in Brisbane is the member's birthday; UTC is still the 24th.
+        var member = SeedMember();
+        member.DateOfBirth = new DateOnly(1948, 9, 25);
+        AnchorToCaregiverZone(member, "Australia/Brisbane");
+
+        var detail = await CreateSutAt(new DateTimeOffset(2026, 9, 24, 20, 0, 0, TimeSpan.Zero))
+            .GetDetailAsync(_userId, member.Id);
+
+        Assert.Equal(78, detail.Age);
+    }
+
     /// <summary>
     /// A journal entry is dated on a finished local day. East of UTC that day can be UTC's today,
     /// which used to hand it today's window — whose latest reading was then the journal day's,

@@ -241,7 +241,7 @@ public class DashboardService : IDashboardService
                     FollowsAnAlert = lastAlertAt is not null,
                 }
                 : null,
-            GeneratedAt = _timeProvider.GetUtcNow().UtcDateTime,
+            GeneratedAt = now,
         };
     }
 
