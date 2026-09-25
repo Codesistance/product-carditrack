@@ -90,10 +90,15 @@ public class MemberChatService : IMemberChatService
     private const string CasualSteerInstructions = """
         A family caregiver sent the message below inside a health-monitoring app that answers
         questions about their family member's readings, alerts, sleep and activity. The message is
-        conversational rather than a question. Reply warmly in one or two short sentences, matching
-        their tone, and gently mention what you can help with — their family member's readings,
-        sleep, activity, or alerts. Write CardiTrackCardiMember exactly as written if you name
-        the member; it stands in for their real name. Never scold, never apologise at length.
+        conversational rather than a question. Reply the way a kind, easy-going nurse who knows the
+        family would: warmly, in two or three short sentences, matching their tone and answering
+        what they actually said before anything else. Then mention what you can help with, in
+        everyday words — how their family member has been sleeping and moving, their heart rate,
+        what is behind an alert, and their journal of daily, weekly and monthly write-ups — and
+        that you can also switch alerts on or off and set alarms on a reading. Close with a short,
+        open question inviting them to ask something. Write CardiTrackCardiMember exactly as
+        written if you name the member; it stands in for their real name. Never scold, never
+        apologise at length.
 
         Respond with:
         - reply: the message to show the caregiver.
@@ -129,9 +134,11 @@ public class MemberChatService : IMemberChatService
         from those. It holds nothing else: not what they eat, not medication, not weight, not mood,
         not appointments.
 
-        The request is about something this app has no readings for. In one or two short sentences,
-        say so kindly — without scolding or lecturing — and say what it does hold, so they know
-        what they can ask next. If their request is a reasonable health question that simply is not
+        The request is about something this app has no readings for. In two or three short
+        sentences, the way a kind nurse who knows the family would, say so gently — without
+        scolding or lecturing — and say what it does hold, so they know what they can ask next:
+        sleep, activity, heart rate and alerts, the journal of daily, weekly and monthly write-ups,
+        and switching alerts on or off or setting alarms on a reading. If their request is a reasonable health question that simply is not
         measured here, acknowledge that rather than implying they asked for something odd; suggest
         their doctor or their own notes if that is where the answer would come from. Never guess at
         an answer from the readings that do exist, and do not attempt the request itself. Write
@@ -151,21 +158,39 @@ public class MemberChatService : IMemberChatService
     /// tests that assert a caregiver saw this rather than the model's own sentence can name
     /// it.</summary>
     internal const string FallbackSteerReply =
-        "I'm best at questions about your family member's readings, sleep, activity, and alerts — "
-        + "ask me anything about those.";
+        "I'm happiest helping with your family member — how they've been sleeping and moving, "
+        + "their heart rate, what's behind an alert, or a look at their journal. I can switch "
+        + "alerts on or off and set alarms for you too. What would you like to know?";
+
+    /// <summary>
+    /// What a message the malicious pre-check stopped gets back, as the 400's message. Says no
+    /// without saying why — the pre-check's verdict is not something to argue with or iterate
+    /// against — and then what the chat is for, the same list every steer closes on, so a
+    /// caregiver whose honest question tripped it still learns where to go next.
+    /// </summary>
+    internal static string RefusedReply(string? firstName)
+    {
+        var whose = string.IsNullOrWhiteSpace(firstName) ? "your family member's" : $"{firstName}'s";
+        return $"That's not something I can help with here, I'm afraid. I'm glad to talk through {whose} "
+            + "sleep, activity, heart rate or alerts, or pull up the journal — and I can switch alerts on "
+            + "or off or set an alarm for you too.";
+    }
 
     /// <summary>
     /// What the pending bubble cycles through while the four-model chain works. Bounded hard —
     /// these render inside the reply slot, so a runaway generation would put a paragraph where a
-    /// status line belongs.
+    /// status line belongs. Four rather than three since they rotate under the clinical read, which
+    /// runs for half a minute and more: three lines at a few seconds each were round twice before
+    /// the step changed.
     /// </summary>
-    private const int WaitingSentenceCount = 3;
+    private const int WaitingSentenceCount = 4;
     private const int MaxWaitingSentenceLength = 80;
 
     /// <summary>
     /// The waiting text races the answer it narrates — past this it has lost that race and the
     /// canned lines are strictly better than arriving after the reply. Well under the mobile
-    /// client's own 180 s send budget for the same reason.
+    /// client's own 180 s send budget for the same reason. The streamed lines are also cancelled
+    /// the moment the send settles, whichever comes first.
     /// </summary>
     private static readonly TimeSpan WaitingSentencesBudget = TimeSpan.FromSeconds(20);
 
@@ -180,14 +205,16 @@ public class MemberChatService : IMemberChatService
 
     private const string WaitingSentencesInstructions = """
         A caregiver just asked the question below inside a health-monitoring app, and preparing the
-        full answer takes a little while. Write exactly three short waiting messages to show them
-        meanwhile — each under ten words, present tense, calm, and specific to what the question
-        is about. Each message describes
+        full answer takes a little while. Write exactly four short waiting messages to show them
+        meanwhile — each under ten words, present tense, warm and calm, the way a kind nurse talks
+        someone through what is being done. Make each one about what this question asked:
+        name the reading, the stretch of time or the comparison it is about, so the caregiver can
+        tell their own question is the one being worked on. Each message describes
         the checking that is happening; it must not answer the question, state any finding or
         reading, give advice, or name any person.
 
         Respond with:
-        - sentences: the three waiting messages, in display order.
+        - sentences: the four waiting messages, in display order.
         """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
     /// <summary>
@@ -430,13 +457,30 @@ public class MemberChatService : IMemberChatService
     /// is the step holding the CardiTrackCardiMember placeholder, and a model handed that
     /// placeholder repeats it in every sentence, which is the failure that rule exists for.
     /// </para>
+    /// <para>
+    /// Loosened on 2026-09-25, when the owner found the replies mechanical: one or two sentences
+    /// that stated figures read as a record being printed, not a person talking. The voice asked
+    /// for is warm and conversational held to a calm, professional register — a kind nurse who
+    /// knows the family — in two to four sentences, with an optional closing offer bounded to what
+    /// the chat can actually do next (another reading, another stretch of time). Answer-first and
+    /// every guardrail above are unchanged; this moves the register, not the facts. Rules only,
+    /// no sample sentences, for the reason <see cref="MedicalPromptBlocks.CaregiverRegister"/>
+    /// gives.
+    /// </para>
     /// </remarks>
     private const string RewriteInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.PronounsByToken
         + MedicalPromptBlocks.CaregiverRegister + """
 
-        Rewrite the clinical read below as a reply to the caregiver's question, in one or two
+        Rewrite the clinical read below as a reply to the caregiver's question, in two to four
         short sentences. Answer first — no preamble, and no restating the question.
+
+        Sound like a person, not a report: the way a kind, easy-going nurse who knows the family
+        would talk to them — conversational, gentle and measured, in everyday words. Vary how
+        sentences begin, join related facts the way people do when they talk, and never read
+        figures out as a list. When it fits naturally, close with one short offer, as a question,
+        to look at another of their readings or a different stretch of time; offer nothing else,
+        and leave it out when the answer is already complete.
 
         The read is written by a clinical model for you, not for the family, and may name a
         mechanism or a condition the readings are consistent with.
@@ -685,11 +729,53 @@ public class MemberChatService : IMemberChatService
             _logger.LogWarning(
                 "Member chat message for CardiMember {CardiMemberId} refused by the malicious pre-check",
                 cardiMemberId);
-            throw new ArgumentException(
-                "That question can't be answered here — try asking about the member's readings, "
-                + "alerts, or recent activity instead.");
+            throw new ArgumentException(RefusedReply(NamePlaceholder.FirstName(member?.Name)));
         }
 
+        // On a streamed send, every step from here is numbered as it goes out, and the first one
+        // that means the readings are being read — planning — starts the waiting lines for the
+        // stream to rotate through the long clinical read. A send nobody is watching (null) stays
+        // null: that is also how the remedy knows not to retry, and it pays for no lines.
+        using var waitingLinesCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        Task? waitingLines = null;
+        var steps = progress is null
+            ? null
+            : new NumberedSteps(progress, () => waitingLines = ReportWaitingLinesAsync(
+                forModel, NamePlaceholder.FirstName(member?.Name), progress, waitingLinesCts.Token));
+
+        try
+        {
+            return await RouteAndAnswerAfterPreCheckAsync(
+                forModel, triage, history, session, userId, cardiMemberId, member, utcNow, steps, ct);
+        }
+        finally
+        {
+            // Nothing started for this send outlives it: the lines are cancelled once the answer
+            // exists (or the send failed), and awaited so the request scope they run in is not
+            // disposed under them. ReportWaitingLinesAsync never throws.
+            await waitingLinesCts.CancelAsync();
+            if (waitingLines is not null)
+                await waitingLines;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="RouteAndAnswerAsync"/> past the malicious pre-check: route, dispatch, check, remedy.
+    /// Split out so the waiting lines that may start part-way through have one place to be
+    /// cancelled and awaited, whichever way this ends.
+    /// </summary>
+    private async Task<MemberChatWorkflowResult> RouteAndAnswerAfterPreCheckAsync(
+        string forModel,
+        AiGenerationResult<MaliciousCheckAiResponse> triage,
+        ChatHistory history,
+        MemberChatSession session,
+        Guid userId,
+        Guid cardiMemberId,
+        CardiMember? member,
+        DateTime utcNow,
+        IMemberChatSendProgress? progress,
+        CancellationToken ct)
+    {
         // The first step a stream reports, and deliberately not before this point: until the
         // pre-check has passed, a send can still end as its own 400, and a stream that had
         // already started could only report that as an event on a 200.
@@ -1869,10 +1955,11 @@ public class MemberChatService : IMemberChatService
         """;
 
     /// <summary>
-    /// Three short, question-specific lines for the pending bubble, from the Rewrite slot. Fire
-    /// and forget by design: every failure path — model down, budget blown, malformed reply —
-    /// returns <see cref="FallbackWaitingSentences"/> rather than throwing, because waiting copy
-    /// is decoration and must never make the send it decorates look broken. Usage is not
+    /// Short, question-specific lines for the pending bubble, from the Rewrite slot — the
+    /// endpoint app builds that predate the stream call alongside the send. Fire and forget by
+    /// design: every failure path — model down, budget blown, malformed reply — returns
+    /// <see cref="FallbackWaitingSentences"/> rather than throwing, because waiting copy is
+    /// decoration and must never make the send it decorates look broken. Usage is not
     /// persisted: <c>MemberChatTurnUsage</c> keys every row to the assistant turn the call
     /// produced, and this call runs while that turn does not exist yet (and completes even if the
     /// send it accompanies fails and never creates one).
@@ -1893,8 +1980,21 @@ public class MemberChatService : IMemberChatService
         if (!NamePlaceholder.CanRedactAgainst(memberName))
             return FallbackWaitingSentences;
         var forModel = NamePlaceholder.Redact(flattened, memberName) ?? flattened;
-        var firstName = NamePlaceholder.FirstName(memberName);
 
+        return await GenerateWaitingLinesAsync(forModel, NamePlaceholder.FirstName(memberName), ct)
+            ?? FallbackWaitingSentences;
+    }
+
+    /// <summary>
+    /// The generation behind both the endpoint above and the streamed lines: the Rewrite-slot call
+    /// and the clean-up of what it returns, or null for any failure short of the caller's own
+    /// cancellation. Takes the message already redacted and touches nothing but the Rewrite slot —
+    /// no unit of work — because the stream runs it alongside a send that is using the same
+    /// request's DbContext, which is not safe to share across concurrent calls.
+    /// </summary>
+    private async Task<IReadOnlyList<string>?> GenerateWaitingLinesAsync(
+        string forModel, string? firstName, CancellationToken ct)
+    {
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
         budget.CancelAfter(WaitingSentencesBudget);
 
@@ -1916,7 +2016,7 @@ public class MemberChatService : IMemberChatService
                 .Take(WaitingSentenceCount)
                 .ToList();
 
-            return sentences.Count > 0 ? sentences : FallbackWaitingSentences;
+            return sentences.Count > 0 ? sentences : null;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -1929,7 +2029,33 @@ public class MemberChatService : IMemberChatService
             // schema-violating model output alike. The "never fails for generation problems"
             // contract above is only true if no such exception can escape; a 500 from waiting
             // copy would read as the send itself breaking.
-            return FallbackWaitingSentences;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The streamed twin of <see cref="GetWaitingSentencesAsync"/>: generates the lines alongside
+    /// a send on a long path and reports them through <paramref name="sink"/> if they are ready
+    /// before <paramref name="ct"/> — cancelled when the send settles — ends it. Never throws: a
+    /// failure here is a stream without waiting lines, never a failed send. No fallback lines
+    /// either — the step the app is already showing says what is happening, and canned lines
+    /// under it would only repeat that less precisely.
+    /// </summary>
+    private async Task ReportWaitingLinesAsync(
+        string forModel, string? firstName, IMemberChatSendProgress sink, CancellationToken ct)
+    {
+        try
+        {
+            if (await GenerateWaitingLinesAsync(forModel, firstName, ct) is { } lines
+                && !ct.IsCancellationRequested)
+            {
+                sink.WaitingLines(lines);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The send settled first. The lines lost their race, which is the expected ending
+            // on any path the model answered quickly.
         }
     }
 
@@ -1950,16 +2076,20 @@ public class MemberChatService : IMemberChatService
         var hasUnresolvedAlert = (await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId))
             .Count > 0;
 
-        // Always four chips: the alert question replaces the general watch-out one rather than
+        // Always six chips: the alert question replaces the general watch-out one rather than
         // adding to it. A row that changes length with the member's state reads as something
         // having gone missing, and "anything I should keep an eye on?" is a weaker question to
-        // offer when there is already a specific alert to ask about.
+        // offer when there is already a specific alert to ask about. The last two teach the
+        // rungs that act rather than read — the journal and the alert settings — which no
+        // reading question would ever lead a caregiver to discover.
         var suggestions = new List<string>
         {
             hasUnresolvedAlert ? "What's behind the current alert?" : "Anything I should keep an eye on?",
             "How are they doing today?",
             "How did they sleep last night?",
             "How active have they been this week?",
+            "Show me yesterday's Daybook",
+            "Which alerts are switched on?",
         };
 
         return new MemberChatSuggestionsResponse { Suggestions = suggestions };
@@ -2614,7 +2744,8 @@ public class MemberChatService : IMemberChatService
 
     /// <summary>What a rung says when the rewrite came back unusable — see <see cref="ResolvedOrFallback"/>.</summary>
     internal const string CouldNotAnswerReply =
-        "I couldn't put together an answer from what's on file right now.";
+        "I'm sorry — I couldn't put a proper answer together from what's on file just now. "
+        + "Could you try asking it a slightly different way?";
 
     /// <summary>Resolves the member's name and pronouns, or falls back to a fixed line rather than
     /// showing a leftover placeholder, an empty reply, or a sex nothing on file bears out —
@@ -2622,7 +2753,7 @@ public class MemberChatService : IMemberChatService
     /// <remarks>
     /// The sex check costs more here than anywhere else it runs: a digest that fails it keeps
     /// yesterday's card, while a chat turn that fails it answers the caregiver's actual question
-    /// with "I couldn't put together an answer". It is applied anyway, and on the same terms as
+    /// with "I couldn't put a proper answer together". It is applied anyway, and on the same terms as
     /// the cards — a pronoun the record cannot bear out is a claim about someone's mother or
     /// father, and it is not made less wrong by being made in a conversation. A guess that matches
     /// the record still passes, so the cost lands only on members whose sex is not on file, and
@@ -2653,7 +2784,7 @@ public class MemberChatService : IMemberChatService
     /// </para>
     /// <para>
     /// The unusable-rewrite fallback gets nothing appended: it states no figures, so it has no day
-    /// to belong to, and dating a sentence that says "I couldn't put together an answer" would be
+    /// to belong to, and dating a sentence that says "I couldn't put a proper answer together" would be
     /// worse than saying nothing.
     /// </para>
     /// </remarks>
@@ -2679,6 +2810,73 @@ public class MemberChatService : IMemberChatService
         return MemberChatReplies.ResolveSpan(readingsFrom, readingsTo, fetchedWindow) is { } span
             ? MemberChatReplies.WithDayAttribution(reply, span.From, span.To, today)
             : reply;
+    }
+
+    /// <summary>
+    /// Numbers the steps of one streamed send as they are reported, so the app can show how far
+    /// along it is, and says once when the send has turned out to be one that reads the readings.
+    /// Drafts and waiting lines pass straight through.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The count is taken from what is reported rather than declared per workflow, so a path can
+    /// never announce a step it does not take. The total is the one thing that has to be known
+    /// ahead: a path that plans reads the readings — plan, read, write, check after understanding
+    /// — and one that reaches the answer check without planning (status, advise) is done when it
+    /// gets there. Understanding has no total, because it is reported before the route that
+    /// decides it.
+    /// </para>
+    /// <para>
+    /// Two things add steps after the fact, and both grow the total rather than rewinding the
+    /// count: the inference rung's second look (one step), and the remedy's retry, which reports
+    /// itself and then runs the workflow's plan, read and write again (four).
+    /// </para>
+    /// <para>
+    /// The pipeline reports from one logical flow at a time, so this keeps no lock.
+    /// </para>
+    /// </remarks>
+    private sealed class NumberedSteps(IMemberChatSendProgress inner, Action onReadingPath)
+        : IMemberChatSendProgress
+    {
+        /// <summary>Understanding, planning, reading, writing, checking.</summary>
+        private const int ReadingPathSteps = 5;
+
+        /// <summary>Retrying, then the workflow's planning, reading and writing once more.</summary>
+        private const int RetrySteps = 4;
+
+        private int _count;
+        private bool _readingPath;
+        private int _added;
+
+        public void Step(MemberChatStep step)
+        {
+            _count++;
+
+            var startsReadingPath = step.Step == MemberChatStep.Planning.Step && !_readingPath;
+            if (startsReadingPath)
+                _readingPath = true;
+
+            if (step.Step == MemberChatStep.Rereading.Step)
+                _added++;
+            else if (step.Step == MemberChatStep.Retrying.Step)
+                _added += RetrySteps;
+
+            int? total = step.Step == MemberChatStep.Understanding.Step
+                ? null
+                : Math.Max(_count, _readingPath ? ReadingPathSteps + _added : _count);
+
+            inner.Step(step.At(_count, total));
+
+            // After the step goes out, never before: generation that completes synchronously
+            // reports its lines at once, and they must not reach the stream ahead of the planning
+            // step that started them.
+            if (startsReadingPath)
+                onReadingPath();
+        }
+
+        public void Draft(MemberChatMessageResponse draft) => inner.Draft(draft);
+
+        public void WaitingLines(IReadOnlyList<string> lines) => inner.WaitingLines(lines);
     }
 
     // ── MedGemma / Rewrite response shapes ──────────────────────────────────────

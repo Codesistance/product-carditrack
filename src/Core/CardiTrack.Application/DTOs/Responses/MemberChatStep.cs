@@ -11,6 +11,25 @@ public sealed class MemberChatStep
     public required string Step { get; init; }
     public required string Text { get; init; }
 
+    /// <summary>Where this step falls in the send, counting from 1 — set as the step is reported,
+    /// never on the static definitions below, since the same step sits at a different place on
+    /// different paths. Null on a step that was not numbered.</summary>
+    public int? Index { get; init; }
+
+    /// <summary>How many steps this send is expected to take, once that is known. Null on the
+    /// first step: it is reported before the route is chosen, and the route decides the count.
+    /// Grows by one when the inference rung takes a second look at the readings.</summary>
+    public int? Total { get; init; }
+
+    /// <summary>This step, numbered for where it fell in one send.</summary>
+    public MemberChatStep At(int index, int? total) => new()
+    {
+        Step = Step,
+        Text = Text,
+        Index = index,
+        Total = total,
+    };
+
     /// <summary>The message passed the pre-check and is being routed to the workflow that
     /// answers it. The first step any send reports, and never reported before the pre-check has
     /// finished: a refused message must still end as a plain 400, not a stream.</summary>

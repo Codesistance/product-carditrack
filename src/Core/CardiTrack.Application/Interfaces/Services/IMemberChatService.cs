@@ -28,6 +28,13 @@ public interface IMemberChatService
     /// failure that has its own HTTP status (access, empty message, refusal) happens before the
     /// first report. Paths answered without a model — a journal yes or no, a message with no
     /// question, a settings confirmation — report nothing.
+    /// <para>
+    /// Each step arrives numbered (<see cref="MemberChatStep.Index"/>, and
+    /// <see cref="MemberChatStep.Total"/> once the route is known). On a route that reads the
+    /// readings — the long paths — question-specific waiting lines are generated alongside the
+    /// pipeline and reported through <see cref="IMemberChatSendProgress.WaitingLines"/> if they
+    /// are ready before the send settles.
+    /// </para>
     /// </summary>
     /// <remarks>
     /// A reply the check finds did not address the question is retried once with the gap named,
