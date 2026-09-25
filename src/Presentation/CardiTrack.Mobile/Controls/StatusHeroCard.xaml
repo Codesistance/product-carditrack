@@ -73,6 +73,27 @@
                                     Spacing="8"
                                     VerticalOptions="Start">
 
+                <!-- Pin to the top of the dashboard: only while several members stack, since one
+                     card has nowhere else to go (SetPinning). Filled blue while pinned. -->
+                <Border x:Name="PinButton"
+                        WidthRequest="36" HeightRequest="36"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}"
+                        VerticalOptions="Center"
+                        IsVisible="False"
+                        SemanticProperties.Description="Pin to the top">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="18"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnPinTapped"/>
+                    </Border.GestureRecognizers>
+                    <Image x:Name="PinIcon"
+                           Source="icon_pin.svg"
+                           WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Border>
+
                 <!-- Every button in this row now says two things (see ApplyDaybook and its
                      siblings in the code-behind): the ring pulses while there is something behind
                      the button to read, and the glyph is coloured until the caregiver has read
@@ -189,6 +210,30 @@
                     </Border>
 
                 </Grid>
+
+                <!-- No device: beside Alerts, only while this member has no active connection
+                     (SetNoDevice). The warning lives here rather than as a full card over the
+                     dashboard — a struck-through watch in the destructive red says "nothing is
+                     being watched" at the size of the other buttons, and a tap opens the full
+                     no-device card with the Connect button for anybody ready to act on it. -->
+                <Border x:Name="NoDeviceButton"
+                        WidthRequest="36" HeightRequest="36"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource PillRedBackground}"
+                        VerticalOptions="Center"
+                        IsVisible="False"
+                        SemanticProperties.Description="No device connected"
+                        SemanticProperties.Hint="Shows how to connect this CardiMember's device">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="18"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnNoDeviceTapped"/>
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_device_off.svg"
+                           WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Border>
 
                 <!-- Advise: last in the row, only while this member has a fresh "Something to try"
                      suggestion waiting (DashboardResponse.HasAdvise). It was a corner badge on the avatar until

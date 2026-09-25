@@ -39,7 +39,8 @@ public class AlertAnswerCopyTests
 
         var line = AlertAnswerCopy.HandledLine(alert);
 
-        Assert.StartsWith("Tom acknowledged — Calling them now, 2 minutes ago", line);
+        // Who and when only: the label ("Calling them now") is read under "What the family did".
+        Assert.Equal("Tom acknowledged · 2 minutes ago", line);
     }
 
     [Fact]
@@ -53,7 +54,8 @@ public class AlertAnswerCopyTests
             Responses = [Response("close", "Jane Doe", "Spoke to them — they're fine", null, 1)],
         };
 
-        Assert.StartsWith("Jane closed this — Spoke to them — they're fine", AlertAnswerCopy.HandledLine(alert));
+        Assert.Equal("Jane resolved this · 1 minute ago", AlertAnswerCopy.HandledLine(alert));
+        Assert.True(AlertAnswerCopy.IsClosed(alert));
     }
 
     [Fact]
@@ -75,12 +77,12 @@ public class AlertAnswerCopyTests
 
         var line = AlertAnswerCopy.HandledLine(alert);
 
-        Assert.StartsWith("Jane closed this — Expected, nothing wrong", line);
+        Assert.StartsWith("Jane resolved this · 1 minute ago", line);
         Assert.EndsWith("It had already settled on its own.", line);
     }
 
     [Fact]
-    public void TheBareAcknowledgementStillReadsAsBefore()
+    public void TheBareAcknowledgementReadsLikeTheRowsBelowIt()
     {
         var alert = new AlertDetailResponse
         {
@@ -89,7 +91,9 @@ public class AlertAnswerCopyTests
             AcknowledgedByName = "Sam Smith",
         };
 
-        Assert.Equal("Acknowledged by Sam, 5 minutes ago", AlertAnswerCopy.HandledLine(alert));
+        Assert.Equal("Sam acknowledged · 5 minutes ago", AlertAnswerCopy.HandledLine(alert));
+        // Somebody is on it, which is not the episode being over — the strip says so in its colour.
+        Assert.False(AlertAnswerCopy.IsClosed(alert));
     }
 
     [Fact]
@@ -97,7 +101,7 @@ public class AlertAnswerCopyTests
     {
         var row = Response("close", "Tom Doe", "Dealt with another way", "Neighbour popped in", 3);
 
-        Assert.Equal("Tom closed this", AlertAnswerCopy.RowTitle(row));
+        Assert.Equal("Tom resolved this", AlertAnswerCopy.RowTitle(row));
         Assert.Equal("Dealt with another way\nNeighbour popped in", AlertAnswerCopy.RowDetail(row));
     }
 
@@ -107,6 +111,22 @@ public class AlertAnswerCopyTests
         Assert.Equal("Just the note", AlertAnswerCopy.RowDetail(Response("acknowledge", "Tom", null, "Just the note", 1)));
         Assert.Equal("No details given", AlertAnswerCopy.RowDetail(Response("acknowledge", "Tom", null, null, 1)));
         Assert.Equal("Someone acknowledged", AlertAnswerCopy.RowTitle(Response("acknowledge", "", null, null, 1)));
+    }
+
+    [Fact]
+    public void TheHistoryShowsOnlyWhenItSaysMoreThanTheStrip()
+    {
+        // Nothing yet, and a bare tap the strip already names word for word: no section.
+        Assert.False(AlertAnswerCopy.HistoryAddsToTheStrip([]));
+        Assert.False(AlertAnswerCopy.HistoryAddsToTheStrip([Response("acknowledge", "Tom", null, null, 1)]));
+
+        // A label or a note is what the strip leaves out, so a lone response carrying one shows.
+        Assert.True(AlertAnswerCopy.HistoryAddsToTheStrip([Response("acknowledge", "Tom", "Calling them now", null, 1)]));
+        Assert.True(AlertAnswerCopy.HistoryAddsToTheStrip([Response("acknowledge", "Tom", null, "Rang twice", 1)]));
+
+        // A second response is history the strip cannot hold.
+        Assert.True(AlertAnswerCopy.HistoryAddsToTheStrip(
+            [Response("acknowledge", "Tom", null, null, 5), Response("close", "Jane", null, null, 1)]));
     }
 
     [Fact]

@@ -16,22 +16,16 @@
          a thumb lands and where the eye starts. The others are reachable in the seconds that
          emergency is not.
 
-         Inset from this view's own bounds by the shadow's reach. Android clips a ContentView's
-         children to its bounds and the grid fills it exactly, so whatever the tiles cast outside
-         the grid is sliced off and reads as a rendering fault rather than as depth. The first fix
-         gave the row a horizontal gutter only, which left the same hard cut along the top and
-         bottom of all four tiles. The gutter is now the shadow's own geometry (QuickActionTile:
-         radius 10, offset 0,3) — 10 on three sides, 13 below to carry the offset — and the call
-         sites pull the whole gutter back out with a negative margin on all four sides, so the
-         tiles line up with the text above them and only the shadow lives in the inset. Cancelling
-         the vertical gutter alone left the row 10 narrower than everything around it on both
-         edges, which read as a row that had been centred rather than one that spanned. -->
+         No inset round the grid. The tiles used to cast a shadow, and the row carried a gutter
+         the shadow's size (with a matching negative margin at every call site) so Android would
+         not clip it; they are raised by a gradient fill now (QuickActionTintBrush), so the grid
+         fills the view and the call sites need no margin. -->
 
-    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10" Margin="10,10,10,13">
+    <Grid x:Name="Tiles" ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
         <Border x:Name="EmergencyCallAction"
                 Grid.Column="0"
                 Style="{StaticResource QuickActionTile}"
-                BackgroundColor="{StaticResource QuickActionTintRed}"
+                Background="{StaticResource QuickActionTintRedBrush}"
                 SemanticProperties.Description="SOS: call emergency contact"
                 SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
             <Border.GestureRecognizers>
@@ -43,10 +37,12 @@
                      only thing on it still saying "ordinary call" while the tint and
                      the label both said otherwise. DangerRed clears 3:1 on the red
                      tint (3.97) where the label's StatusRed does not (2.96). -->
-                <Image Source="icon_action_sos.svg"
+                <Image x:Name="SosIcon"
+                       Source="icon_action_sos.svg"
                        WidthRequest="22" HeightRequest="22"
                        HorizontalOptions="Center"/>
-                <Label Text="SOS"
+                <Label x:Name="SosLabel"
+                       Text="SOS"
                        Style="{StaticResource QuickActionLabel}"
                        TextColor="{StaticResource StatusRed}"
                        LineBreakMode="TailTruncation"/>
@@ -55,15 +51,18 @@
         <Border x:Name="CallAction"
                 Grid.Column="1"
                 Style="{StaticResource QuickActionTile}"
-                BackgroundColor="{StaticResource QuickActionTint}">
+                Background="{StaticResource QuickActionTintBrush}"
+                SemanticProperties.Description="Call">
             <Border.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnCallTapped"/>
             </Border.GestureRecognizers>
             <VerticalStackLayout Spacing="10">
-                <Image Source="icon_action_call.svg"
+                <Image x:Name="CallIcon"
+                       Source="icon_action_call.svg"
                        WidthRequest="22" HeightRequest="22"
                        HorizontalOptions="Center"/>
-                <Label Text="Call"
+                <Label x:Name="CallLabel"
+                       Text="Call"
                        Style="{StaticResource QuickActionLabel}"
                        LineBreakMode="TailTruncation"/>
             </VerticalStackLayout>
@@ -71,20 +70,24 @@
         <Border x:Name="MessageAction"
                 Grid.Column="2"
                 Style="{StaticResource QuickActionTile}"
-                BackgroundColor="{StaticResource QuickActionTint}">
+                Background="{StaticResource QuickActionTintBrush}"
+                SemanticProperties.Description="Message">
             <Border.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnMessageTapped"/>
             </Border.GestureRecognizers>
             <VerticalStackLayout Spacing="10">
-                <Image Source="icon_action_sms.svg"
+                <Image x:Name="MessageIcon"
+                       Source="icon_action_sms.svg"
                        WidthRequest="22" HeightRequest="22"
                        HorizontalOptions="Center"/>
-                <Label Text="Message" Style="{StaticResource QuickActionLabel}"/>
+                <Label x:Name="MessageLabel" Text="Message" Style="{StaticResource QuickActionLabel}"/>
             </VerticalStackLayout>
         </Border>
-        <Border Grid.Column="3"
+        <Border x:Name="DetailsAction"
+                Grid.Column="3"
                 Style="{StaticResource QuickActionTile}"
-                BackgroundColor="{StaticResource QuickActionTint}">
+                Background="{StaticResource QuickActionTintBrush}"
+                SemanticProperties.Description="Details">
             <Border.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
             </Border.GestureRecognizers>
@@ -93,10 +96,11 @@
                      sits four rows below this tile on the same card, and two controls wearing
                      the same icon on one screen is two controls that look like one. Details
                      opens the person; Key Metrics opens their numbers. -->
-                <Image Source="icon_action_profile.svg"
+                <Image x:Name="DetailsIcon"
+                       Source="icon_action_profile.svg"
                        WidthRequest="22" HeightRequest="22"
                        HorizontalOptions="Center"/>
-                <Label Text="Details" Style="{StaticResource QuickActionLabel}"/>
+                <Label x:Name="DetailsLabel" Text="Details" Style="{StaticResource QuickActionLabel}"/>
             </VerticalStackLayout>
         </Border>
     </Grid>

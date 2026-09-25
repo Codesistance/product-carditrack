@@ -110,7 +110,11 @@ public interface IPopupService
     /// back a label: a field's options can repeat a label legitimately, and its page addresses
     /// them by index, as it did with the Picker.
     /// </remarks>
-    Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex);
+    /// <param name="hint">
+    /// One line under the title for a question the options cannot answer alone — "Parent" says
+    /// nothing about which way round the relationship runs. Null for none.
+    /// </param>
+    Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex, string? hint = null);
 
     /// <summary>
     /// The Family tab's switcher drawer: the families the caregiver is in, the asks they are
@@ -133,18 +137,29 @@ public interface IPopupService
     Task<ContactEdit?> EditContactAsync(ContactEditKind kind, string? name, string? phone);
 
     /// <summary>
-    /// Opens the health background's own edit form. Returns the notes as typed, an empty string
-    /// when the caregiver cleared them, or null when they cancelled or dismissed.
+    /// Opens the form for one line of the medical-information ledger. <paramref name="text"/> null
+    /// adds a line; otherwise it is the line being changed. Returns the kind and words saved, or
+    /// null when the caregiver cancelled or dismissed it.
     /// </summary>
-    /// <remarks>
-    /// Three outcomes rather than two, because clearing a background is a real instruction and
-    /// must not arrive looking like walking away. The caller compares against what it had before
-    /// saving: an unchanged return is still a return.
-    /// </remarks>
-    Task<string?> EditMedicalNotesAsync(string? firstName, string? notes);
+    Task<(MedicalEntryKind Kind, string Text)?> EditMedicalEntryAsync(
+        string? firstName, MedicalEntryKind kind, string? text);
+
+    /// <summary>
+    /// Opens the "Sort into lines" form over a block of old notes cut into
+    /// <paramref name="statements"/>. Returns the lines to file, each with the kind the caregiver
+    /// chose (skipped parts left out), or null when they cancelled.
+    /// </summary>
+    Task<IReadOnlyList<(MedicalEntryKind Kind, string Text)>?> SortMedicalNotesAsync(IReadOnlyList<string> statements);
 
     /// <summary>Shows the detail behind a dashboard/detail weather chip. Completes once dismissed.</summary>
     Task ShowWeatherAsync(WeatherSnapshotResponse weather);
+
+    /// <summary>
+    /// The no-device card (Figma M1-09 D) as a modal, for the member card's no-device button.
+    /// True when the caregiver tapped Connect — the caller runs the connect flow — false when
+    /// they put it off.
+    /// </summary>
+    Task<bool> ShowNoDeviceAsync(string firstName);
 
     /// <summary>
     /// Shows what the freshness dot on a CardiMember card means: the tier's own colour, when

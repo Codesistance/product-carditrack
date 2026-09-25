@@ -49,8 +49,20 @@ public partial class DeviceConnectionPage : ContentPage
     /// </remarks>
     private bool _busy;
 
-    public DeviceConnectionPage(WizardContext ctx, ConnectableDevice device)
+    /// <summary>
+    /// The connection this visit reconnects, when it came from a device's Reconnect button.
+    /// </summary>
+    /// <remarks>
+    /// Sent as a reconnect of that connection rather than as an add. An add only reached the
+    /// broken connection when the server could match the account the grant came back for; when it
+    /// could not, the grant became a second connection and the broken one kept its "needs
+    /// reconnecting" warning.
+    /// </remarks>
+    private readonly Guid? _reconnectDeviceId;
+
+    public DeviceConnectionPage(WizardContext ctx, ConnectableDevice device, Guid? reconnectDeviceId = null)
     {
+        _reconnectDeviceId = reconnectDeviceId;
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
         _browser = ServiceHelper.GetRequiredService<IBrowserAuthenticator>();
@@ -92,6 +104,8 @@ public partial class DeviceConnectionPage : ContentPage
             {
                 Provider = _device.WireName,
                 RedirectUri = CallbackUri,
+                Mode = _reconnectDeviceId is null ? null : ConnectDeviceRequest.ModeReconnect,
+                DeviceId = _reconnectDeviceId,
             });
 
             var authResult = await _browser.AuthenticateAsync(

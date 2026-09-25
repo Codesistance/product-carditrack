@@ -129,6 +129,48 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return confirmed;
     }
 
+    // Not cached: the ledger is read when its screen opens and after every change, and a saved
+    // copy would be one more thing every write had to evict.
+    public Task<MedicalEntriesResponse> GetMedicalEntriesAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<MedicalEntriesResponse>(ApiPaths.MedicalEntries(cardiMemberId), ct, cache: false);
+
+    public Task<MedicalEntriesResponse> AddMedicalEntryAsync(
+        Guid cardiMemberId, MedicalEntryRequest request, CancellationToken ct = default) =>
+        WriteLedgerAsync(cardiMemberId, () => SendAsync<MedicalEntryRequest, MedicalEntriesResponse>(
+            HttpMethod.Post, ApiPaths.MedicalEntries(cardiMemberId), request, ct));
+
+    public Task<MedicalEntriesResponse> ReviseMedicalEntryAsync(
+        Guid cardiMemberId, Guid entryId, MedicalEntryRequest request, CancellationToken ct = default) =>
+        WriteLedgerAsync(cardiMemberId, () => SendAsync<MedicalEntryRequest, MedicalEntriesResponse>(
+            HttpMethod.Put, $"{ApiPaths.MedicalEntries(cardiMemberId)}/{entryId}", request, ct));
+
+    public Task<MedicalEntriesResponse> RemoveMedicalEntryAsync(
+        Guid cardiMemberId, Guid entryId, CancellationToken ct = default) =>
+        WriteLedgerAsync(cardiMemberId, () => SendAsync<MedicalEntriesResponse>(
+            HttpMethod.Post, $"{ApiPaths.MedicalEntries(cardiMemberId)}/{entryId}/remove", ct));
+
+    public Task<MedicalEntriesResponse> ConfirmMedicalEntryAsync(
+        Guid cardiMemberId, Guid entryId, CancellationToken ct = default) =>
+        WriteLedgerAsync(cardiMemberId, () => SendAsync<MedicalEntriesResponse>(
+            HttpMethod.Post, $"{ApiPaths.MedicalEntries(cardiMemberId)}/{entryId}/confirm", ct));
+
+    public Task<MedicalEntriesResponse> EraseMedicalEntryAsync(
+        Guid cardiMemberId, Guid entryId, CancellationToken ct = default) =>
+        WriteLedgerAsync(cardiMemberId, () => SendAsync<MedicalEntriesResponse>(
+            HttpMethod.Delete, $"{ApiPaths.MedicalEntries(cardiMemberId)}/{entryId}", ct));
+
+    /// <summary>
+    /// Every ledger write rewrites the member's notes summary and its review date on the server,
+    /// both part of the profile payload — so the profile's cached copies go, as they do on an edit.
+    /// </summary>
+    private async Task<MedicalEntriesResponse> WriteLedgerAsync(
+        Guid cardiMemberId, Func<Task<MedicalEntriesResponse>> write)
+    {
+        var ledger = await write();
+        await EvictAsync(MemberProfileKeys(cardiMemberId));
+        return ledger;
+    }
+
     public async Task RemoveCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default)
     {
         await SendNoDataAsync(HttpMethod.Delete, ApiPaths.CardiMember(cardiMemberId), ct);

@@ -79,7 +79,10 @@ public class AlertResponseDraftTests
 
         Assert.Equal("calling", AlertAnswerKinds.OptionsFor(alert, AlertAnswerKind.Acknowledge).Single().Code);
         Assert.Equal("expected", AlertAnswerKinds.OptionsFor(alert, AlertAnswerKind.Close).Single().Code);
-        Assert.Equal("Close alert", AlertAnswerKinds.ButtonText(AlertAnswerKind.Close));
+        // "Resolve" to the caregiver, "close" on the wire.
+        Assert.Equal("Resolve", AlertAnswerKinds.ButtonText(AlertAnswerKind.Close));
+        Assert.Equal("Resolve this alert", AlertAnswerKinds.Title(AlertAnswerKind.Close));
+        Assert.Equal("close", AlertAnswerKinds.Wire(AlertAnswerKind.Close));
         Assert.Equal(AlertAnswerKind.Close, AlertAnswerKinds.Parse("close"));
         Assert.Null(AlertAnswerKinds.Parse("undo"));
     }

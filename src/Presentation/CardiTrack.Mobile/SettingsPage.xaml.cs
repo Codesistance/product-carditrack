@@ -264,7 +264,9 @@ public partial class SettingsPage : ContentPage
             return false;
         }
 
-        return await _biometric.AuthenticateAsync("Confirm it is you before deleting your account");
+        return await _biometric.AuthenticateAsync(
+            "Delete your account",
+            "Your fingerprint or face shows it's you asking. You'll get one last check before anything is deleted.");
     }
 
     /// <summary>
@@ -292,6 +294,8 @@ public partial class SettingsPage : ContentPage
         await TryAsync(() => _drafts.ClearAsync(), "member draft");
         // Unsent notes about the people they watched: the same reason as the member draft.
         await TryAsync(() => _alertDrafts.ClearAsync(), "alert response drafts");
+        // Their faces, too: the photos of the people this account watched.
+        Try(MemberPhotoCache.Clear, "member photos");
 
         // Always, even if every step above failed: leaving them inside an app that can no longer
         // load anything is the worst of the available outcomes.
@@ -627,6 +631,8 @@ public partial class SettingsPage : ContentPage
             // Nor may an unsent note about somebody's alert: the next caregiver on this phone
             // could open the same alert and find it waiting in the field.
             await _alertDrafts.ClearAsync();
+            // Nor the photos of the people this account watched.
+            MemberPhotoCache.Clear();
             WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
         }
         finally

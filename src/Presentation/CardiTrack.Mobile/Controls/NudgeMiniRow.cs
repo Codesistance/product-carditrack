@@ -32,7 +32,7 @@ public sealed class NudgeMiniRow : Border
 
         StrokeThickness = 0;
         Padding = new Thickness(14, 12);
-        StrokeShape = new RoundRectangle { CornerRadius = 12 };
+        StrokeShape = new RoundRectangle { CornerRadius = 6 };
         BackgroundColor = asSafetyBanner
             ? Resource("StaleBannerBackground", Colors.LightYellow)
             : Resource("InputBackground", Colors.WhiteSmoke);

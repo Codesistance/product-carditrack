@@ -15,13 +15,13 @@
          whichever tile it happens to share a grid row with: a card carrying a reading and a
          caption used to be stretched to the height of a neighbour carrying a bar and a star row,
          which left it signing off with an inch of blank surface. -->
-    <!-- Corners at 12 rather than the shared OutlinedCard's 20: these are the smallest cards in
-         the app, two to a row, and a radius drawn for a full-width card eats a visible bite out of
-         a tile this size — most of all at the top corners, where it crowds the icon and the pill
-         now sitting beside it. -->
+    <!-- Corners at 6 rather than the shared OutlinedCard's 10: these are the smallest cards in
+         the app, two to a row, sitting inside the member card, and a nested tile rounder than the
+         card around it reads as a different family of shape. Halved with it on 2026-09-25, from
+         12 when the card was 20. -->
     <Border Style="{StaticResource OutlinedCard}" Padding="12,14">
         <Border.StrokeShape>
-            <RoundRectangle CornerRadius="12"/>
+            <RoundRectangle CornerRadius="6"/>
         </Border.StrokeShape>
         <VerticalStackLayout Spacing="10">
 

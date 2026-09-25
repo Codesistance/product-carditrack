@@ -127,6 +127,7 @@
                         <controls:ChoiceField x:Name="RelationshipPicker"
                                               Title="Select relationship"
                                               Prompt="Relationship"
+                                              Hint="They are your…"
                                               SelectedIndexChanged="OnFormChanged"/>
                     </VerticalStackLayout>
 

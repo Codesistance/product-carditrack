@@ -414,7 +414,60 @@
          links Forgot Password uses, but stays a Button so a screen reader still announces a
          button and the target stays 44 points. Verify Email spelled these setters out
          inline, which is how it drifted from the screens either side of it. -->
-    <Style x:Key="AuthActionLink" TargetType="Button">
+    <!-- ── Action buttons ──
+         The app's compact button: 40 tall, 14pt, an icon and one word, corners at the card
+         radius. Replacing the 52-tall full-width pills in popups, dialogs and action rows, which
+         were the biggest thing on every screen they sat on. The colour is the meaning — see the
+         ActionBrush block in Colors.xaml — so a row of them reads at a glance: Cancel dark, the
+         step forward blue, Yes green, No and Delete red, Undo amber. Set side by side in a Grid
+         of equal columns, the way out on the left and the step forward on the right. The icon
+         goes in ImageSource (the icon_btn_* set, white; amber's is dark). -->
+    <Style x:Key="ActionButton" TargetType="Button">
+        <Setter Property="TextColor" Value="{StaticResource White}"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="CornerRadius" Value="10"/>
+        <Setter Property="HeightRequest" Value="40"/>
+        <Setter Property="MinimumWidthRequest" Value="44"/>
+        <Setter Property="Padding" Value="12,0"/>
+        <Setter Property="BorderWidth" Value="0"/>
+        <Setter Property="ContentLayout" Value="Left,6"/>
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.85"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+    <Style x:Key="ActionButtonBlue" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+        <Setter Property="Background" Value="{StaticResource ActionBlueBrush}"/>
+    </Style>
+    <Style x:Key="ActionButtonGreen" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+        <Setter Property="Background" Value="{StaticResource ActionGreenBrush}"/>
+    </Style>
+    <Style x:Key="ActionButtonRed" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+        <Setter Property="Background" Value="{StaticResource ActionRedBrush}"/>
+    </Style>
+    <Style x:Key="ActionButtonDark" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+        <Setter Property="Background" Value="{StaticResource ActionDarkBrush}"/>
+    </Style>
+    <Style x:Key="ActionButtonAmber" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+        <Setter Property="Background" Value="{StaticResource ActionAmberBrush}"/>
+        <Setter Property="TextColor" Value="{StaticResource ActionAmberInk}"/>
+    </Style>
+
+    <Style x:Key="QuietActionLink" TargetType="Button">
         <Setter Property="BackgroundColor" Value="Transparent"/>
         <Setter Property="TextColor" Value="{StaticResource Primary}"/>
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
@@ -423,6 +476,14 @@
         <Setter Property="Padding" Value="12,8"/>
         <Setter Property="BorderWidth" Value="0"/>
         <Setter Property="HorizontalOptions" Value="Center"/>
+    </Style>
+
+    <Style x:Key="AuthActionLink" TargetType="Button" BasedOn="{StaticResource QuietActionLink}"/>
+
+    <!-- The same quiet link in the destructive red, for an irreversible action that should be
+         findable but never sit in the row of ordinary ones (Alert Details' "Remove this alert"). -->
+    <Style x:Key="DangerActionLink" TargetType="Button" BasedOn="{StaticResource QuietActionLink}">
+        <Setter Property="TextColor" Value="{StaticResource DangerRed}"/>
     </Style>
 
     <Style x:Key="DividerLine" TargetType="BoxView">
@@ -514,25 +575,28 @@
         <Setter Property="StrokeThickness" Value="0"/>
         <Setter Property="Padding" Value="6,12,6,9"/>
         <Setter Property="StrokeShape">
-            <RoundRectangle CornerRadius="18"/>
+            <RoundRectangle CornerRadius="9"/>
         </Setter>
-        <Setter Property="Shadow">
-            <!-- A small offset, not none. A zero-offset shadow sits directly behind the tile and
-                 only its blur escapes the edges, which on Android amounts to nothing you can see:
-                 the row read as painted-on rather than pressable. Two points down and a wide, faint
-                 blur keeps it a glow rather than a hard drop, while giving the eye the edge it
-                 needs to read the tile as raised. At 0.30 over 10 the four tiles each carried a
-                 visible dark rim and the row read as cut out of the card behind it. -->
-            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.16" Radius="14" Offset="0,2"/>
-        </Setter>
+        <!-- No shadow: the tiles are raised by their fill instead — QuickActionTintBrush and
+             QuickActionTintRedBrush, the action buttons' light-top gradient in the tiles' own
+             tints (2026-09-25). The shadow read as a glow at best and a dark rim at worst, and on
+             Android it needed a gutter round the whole row to escape clipping. -->
     </Style>
+
+    <!-- The corner of every standard card — the two styles below, and the cards that build their
+         own Border (the alert banner and list card, the journal and question cards) because they
+         stack a severity rail under the white face or need a stroke the styles do not carry.
+         One value so they cannot drift apart. Halved from 20 on 2026-09-25: at 20 a full-width
+         card read as a pill-ended sheet rather than as a card. Pills, chips, popups and chat
+         bubbles keep their own rounder corners — those are not cards. -->
+    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
 
     <Style x:Key="ElevatedCard" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
         <Setter Property="StrokeThickness" Value="0"/>
         <Setter Property="Padding" Value="14,14,13,17"/>
         <Setter Property="StrokeShape">
-            <RoundRectangle CornerRadius="20"/>
+            <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
         </Setter>
         <Setter Property="Shadow">
             <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
@@ -550,7 +614,7 @@
         <Setter Property="StrokeThickness" Value="1"/>
         <Setter Property="Padding" Value="14,14,13,17"/>
         <Setter Property="StrokeShape">
-            <RoundRectangle CornerRadius="20"/>
+            <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
         </Setter>
     </Style>
 
@@ -612,6 +676,10 @@
         <Setter Property="HorizontalOptions" Value="Center"/>
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="CharacterSpacing" Value="0"/>
+        <!-- One line box whichever size the label is drawn at (the selected tab's is a size up),
+             so selecting a tab never changes the bar's height. -->
+        <Setter Property="HeightRequest" Value="17"/>
+        <Setter Property="VerticalTextAlignment" Value="Center"/>
     </Style>
 
 </ResourceDictionary>

@@ -7,8 +7,8 @@
              Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource PageGround}">
 
-    <!-- The notes a family keeps about a CardiMember — allergies, chronic conditions, anything a
-         caregiver arriving in a hurry would want to have read already.
+    <!-- The medical information a family keeps about a CardiMember, as a ledger of lines —
+         conditions, allergies, medications — each dated and signed, with a history of what changed.
 
          A page rather than the drop down it used to be, matching Questions & Answers next to it.
          Both are somewhere the family keeps something, both can run to any length, and a drop down
@@ -46,35 +46,13 @@
                     <Label Text="Medical Information"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
-                    <Label Text="The notes their readings are read alongside"
+                    <Label Text="What a caregiver should know before they arrive"
                            FontFamily="Quicksand"
                            FontSize="12"
                            TextColor="{StaticResource White}"
                            Opacity="0.85"
                            LineBreakMode="TailTruncation"/>
                 </VerticalStackLayout>
-
-                <!-- Named on the Border rather than the image inside it, the way Member Detail's
-                     own edit affordance is: hiding the inner element alone would leave the tinted
-                     chip behind as an empty square for everyone who is not the primary caregiver. -->
-                <Border x:Name="EditButton"
-                        Grid.Column="2"
-                        WidthRequest="40" HeightRequest="40"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource White}"
-                        IsVisible="False"
-                        VerticalOptions="Center"
-                        SemanticProperties.Description="Edit medical information"
-                        SemanticProperties.Hint="Opens the profile form on the medical notes">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="12"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnEditTapped"/>
-                    </Border.GestureRecognizers>
-                    <Image Source="icon_edit.svg" WidthRequest="20" HeightRequest="20"
-                           HorizontalOptions="Center" VerticalOptions="Center"/>
-                </Border>
             </Grid>
         </controls:HeaderBand>
 
@@ -106,43 +84,116 @@
                                          IsVisible="False">
                         <controls:SavedDataBanner x:Name="SavedBanner"/>
 
+                        <!-- The ledger: one ruled line per condition, allergy or medication, grouped
+                             under its kind — allergies and medicines first — with who wrote it and
+                             when underneath. Lines are built in code (ShowLedger); a tap on one
+                             offers what can be done with it. -->
                         <Border Style="{StaticResource ElevatedCard}">
-                            <VerticalStackLayout Spacing="10">
-                                <Label x:Name="NotesTitleLabel"
-                                       Text="Medical Notes"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
-                                <Label x:Name="NotesLabel"
-                                       Style="{StaticResource Body2}"/>
+                            <VerticalStackLayout Spacing="0">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <Label Text="On file"
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           VerticalOptions="Center"/>
+                                    <!-- Only for the caregiver who can act on it: the API refuses a
+                                         change from anyone else, so offering it would be a trap. -->
+                                    <Button x:Name="AddButton"
+                                            Grid.Column="1"
+                                            Text="Add"
+                                            Style="{StaticResource ActionButtonBlue}"
+                                            ImageSource="icon_btn_plus.svg"
+                                            IsVisible="False"
+                                            Clicked="OnAddClicked"/>
+                                </Grid>
 
-                                <!-- When somebody last said this is still true. Its own line under
-                                     the notes rather than beside the heading: it is a statement
-                                     about the text above it, and it can run to two lines at a
-                                     large font scale. Hidden when there are no notes — a date on
-                                     an empty background would be dating nothing. -->
-                                <Label x:Name="ReviewedLabel"
-                                       Style="{StaticResource Caption}"
+                                <!-- Where the list stands, as a chip: green while every line is
+                                     confirmed within six months, amber once it is due a check, red
+                                     while something on it has never been confirmed. The one-tap
+                                     confirmation sits beside it, and only when the chip is not
+                                     green — confirming a list checked two days ago is noise. -->
+                                <Grid x:Name="StatusRow" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
+                                      Margin="0,8,0,0" IsVisible="False">
+                                    <Border x:Name="StatusChip"
+                                            StrokeThickness="0"
+                                            Padding="10,4"
+                                            VerticalOptions="Center">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10"/>
+                                        </Border.StrokeShape>
+                                        <Label x:Name="StatusLabel"
+                                               FontFamily="QuicksandSemiBold"
+                                               FontSize="12"/>
+                                    </Border>
+                                    <Button x:Name="AllAccurateButton"
+                                            Grid.Column="2"
+                                            Text="All accurate"
+                                            Style="{StaticResource ActionButtonGreen}"
+                                            ImageSource="icon_btn_resolve.svg"
+                                            IsVisible="False"
+                                            Clicked="OnAllAccurateClicked"/>
+                                </Grid>
+
+                                <!-- A block of old notes, written before there were lines: offered
+                                     to be sorted into lines so an allergy or a medicine in it stands
+                                     where it can be seen. Filled in code (ShowSortPrompt). -->
+                                <Border x:Name="SortPrompt"
+                                        Margin="0,12,0,0"
+                                        Padding="12,10"
+                                        StrokeThickness="0"
+                                        BackgroundColor="{StaticResource PillYellowBackground}"
+                                        IsVisible="False">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10"/>
+                                    </Border.StrokeShape>
+                                    <VerticalStackLayout Spacing="4">
+                                        <Label Text="These notes are one block"
+                                               FontFamily="QuicksandSemiBold"
+                                               FontSize="14"
+                                               TextColor="{StaticResource ActionAmberInk}"/>
+                                        <Label Text="Sort them into lines so allergies and medicines stand out."
+                                               FontSize="13"
+                                               TextColor="{StaticResource ActionAmberInk}"/>
+                                        <Button Text="Sort into lines"
+                                                Margin="0,6,0,0"
+                                                Style="{StaticResource ActionButtonAmber}"
+                                                ImageSource="icon_btn_sort.svg"
+                                                HorizontalOptions="Start"
+                                                Clicked="OnSortClicked"/>
+                                    </VerticalStackLayout>
+                                </Border>
+
+                                <VerticalStackLayout x:Name="LedgerList" Margin="0,4,0,0"/>
+
+                                <Label x:Name="EmptyLabel"
+                                       Margin="0,12,0,0"
+                                       Style="{StaticResource Body2}"
                                        IsVisible="False"/>
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- Only for the caregiver who can act on it. The API refuses an edit from
-                             anyone else, so offering the button to them would be a trap. -->
-                        <Button x:Name="AddNotesButton"
-                                Text="Add medical notes"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                IsVisible="False"
-                                Clicked="OnEditClicked"/>
-
-                        <!-- The other half of dating the background: a caregiver who reads it and
-                             finds nothing to change has confirmed it just as much as one who
-                             retypes a line, and the edit form cannot say so — it replaces every
-                             field on every save, so unchanged notes are what editing something
-                             else looks like. Only offered once there is something to confirm. -->
-                        <Button x:Name="StillAccurateButton"
-                                Text="Still accurate"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                IsVisible="False"
-                                Clicked="OnStillAccurateClicked"/>
+                        <!-- What the record used to say: lines changed or taken off, most recent
+                             first. Folded away by default — it is for looking back, not for the
+                             caregiver arriving in a hurry the card above is written for. -->
+                        <Border x:Name="HistoryCard"
+                                Style="{StaticResource ElevatedCard}"
+                                IsVisible="False">
+                            <VerticalStackLayout Spacing="0">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12"
+                                      SemanticProperties.Hint="Shows or hides the history">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnHistoryToggled"/>
+                                    </Grid.GestureRecognizers>
+                                    <Label x:Name="HistoryTitleLabel"
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           VerticalOptions="Center"/>
+                                    <Image x:Name="HistoryChevron"
+                                           Grid.Column="1"
+                                           Source="icon_chevron_down.svg"
+                                           WidthRequest="20" HeightRequest="20"
+                                           VerticalOptions="Center"/>
+                                </Grid>
+                                <VerticalStackLayout x:Name="HistoryList" Margin="0,8,0,0" IsVisible="False"/>
+                            </VerticalStackLayout>
+                        </Border>
 
                     </VerticalStackLayout>
                 </ScrollView>

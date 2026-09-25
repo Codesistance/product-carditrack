@@ -1,4 +1,5 @@
 using CardiTrack.Mobile.Services;
+using CardiTrack.Mobile.Core.Members;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -36,8 +37,50 @@ public partial class MemberAvatar : ContentView
     {
         InitialsLabel.Text = NameFormatting.Initials(name);
 
-        var hasPhoto = Uri.TryCreate(photoUrl, UriKind.Absolute, out var photoUri);
-        PhotoImage.Source = hasPhoto ? ImageSource.FromUri(photoUri!) : null;
-        PhotoImage.IsVisible = hasPhoto;
+        var key = Uri.TryCreate(photoUrl, UriKind.Absolute, out var photoUri)
+            ? MemberPhotoCacheKey.For(photoUri)
+            : null;
+        _photoKey = key;
+
+        if (key is null)
+        {
+            PhotoImage.Source = null;
+            PhotoImage.IsVisible = false;
+            return;
+        }
+
+        // Already on the phone: shown at once, no download and no flash of initials. The signed
+        // URL changes every few minutes; the photo behind it only when somebody changes it.
+        if (MemberPhotoCache.Cached(key) is { } saved)
+        {
+            ShowPhoto(saved);
+            return;
+        }
+
+        // Not yet: initials until it arrives. The same avatar may have been handed another member
+        // by then (a recycled cell, a refresh), so only the photo still asked for is shown.
+        PhotoImage.IsVisible = false;
+        _ = LoadAsync(photoUri!, key);
+    }
+
+    private MemberPhotoCacheKey? _photoKey;
+
+    private async Task LoadAsync(Uri url, MemberPhotoCacheKey key)
+    {
+        var path = await MemberPhotoCache.FetchAsync(url, key);
+        if (path is null)
+            return;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_photoKey == key)
+                ShowPhoto(path);
+        });
+    }
+
+    private void ShowPhoto(string path)
+    {
+        PhotoImage.Source = ImageSource.FromFile(path);
+        PhotoImage.IsVisible = true;
     }
 }

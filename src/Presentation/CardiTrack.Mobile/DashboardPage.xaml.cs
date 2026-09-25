@@ -1,5 +1,7 @@
+using System.Globalization;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
@@ -7,6 +9,7 @@ using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Diagnostics;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Members;
+using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
@@ -22,11 +25,25 @@ public partial class DashboardPage : ContentPage
     /// <summary>Also cleared by M1-13 when the remembered member is removed.</summary>
     internal const string PrimaryMemberIdKey = "PrimaryCardiMemberId";
 
-    /// <summary>The member the dashboard currently shows — what the Daybook link filters to.</summary>
-    private Guid _memberId;
+    /// <summary>
+    /// One card per CardiMember on screen, by member id, in the order <see cref="ArrangeCards"/>
+    /// gives them: pinned, then most worrying, then by name.
+    /// </summary>
+    private readonly Dictionary<Guid, MemberDashboardCard> _cards = [];
 
-    /// <summary>Their full name, kept so the Alerts jump can label the chip it filters by.</summary>
-    private string? _memberName;
+    /// <summary>The members other than the one loaded first, from the last member-list read.</summary>
+    private IReadOnlyList<Guid> _otherMemberOrder = [];
+
+    /// <summary>
+    /// Everyone the dashboard expects to show — from the saved member list on a landing, then the
+    /// live one. A member here whose card has nothing to draw yet holds a placeholder in the stack,
+    /// so the screen is laid out for the whole family from the first frame instead of growing a
+    /// card at a time.
+    /// </summary>
+    private IReadOnlyList<Guid> _expectedMembers = [];
+
+    /// <summary>The placeholder standing in for each expected member not yet drawn.</summary>
+    private readonly Dictionary<Guid, View> _placeholders = [];
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
 
     /// <summary>
@@ -47,7 +64,6 @@ public partial class DashboardPage : ContentPage
 
     /// <summary>Set while the telemetry notice is up, so the OnAppearing its closing raises cannot open a second.</summary>
     private bool _telemetryNoticeOpen;
-    private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
 
     /// <summary>
@@ -65,8 +81,8 @@ public partial class DashboardPage : ContentPage
     /// </summary>
     private static readonly TimeSpan StatusLineRestoreWindow = TimeSpan.FromHours(6);
 
-    /// <summary>Columns in the Key Metrics grid; see <see cref="LayoutMetricCards"/>.</summary>
-    private const int MetricsPerRow = 2;
+    /// <summary>Share of the row each Recent Alerts card takes in the carousel; see <see cref="SizeAlertCards"/>.</summary>
+    private const double CarouselCardWidthFraction = 0.85;
 
     private readonly ICardiTrackApiClient _api;
     private readonly IAuthService _authService;
@@ -90,7 +106,6 @@ public partial class DashboardPage : ContentPage
     /// GET finished last (see <see cref="SyncAndReloadAsync"/>).
     /// </summary>
     private RefreshOutcome? _lastOutcome;
-    private Guid? _currentSleepAlertId;
 
     public DashboardPage(
         ICardiTrackApiClient api,
@@ -106,15 +121,11 @@ public partial class DashboardPage : ContentPage
         _statusLines = statusLines;
         _questionValidity = questionValidity;
         _feedback = new RefreshFeedback(SavedBanner, Updating);
-        HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
-        HeroCard.DaybookTapped += OnDaybookTapped;
-        HeroCard.AlertsTapped += OnHeroAlertsTapped;
-        HeroCard.QaTapped += OnHeroQaTapped;
-        HeroCard.AdviseTapped += OnHeroAdviseTapped;
-        HeroCard.WeatherTapped += async (_, weather) => await _popups.ShowWeatherAsync(weather);
         Header.BellTapped += OnBellClicked;
         DisclosureBanner.LearnMoreRequested += OnDisclosureLearnMore;
         DisclosureBanner.DismissRequested += OnDisclosureDismiss;
+        AlertsHeader.SizeChanged += (_, _) => SizeAlertCards();
+        NudgeHeader.SizeChanged += (_, _) => SizeNudgeRows();
 
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
@@ -345,30 +356,6 @@ public partial class DashboardPage : ContentPage
         }
     }
 
-    private void OnDismissSleepConcernClicked(object? sender, EventArgs e)
-    {
-        if (_currentSleepAlertId is { } id)
-            Preferences.Default.Set(DismissedSleepAlertKey, id.ToString());
-        SleepConcernBanner.IsVisible = false;
-    }
-
-    /// <summary>
-    /// The banner is about one particular Sleep alert — the real one
-    /// <c>StatisticalAlertService</c> raised, which is where <see cref="_currentSleepAlertId"/>
-    /// comes from — so "Tap to view" opens that alert, not the list it is one of. Landing on the
-    /// list made the caregiver find again the thing the banner had just handed them, and on a
-    /// screen where the banner names the concern in words, an alert list is a step backwards.
-    /// The list is the fallback for the case that cannot happen while the banner is showing: it
-    /// is only visible when there is an id.
-    /// </summary>
-    private async void OnSleepConcernTapped(object? sender, TappedEventArgs e)
-    {
-        if (_currentSleepAlertId is { } alertId)
-            await Shell.Current.GoToAsync($"{AlertDetailPage.Route}?alertId={alertId}");
-        else
-            await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
-    }
-
     /// <summary>
     /// Short, quiet time-of-day line under the caregiver's own name — describes the caregiver's
     /// local evening, not the CardiMember's, so there's no cross-timezone reading to get wrong.
@@ -455,17 +442,20 @@ public partial class DashboardPage : ContentPage
         string? syncError = null;
         try
         {
-            if (_lastData is { } data)
+            // Every member on screen, not just the first: the pull is on the whole dashboard.
+            // The first refusal is the one reported — they tend to share a reason, and a popup per
+            // member would be a stack of the same sentence.
+            foreach (var memberId in _cards.Keys.ToList())
             {
                 try
                 {
-                    await _api.SyncDevicesAsync(data.CardiMemberId);
+                    await _api.SyncDevicesAsync(memberId);
                 }
                 catch (ApiException ex)
                 {
                     // Paused monitoring, no connected device, or too soon since the last check —
                     // each is the answer to "why hasn't this updated?", so none stays silent.
-                    syncError = ex.Message;
+                    syncError ??= ex.Message;
                 }
             }
 
@@ -512,6 +502,17 @@ public partial class DashboardPage : ContentPage
             // goes up first and the live one replaces it under the overlay. A resume, a tick or a
             // pull already has a dashboard up and replaces it in place.
             var id = memberId.Value;
+
+            // On a landing, everyone the phone saved goes up with the first member rather than
+            // after them: a family of three used to open as a one-member dashboard — full-size
+            // buttons, no pins — and rearrange itself once the others arrived.
+            if (_lastData is null)
+                await ShowSavedMembersAsync(id, ticket);
+
+            // The others' live reads start now, beside the first member's, not after it: each
+            // card is filled as its own answer lands, and one slow read holds up no other.
+            var others = LoadOtherMembersAsync(id, ticket);
+
             var outcome = await SnapshotRefresh.RunAsync(
                 _api, _gate, ticket,
                 peek: _lastData is null ? ct => _api.PeekDashboardAsync(id, ct) : null,
@@ -549,6 +550,10 @@ public partial class DashboardPage : ContentPage
 
             _lastOutcome = outcome;
             ApplyStaleBanner(_lastData!, outcome);
+
+            // Awaited here so a pull's spinner covers everyone, not just the first member.
+            await others;
+
             if (!outcome.IsFresh)
             {
                 // Saved data is on screen and the banner says so. Nothing more is asked of the
@@ -563,7 +568,7 @@ public partial class DashboardPage : ContentPage
             // Fire-and-forget, not awaited: the hero card already shows its static per-tier
             // copy, and a MedGemma call can take a few seconds — nothing about the dashboard
             // should wait on it, including the pull-to-refresh spinner below.
-            _ = LoadCurrentStatusAsync(_lastData!);
+            _ = LoadCurrentStatusAsync(CardFor(_lastData!.CardiMemberId), _lastData!);
 
             // Loaded after the dashboard rather than alongside it: a caregiver opens this screen
             // to see how their relative is, and housekeeping must never delay that answer or take
@@ -624,147 +629,364 @@ public partial class DashboardPage : ContentPage
         return primary.Id;
     }
 
+    /// <summary>
+    /// Draws the primary member's dashboard into their card, and the parts of the page that belong
+    /// to the whole family: the chat launcher, the bell's count and the alert strip.
+    /// </summary>
     private void Apply(DashboardResponse data)
     {
-        _memberId = data.CardiMemberId;
-        _memberName = data.DisplayFirstName();
-        ChatBot.MemberId = data.CardiMemberId;
-        ChatBot.MemberFirstName = data.DisplayFirstName();
-        HeroCard.Apply(data);
+        CardFor(data.CardiMemberId).Apply(data, _popups);
+        ArrangeCards();
+        ApplyAlerts();
+    }
 
-        Header.SetUnreadCount(data.UnreadAlertCount);
+    /// <summary>The card for a member, made and wired the first time it is asked for.</summary>
+    private MemberDashboardCard CardFor(Guid memberId)
+    {
+        if (_cards.TryGetValue(memberId, out var existing))
+            return existing;
 
-        var firstName = data.DisplayFirstName();
-        QuickActions.Apply(
-            new QuickActionTarget(
-                data.CardiMemberId,
-                firstName,
-                data.Phone,
-                data.EmergencyContactPhone,
-                data.EmergencyContactName),
-            _popups);
+        var card = new MemberDashboardCard();
+        card.DetailsRequested += (_, _) => OpenMemberDetails(card);
+        card.AdviseRequested += (_, _) => OpenAdvise(card);
+        card.AlertsRequested += async (_, _) => await OpenMemberAlertsAsync(card);
+        card.DaybookRequested += async (_, _) => await OpenDaybookAsync(card);
+        card.NoDeviceRequested += async (_, _) => await OfferConnectAsync(card);
+        card.QuestionRequested += async (_, _) => await AnswerPendingQuestionAsync(card);
+        card.WeatherRequested += async (_, weather) => await _popups.ShowWeatherAsync(weather);
+        card.PinRequested += (_, _) => TogglePin(card);
+        card.SleepAlertRequested += async (_, alertId) =>
+            await Shell.Current.GoToAsync($"{AlertDetailPage.Route}?alertId={alertId}");
+        _cards[memberId] = card;
+        return card;
+    }
 
-        // Paused banner (M1-13)
-        PausedBanner.IsVisible = data.MonitoringPaused;
-        if (data.MonitoringPaused)
+    /// <summary>
+    /// Puts the cards in order — pinned first, then the most worrying, then by first name (see
+    /// <see cref="MemberCardOrder"/>) — and tells each whether it is one of several, which is what
+    /// offers the pin and shrinks the quick actions.
+    /// </summary>
+    private void ArrangeCards()
+    {
+        var pinned = LoadPins();
+        var shown = _cards.Values.Where(c => c.Data is not null).ToList();
+        var order = MemberCardOrder.Order(
+            shown.Select(c => (c.Data!.CardiMemberId, (string?)c.Data.HealthStatus, c.Data.DisplayFirstName())),
+            pinned);
+        var ordered = order.Select(id => _cards[id]).ToList();
+
+        // Members expected but not drawn yet hold their place after the ones that are, so the
+        // stack is laid out (compact, with pins) for the whole family from the start.
+        var waiting = _expectedMembers
+            .Where(id => !_cards.TryGetValue(id, out var c) || c.Data is null)
+            .ToList();
+        foreach (var done in _placeholders.Keys.Except(waiting).ToList())
+            _placeholders.Remove(done);
+
+        var several = ordered.Count + waiting.Count > 1;
+        foreach (var card in ordered)
+            card.SetStacking(several, pinned.Contains(card.Data!.CardiMemberId));
+
+        // The chat is about one member when one is on screen. With several stacked no card is
+        // "the" member — the primary the page loads first is only the first to arrive — so the
+        // launcher is left without one and asks "Ask about who?" on tap, as on the pages that
+        // have no single member.
+        var only = several ? null : ordered.FirstOrDefault()?.Data;
+        ChatBot.MemberId = only?.CardiMemberId ?? Guid.Empty;
+        ChatBot.MemberFirstName = only?.DisplayFirstName();
+
+        var stack = ordered.Cast<View>().Concat(waiting.Select(PlaceholderFor)).ToList();
+        if (MemberCards.Children.SequenceEqual(stack))
+            return;
+        MemberCards.Clear();
+        foreach (var view in stack)
+            MemberCards.Add(view);
+    }
+
+    /// <summary>
+    /// A card-sized shimmer standing in for a member whose dashboard has not arrived, shaped like
+    /// the stacked card it will become (hero, status line, actions row) so nothing jumps when it
+    /// is replaced.
+    /// </summary>
+    private View PlaceholderFor(Guid memberId)
+    {
+        if (_placeholders.TryGetValue(memberId, out var existing))
+            return existing;
+
+        var hero = new Grid
         {
-            var until = data.MonitoringPausedUntil is { } pausedUntil
-                ? DateTime.SpecifyKind(pausedUntil, DateTimeKind.Utc).ToLocalTime().ToString("MMM d, h:mm tt")
-                : "further notice";
-            PausedBannerLabel.Text = $"Monitoring is paused until {until} — we're not collecting data or raising alerts.";
-        }
-
-        // No device (M1-09d)
-        NoDeviceCard.IsVisible = !data.Device.HasActiveConnection;
-        NoDeviceLabel.Text = $"Connect {firstName}'s device so CardiTrack can start watching over them";
-
-        // Data-pipeline freshness (deterministic — see MemberInsightsCalculator). Suppressed
-        // while paused, same rule the stale banner applies — collection is intentionally
-        // stopped, so a freshness reading here would misreport a deliberate pause as a gap.
-        // Visibility is settled below, once it is known whether either child has anything to say.
-        var freshnessRelevant = !data.MonitoringPaused;
-        var freshnessColor = FreshnessPalette.ColorFor(data.DataFreshness);
-        // Silent while the data is arriving as it should. Readings come every ten minutes, so
-        // dating them unconditionally put "Updated 10 minutes ago" over a perfectly current
-        // dashboard — a caption that appears when nothing is wrong cannot mean anything when
-        // something is. Never-synced keeps its own line: that is a different statement.
-        var neverSynced = data.LastSyncedAt is null;
-        var ageWorthShowing = DataAge.IsWorthShowing(data.LastSyncedAt, DateTime.UtcNow);
-
-        var showAge = freshnessRelevant && (neverSynced || ageWorthShowing);
-        LastUpdatedFooterLabel.IsVisible = showAge;
-        LastUpdatedFooterLabel.Text = data.LastSyncedAt is { } lastSynced
-            ? $"Updated {RelativeTime.Format(lastSynced)}"
-            : "Not synced yet";
-        // The age line carries the freshness state now that the message above it is gone: colour
-        // for the eye, the message itself for a screen reader, which cannot read a colour.
-        LastUpdatedFooterLabel.TextColor = freshnessColor;
-        SemanticProperties.SetDescription(
-            LastUpdatedFooterLabel, $"{data.DataFreshnessMessage}. {LastUpdatedFooterLabel.Text}");
-
-        // Exactly one node announces the freshness state, and only while there is a state worth
-        // announcing. The label owns it whenever it is on screen — which is every case that says
-        // something is wrong, since amber and red are hours old and the label speaks from thirty
-        // minutes. The block carries it only in the narrow window where the label is hidden but the
-        // learning bar keeps the block on screen.
-        //
-        // When both are hidden nobody is told anything, and that is the intent rather than a gap:
-        // on this page the freshness colour lived on the label, so a sighted reader loses the cue
-        // at exactly the same moment. The message that goes unsaid is "Data updated" on data
-        // minutes old. Saying that to a screen reader alone would make the quiet state the one
-        // announcement they cannot escape.
-        SemanticProperties.SetDescription(
-            FreshnessBlock, showAge ? string.Empty : data.DataFreshnessMessage);
-
-        // Baseline-learning progress only while the window is still running — a permanently
-        // full bar after it completes would say nothing new every day.
-        LearningProgress.IsVisible = data.Baseline.IsLearning && data.Device.HasActiveConnection
-            && !data.MonitoringPaused;
-        LearningProgress.Progress = data.Baseline.PercentComplete / 100.0;
-        LearningProgress.ProgressColor = freshnessColor;
-
-        // The block collapses when neither child has anything to say, which on a healthy dashboard
-        // is now the usual case: the age line is silent under half an hour and the learning bar is
-        // gone once the baseline is established. Left visible it is an empty box in a stack with
-        // 16px spacing — a gap under the hero card on every normal day, which is exactly the
-        // no-news-is-good-news state this page should look calmest in.
-        FreshnessBlock.IsVisible = freshnessRelevant
-            && (LastUpdatedFooterLabel.IsVisible || LearningProgress.IsVisible);
-
-        // Poor-sleep nudge: points at the real, unacknowledged Sleep alert the statistical pass
-        // already raised, rather than a second judgement derived from today's metric alone.
-        var sleepAlert = data.RecentAlerts.FirstOrDefault(a => a.Type == "Sleep" && a.Status == "new");
-        var dismissedId = Preferences.Default.Get(DismissedSleepAlertKey, string.Empty);
-        _currentSleepAlertId = sleepAlert?.AlertId;
-        SleepConcernBanner.IsVisible = sleepAlert is not null
-            && sleepAlert.AlertId.ToString() != dismissedId;
-        if (SleepConcernBanner.IsVisible)
-            SleepConcernBannerLabel.Text = $"{firstName}'s sleep has looked different than usual lately. Tap to view.";
-
-        // Metrics
-        if (data.Metrics is { } metrics)
+            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Star)],
+            ColumnSpacing = 12,
+        };
+        hero.Add(new SkeletonView { WidthRequest = 76, HeightRequest = 76 }, 0, 0);
+        hero.Add(new VerticalStackLayout
         {
-            MetricsAccordion.IsVisible = true;
-            StepsCard.ApplySteps(metrics.Steps);
-            HeartRateCard.ApplyHeartRate(metrics.RestingHeartRate);
-            SleepCard.ApplySleep(metrics.Sleep);
+            Spacing = 8,
+            VerticalOptions = LayoutOptions.Center,
+            Children =
+            {
+                new SkeletonView { HeightRequest = 20, WidthRequest = 120, HorizontalOptions = LayoutOptions.Start },
+                new SkeletonView { HeightRequest = 14, WidthRequest = 160, HorizontalOptions = LayoutOptions.Start },
+            },
+        }, 1, 0);
 
-            // Not every connected device reports these, so the row disappears entirely rather
-            // than showing a permanent "—" for a member whose wearable never will.
-            TemperatureCard.IsVisible = metrics.Temperature.Value is not null;
-            if (TemperatureCard.IsVisible)
-                TemperatureCard.ApplyTemperature(metrics.Temperature);
-
-            SpO2Card.IsVisible = metrics.SpO2.Value is not null;
-            if (SpO2Card.IsVisible)
-                SpO2Card.ApplySpO2(metrics.SpO2);
-
-            BreathingRateCard.IsVisible = metrics.BreathingRate.Value is not null;
-            if (BreathingRateCard.IsVisible)
-                BreathingRateCard.ApplyBreathingRate(metrics.BreathingRate);
-
-            LayoutMetricCards();
-        }
-        else
+        var placeholder = new Border
         {
-            MetricsAccordion.IsVisible = false;
+            Style = (Style)Microsoft.Maui.Controls.Application.Current!.Resources["ElevatedCard"],
+            Padding = new Thickness(16, 15, 16, 16),
+            Content = new VerticalStackLayout
+            {
+                Spacing = 12,
+                Children =
+                {
+                    hero,
+                    new SkeletonView { HeightRequest = 36 },
+                    new SkeletonView { HeightRequest = 40 },
+                },
+            },
+        };
+        SemanticProperties.SetDescription(placeholder, "Loading a member");
+        _placeholders[memberId] = placeholder;
+        return placeholder;
+    }
+
+    /// <summary>
+    /// The members this caregiver pinned, on this phone. Per caregiver — the key carries the same
+    /// non-reversible account token the disclosure hint uses — so the next person to sign in here
+    /// starts from their own order, not the last one's.
+    /// </summary>
+    private string? PinsKey() =>
+        HealthDataDisclosureScope.For(_authService.CurrentUserEmail) is { } scope
+            ? $"PinnedMembers:{scope}"
+            : null;
+
+    private IReadOnlySet<Guid> LoadPins() =>
+        PinsKey() is { } key
+            ? MemberCardOrder.ParsePins(Preferences.Default.Get(key, string.Empty))
+            : new HashSet<Guid>();
+
+    /// <summary>Pins or unpins a member and re-orders the dashboard straight away.</summary>
+    private void TogglePin(MemberDashboardCard card)
+    {
+        if (card.Data is not { } data || PinsKey() is not { } key)
+            return;
+
+        var pinned = LoadPins().ToHashSet();
+        if (!pinned.Remove(data.CardiMemberId))
+            pinned.Add(data.CardiMemberId);
+        Preferences.Default.Set(key, MemberCardOrder.FormatPins(pinned));
+        ArrangeCards();
+    }
+
+    /// <summary>
+    /// On a landing, before the first member's own read: the saved member list sets how many
+    /// cards the screen is laid out for, and each other member's saved dashboard fills theirs.
+    /// Local reads only, so this costs the first frame nothing it would notice.
+    /// </summary>
+    private async Task ShowSavedMembersAsync(Guid primaryId, LoadTicket ticket)
+    {
+        try
+        {
+            if (await _api.PeekCardiMembersAsync() is not { Count: > 0 } saved || !_gate.IsCurrent(ticket))
+                return;
+
+            _expectedMembers = saved.Select(m => m.Id).ToList();
+            foreach (var member in saved.Where(m => m.Id != primaryId))
+            {
+                var card = CardFor(member.Id);
+                if (card.Data is null && await _api.PeekDashboardAsync(member.Id) is { } dashboard
+                    && _gate.IsCurrent(ticket))
+                    card.Apply(dashboard, _popups);
+            }
+
+            if (_gate.IsCurrent(ticket))
+                ArrangeCards();
         }
+        catch (Exception ex)
+        {
+            // Nothing saved to lay the family out from: the live reads still fill it in.
+            ScreenRefresh.LogFailure(ex, this, "while showing saved members");
+        }
+    }
 
-        // Recent alerts, and — when there are none and the silence has earned it — the card that
-        // says so. Never both: an "all quiet" claim sitting above a list of live alerts would be
-        // the screen contradicting itself. The server withholds Reassurance whenever anything is
-        // unresolved, so this is belt-and-braces rather than the only guard.
-        ApplyReassurance(data, firstName);
+    /// <summary>
+    /// Every member other than the primary one: their saved dashboard first when their card is
+    /// empty, then the live one. Loaded side by side, one slow member never holding up the next,
+    /// and alongside the primary member's own read, so each card is filled as its answer lands.
+    /// </summary>
+    /// <remarks>
+    /// Never faults: it runs beside the primary member's load and is awaited after it, and a
+    /// failure here must not take down a dashboard the first member already filled. Tied to the
+    /// load that started it: once a newer load supersedes <paramref name="ticket"/>, nothing this
+    /// one reads is applied — the newer load's own fan-out owns the cards from then on.
+    /// </remarks>
+    private async Task LoadOtherMembersAsync(Guid primaryId, LoadTicket ticket)
+    {
+        try
+        {
+            List<CardiMemberResponse> members;
+            try
+            {
+                members = await _api.GetCardiMembersAsync(ticket.Token);
+            }
+            catch (ApiException) when (_gate.IsCurrent(ticket))
+            {
+                // The list is what says who else there is. Without it the cards already on screen
+                // stay as they are, but a placeholder for somebody the saved list promised has
+                // nothing coming to fill it, so those go.
+                _expectedMembers = _cards.Where(c => c.Value.Data is not null).Select(c => c.Key).ToList();
+                ArrangeCards();
+                return;
+            }
 
+            if (!_gate.IsCurrent(ticket))
+                return;
+
+            _expectedMembers = members.Select(m => m.Id).ToList();
+            var others = members
+                .Where(m => m.Id != primaryId)
+                .OrderBy(m => m.DisplayFirstName(), StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            _otherMemberOrder = others.Select(m => m.Id).ToList();
+
+            // A member who has left the family (removed, or access taken away) leaves the screen.
+            foreach (var gone in _cards.Keys.Where(id => id != primaryId && !_otherMemberOrder.Contains(id)).ToList())
+                _cards.Remove(gone);
+            ArrangeCards();
+
+            await Task.WhenAll(others.Select(m => LoadOtherMemberAsync(m.Id, ticket)));
+            if (!_gate.IsCurrent(ticket))
+                return;
+
+            // Anyone still without a card to draw (unreachable, with nothing saved) is left out
+            // rather than left as a placeholder that nothing is coming to fill.
+            _expectedMembers = _expectedMembers
+                .Where(id => id == primaryId || (_cards.TryGetValue(id, out var c) && c.Data is not null))
+                .ToList();
+            ArrangeCards();
+            ApplyAlerts();
+        }
+        catch (OperationCanceledException) when (!_gate.IsCurrent(ticket))
+        {
+            // Superseded: the newer load's fan-out has the cards.
+        }
+        catch (ApiException) when (!_gate.IsCurrent(ticket))
+        {
+            // Superseded while the list was being read.
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, this, "while loading the other members");
+        }
+    }
+
+    private async Task LoadOtherMemberAsync(Guid memberId, LoadTicket ticket)
+    {
+        var card = CardFor(memberId);
+        try
+        {
+            if (card.Data is null && await _api.PeekDashboardAsync(memberId) is { } saved
+                && _gate.IsCurrent(ticket))
+            {
+                card.Apply(saved, _popups);
+                ArrangeCards();
+            }
+
+            var live = await _api.GetDashboardAsync(memberId, ticket.Token);
+            if (!_gate.IsCurrent(ticket))
+                return;
+            card.Apply(live, _popups);
+            ArrangeCards();
+            _ = LoadCurrentStatusAsync(card, live);
+        }
+        catch (OperationCanceledException) when (!_gate.IsCurrent(ticket))
+        {
+            // Superseded: the newer load reads this member again.
+        }
+        catch (ApiException ex) when (ex.IsNotFound && _gate.IsCurrent(ticket))
+        {
+            // Gone between the list and the read: their saved dashboard must not stand in for them.
+            _cards.Remove(memberId);
+            _expectedMembers = _expectedMembers.Where(id => id != memberId).ToList();
+            ArrangeCards();
+        }
+        catch (ApiException)
+        {
+            // Unreachable: a card already showing saved data keeps it, and one with nothing to
+            // show is left out once the others are in (see LoadOtherMembersAsync).
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, this, "while loading another member");
+        }
+    }
+
+    /// <summary>
+    /// The Recent Alerts card, for everyone on screen: the members' strips merged, newest first,
+    /// each naming its member once there is more than one. A lone alert gets the card's full
+    /// width; two or more go into the carousel, sized by <see cref="SizeAlertCards"/>.
+    /// </summary>
+    /// <remarks>
+    /// "View all" carries the count only when the strip is short of it. Each strip and its
+    /// <see cref="DashboardResponse.UnreadAlertCount"/> are the same set — unacknowledged,
+    /// unresolved — but the server caps each strip, so the counts are added up rather than the
+    /// cards counted. The bell carries the same family-wide total.
+    /// </remarks>
+    private void ApplyAlerts()
+    {
+        SingleAlertHost.Content = null;
         AlertsStack.Clear();
-        AlertsSection.IsVisible = data.RecentAlerts.Count > 0;
-        foreach (var alert in data.RecentAlerts)
+
+        var shown = MemberCards.Children.OfType<MemberDashboardCard>()
+            .Select(c => c.Data)
+            .OfType<DashboardResponse>()
+            .ToList();
+        var named = shown.Count > 1;
+        var alerts = shown
+            .SelectMany(d => d.RecentAlerts.Select(a => (Alert: a, Name: named ? d.DisplayFirstName() : null)))
+            .OrderByDescending(x => x.Alert.TriggeredAt)
+            .ToList();
+        var unread = shown.Sum(d => d.UnreadAlertCount);
+
+        Header.SetUnreadCount(unread);
+        AlertsSection.IsVisible = alerts.Count > 0;
+        SingleAlertHost.IsVisible = alerts.Count == 1;
+        AlertsScroller.IsVisible = alerts.Count > 1;
+
+        ViewAllAlertsLink.Text = unread > alerts.Count
+            ? $"View all ({unread})"
+            : "View all";
+
+        foreach (var (alert, name) in alerts)
         {
             var card = new AlertMiniCard();
-            card.Apply(alert);
+            card.Apply(alert, name);
             card.AlertTapped += OnAlertTapped;
-            AlertsStack.Add(card);
+
+            if (alerts.Count == 1)
+                SingleAlertHost.Content = card;
+            else
+                AlertsStack.Add(card);
         }
+
+        SizeAlertCards();
+    }
+
+    /// <summary>
+    /// Sizes the carousel's cards to most of the card's content width, so one is read at a time
+    /// and the edge of the next says the row scrolls. Measured off the heading, since the
+    /// carousel itself runs edge to edge and is wider than the content. Re-run whenever the
+    /// heading is resized, since the first <see cref="ApplyAlerts"/> can land before it has been
+    /// measured.
+    /// </summary>
+    private void SizeAlertCards()
+    {
+        if (AlertsHeader.Width <= 0)
+            return;
+
+        var width = Math.Floor(AlertsHeader.Width * CarouselCardWidthFraction);
+        foreach (var card in AlertsStack.Children.OfType<AlertMiniCard>())
+            card.WidthRequest = width;
     }
 
     /// <summary>
@@ -809,59 +1031,6 @@ public partial class DashboardPage : ContentPage
         }
     }
 
-    /// <summary>
-    /// Shows the "all quiet" card, or hides it. Reads the server's verdict rather than inferring
-    /// one from an empty <see cref="DashboardResponse.RecentAlerts"/>: that list is equally empty
-    /// for a paused member, for one whose watch stopped syncing a fortnight ago, for one signed
-    /// up yesterday, and — since the strip dropped acknowledged alerts — for one in the middle of
-    /// an episode a caregiver has seen but nobody has closed. Telling any of those four families
-    /// that nothing has come up would be telling them the one thing this app must never get
-    /// wrong. The server withholds the verdict in every one of them (see QuietStretch).
-    /// </summary>
-    private void ApplyReassurance(DashboardResponse data, string firstName)
-    {
-        var reassurance = data.RecentAlerts.Count == 0 ? data.Reassurance : null;
-        ReassuranceCard.IsVisible = reassurance is not null;
-        if (reassurance is null)
-            return;
-
-        ReassuranceTitleLabel.Text = ReassuranceCopy.Title;
-        ReassuranceDetailLabel.Text = ReassuranceCopy.Detail(reassurance, firstName);
-
-        // One announcement, not two fragments: a screen reader landing on the headline alone
-        // hears "All quiet" with no idea who it is about.
-        SemanticProperties.SetDescription(
-            ReassuranceCard, $"{ReassuranceTitleLabel.Text}. {ReassuranceDetailLabel.Text}");
-    }
-
-    /// <summary>
-    /// Packs the Key Metrics tiles two to a row in reading order, skipping the ones this
-    /// member's wearable doesn't report.
-    /// </summary>
-    /// <remarks>
-    /// The order leads with the night — resting heart rate beside sleep — then the day, skin
-    /// temperature beside activity, and closes with the two readings a device reports without any
-    /// comparison to make. Positions are assigned here rather than pinned in XAML because three of
-    /// the six tiles are optional — skin temperature, SpO2 and breathing rate each depend on what
-    /// the device sends — and a fixed slot for an absent tile leaves its partner sitting alone
-    /// beside a half-row of nothing, which reads as a bug rather than as an absence. Packing keeps
-    /// the grid solid whatever the device reports; the declared pairing is what a member whose
-    /// device reports everything sees.
-    /// </remarks>
-    private void LayoutMetricCards()
-    {
-        var slot = 0;
-        foreach (var card in new[] { HeartRateCard, SleepCard, TemperatureCard, StepsCard, SpO2Card, BreathingRateCard })
-        {
-            if (!card.IsVisible)
-                continue;
-
-            Grid.SetRow(card, slot / MetricsPerRow);
-            Grid.SetColumn(card, slot % MetricsPerRow);
-            slot++;
-        }
-    }
-
     private void SetState(DashboardState state)
     {
         SkeletonPanel.IsVisible = state == DashboardState.Loading;
@@ -871,25 +1040,23 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// Both the hero card and the quick-action row's Details tile land on M1-13. The member id
-    /// comes from the loaded dashboard rather than the cached preference, so it always matches
-    /// whoever is actually on screen.
+    /// Both the hero card and the quick-action row's Details tile land on M1-13, for the member
+    /// whose card was tapped.
     /// </summary>
-    private void OpenMemberDetails()
+    private static void OpenMemberDetails(MemberDashboardCard card)
     {
-        if (_lastData is not { } data)
+        if (card.Data is not { } data)
             return;
         _ = Shell.Current.GoToAsync($"{CardiMemberDetailPage.Route}?memberId={data.CardiMemberId}");
     }
 
     /// <summary>
-    /// The card's Advise button — M1-13, opened at the "Something to try" suggestion rather than at the top.
-    /// The button only exists while there is one to read, so landing anywhere else would be
-    /// asking a caregiver to go and find the thing they just tapped.
+    /// The card's Advise button — M1-13, opened at the "Something to try" suggestion rather than
+    /// at the top. The button only exists while there is one to read.
     /// </summary>
-    private void OnHeroAdviseTapped(object? sender, EventArgs e)
+    private static void OpenAdvise(MemberDashboardCard card)
     {
-        if (_lastData is not { } data)
+        if (card.Data is not { } data)
             return;
         _ = Shell.Current.GoToAsync(
             $"{CardiMemberDetailPage.Route}?memberId={data.CardiMemberId}" +
@@ -912,25 +1079,36 @@ public partial class DashboardPage : ContentPage
 
     /// <summary>
     /// The member card's Alerts button — the same origin-remembering jump as View All, but
-    /// narrowed to this CardiMember. It is on their card, under their name, beside a ring
-    /// pulsing about their alerts; handing back a list of everyone else's as well would make the
-    /// caregiver re-find what they had just pointed at. The name travels with the id purely so
-    /// the chip on the other side can say whose list this is (see <see cref="AlertsPage"/>).
+    /// narrowed to this CardiMember: it is on their card, under their name. The name travels with
+    /// the id purely so the chip on the other side can say whose list this is.
     /// </summary>
-    private async void OnHeroAlertsTapped(object? sender, EventArgs e)
+    private static async Task OpenMemberAlertsAsync(MemberDashboardCard card)
     {
-        if (_memberId == Guid.Empty)
+        if (card.Data is not { } data)
         {
             await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
             return;
         }
 
-        var name = _memberName ?? string.Empty;
-        var route = $"{AppShell.AlertsRoute}?memberId={_memberId}";
+        var name = data.DisplayFirstName();
+        var route = $"{AppShell.AlertsRoute}?memberId={data.CardiMemberId}";
         if (!string.IsNullOrWhiteSpace(name))
             route += $"&memberName={Uri.EscapeDataString(name)}";
 
         await Shell.Current.GoToTabAsync(route);
+    }
+
+    /// <summary>
+    /// The member card's no-device button: the no-device card (Figma M1-09 D) as a modal, and the
+    /// connect flow for that member when the caregiver taps Connect in it.
+    /// </summary>
+    private async Task OfferConnectAsync(MemberDashboardCard card)
+    {
+        if (card.Data is not { } data)
+            return;
+
+        if (await _popups.ShowNoDeviceAsync(data.DisplayFirstName()))
+            await ConnectDeviceAsync(data.CardiMemberId);
     }
 
     private async void OnViewAllAlertsTapped(object? sender, TappedEventArgs e) =>
@@ -938,12 +1116,12 @@ public partial class DashboardPage : ContentPage
 
     /// <summary>The member card's link to their finished days — the Daybook tab, filtered to
     /// them, arriving through the same origin-remembering jump every content affordance uses.</summary>
-    private async void OnDaybookTapped(object? sender, EventArgs e)
+    private static async Task OpenDaybookAsync(MemberDashboardCard card)
     {
-        if (_memberId == Guid.Empty)
+        if (card.Data is not { } data)
             return;
 
-        await Shell.Current.GoToTabAsync($"{AppShell.JournalRoute}?memberId={_memberId}");
+        await Shell.Current.GoToTabAsync($"{AppShell.JournalRoute}?memberId={data.CardiMemberId}");
     }
 
     /// <summary>
@@ -952,9 +1130,9 @@ public partial class DashboardPage : ContentPage
     /// QuestionnairesPage's own pending card uses: the badge that made this button visible was
     /// drawn from the last load, and the question can have lapsed in the time since.
     /// </summary>
-    private async void OnHeroQaTapped(object? sender, EventArgs e)
+    private async Task AnswerPendingQuestionAsync(MemberDashboardCard card)
     {
-        if (_lastData?.PendingQuestionnaire is not { } pending)
+        if (card.Data is not { PendingQuestionnaire: { } pending } data)
             return;
 
         var verified = _questionValidity.Verify(pending);
@@ -969,7 +1147,7 @@ public partial class DashboardPage : ContentPage
         }
 
         var result = await _popups.ShowPendingQuestionAsync(
-            verified, _lastData.DisplayFirstName());
+            verified, data.DisplayFirstName());
 
         switch (result.Outcome)
         {
@@ -1037,7 +1215,8 @@ public partial class DashboardPage : ContentPage
         }
     }
 
-    private async void OnConnectDeviceClicked(object? sender, EventArgs e)
+    /// <summary>Runs the connect flow for the member whose card asked for it.</summary>
+    private async Task ConnectDeviceAsync(Guid memberId)
     {
         if (_wizardActive)
             return;
@@ -1045,10 +1224,7 @@ public partial class DashboardPage : ContentPage
         try
         {
             // One round trip: the members list answers both "which member" and "is there one".
-            var cached = Preferences.Default.Get(PrimaryMemberIdKey, string.Empty);
-            var member = PrimaryCardiMember.From(
-                await _api.GetCardiMembersAsync(),
-                Guid.TryParse(cached, out var cachedId) ? cachedId : null);
+            var member = (await _api.GetCardiMembersAsync()).FirstOrDefault(m => m.Id == memberId);
             if (member is null)
                 return;
 
@@ -1083,8 +1259,9 @@ public partial class DashboardPage : ContentPage
     /// static copy <see cref="Apply"/> already rendered is a complete, correct fallback, and every
     /// path that does not produce a live line puts it back.
     /// </summary>
-    private async Task LoadCurrentStatusAsync(DashboardResponse data)
+    private async Task LoadCurrentStatusAsync(MemberDashboardCard card, DashboardResponse data)
     {
+        var heroCard = card.HeroCard;
         // Neither tier calls the model: a paused member has no reading to interpret, and one with
         // no baseline yet already shows the day's own numbers. Returning here is what keeps them
         // off the loading line below, which they would otherwise never leave.
@@ -1099,8 +1276,8 @@ public partial class DashboardPage : ContentPage
         // load and sent a caregiver reopening the app to the placeholder even though the answer
         // was already on the device. Restoring first means the gate below sees a live line and
         // leaves it alone; the refresh already in flight replaces it in place a moment later.
-        if (!HeroCard.HasLiveStatusFor(data.CardiMemberId, data.HealthStatus))
-            await RestoreStatusLineAsync(data);
+        if (!heroCard.HasLiveStatusFor(data.CardiMemberId, data.HealthStatus))
+            await RestoreStatusLineAsync(heroCard, data);
 
         // Only say "Loading" once the wait is long enough to be worth admitting to.
         //
@@ -1119,10 +1296,10 @@ public partial class DashboardPage : ContentPage
         //
         // Skipped when the card already shows a live line for this member and tier — an unattended
         // tick would otherwise blank a good line to re-fetch the same words.
-        if (!HeroCard.HasLiveStatusFor(data.CardiMemberId, data.HealthStatus)
+        if (!heroCard.HasLiveStatusFor(data.CardiMemberId, data.HealthStatus)
             && await Task.WhenAny(pending, Task.Delay(StatusLoadingThreshold)) != pending)
         {
-            HeroCard.ShowStatusLoading();
+            heroCard.ShowStatusLoading();
         }
 
         try
@@ -1130,7 +1307,7 @@ public partial class DashboardPage : ContentPage
             var status = await pending;
             if (status.Message is { } message)
             {
-                HeroCard.ApplyDynamicMessage(
+                heroCard.ApplyDynamicMessage(
                     status.Headline, message, data.CardiMemberId, data.HealthStatus);
 
                 // Kept with the tier it describes, so the next cold start can tell whether it is
@@ -1171,7 +1348,7 @@ public partial class DashboardPage : ContentPage
             // would turn a failed side-call into a screen that never resolves. Harmless when it
             // isn't — Apply re-renders the same tier, and restores the live line if one survived,
             // which now includes a line restored from the device a moment ago.
-            HeroCard.Apply(data);
+            heroCard.Apply(data);
             // Static per-tier copy stays. Nothing to show the caregiver about this failure —
             // it isn't actionable and isn't worth interrupting them for.
         }
@@ -1182,7 +1359,7 @@ public partial class DashboardPage : ContentPage
     /// about the tier now on screen. Best-effort in every direction: no stored line, a stale one,
     /// or a store that cannot be read all leave the card exactly as <see cref="Apply"/> rendered it.
     /// </summary>
-    private async Task RestoreStatusLineAsync(DashboardResponse data)
+    private async Task RestoreStatusLineAsync(StatusHeroCard heroCard, DashboardResponse data)
     {
         StoredStatusLine? stored;
         try
@@ -1200,7 +1377,7 @@ public partial class DashboardPage : ContentPage
 
         if (stored is not null)
         {
-            HeroCard.ApplyDynamicMessage(
+            heroCard.ApplyDynamicMessage(
                 stored.Headline, stored.Message, data.CardiMemberId, data.HealthStatus);
         }
     }
@@ -1220,20 +1397,67 @@ public partial class DashboardPage : ContentPage
         try
         {
             var summary = await _api.GetNotificationSummaryAsync();
-            RenderNudges(summary);
+            RenderNudges(summary, summary.DashboardCards);
+
+            // The summary carries the top two. When more are waiting, the rest come from the
+            // inbox's own list so the row can scroll through all of them — after the two, which
+            // keep their places: the summary ranks by priority and the list is the inbox's order.
+            if (WaitingNudges(summary) > summary.DashboardCards.Count)
+            {
+                var open = await _api.GetNotificationsAsync(state: nameof(NotificationState.Open), owned: true);
+                var shown = summary.DashboardCards.Select(card => card.Id).ToHashSet();
+                // The list's total, not the summary's count, is how many are waiting: the summary
+                // counts only the top items it projects, and the list is one page of the inbox, so
+                // either can stop short of the real number. Safety items are in the total and not
+                // in this row.
+                RenderNudges(summary,
+                [
+                    .. summary.DashboardCards,
+                    .. open.Items.Where(n => n.Category != NotificationCategory.Safety && !shown.Contains(n.Id)),
+                ],
+                waiting: Math.Max(0, open.TotalCount - summary.SafetyBanners.Count));
+            }
         }
         catch (ApiException)
         {
-            SafetyBannerList.IsVisible = false;
-            CompleteThePictureCard.IsVisible = false;
-            Header.SetNudgeIndicator(false);
+            // The top two may already be on screen; losing the rest leaves them there rather than
+            // blanking a card that was fine a moment ago. Only a failed summary hides everything.
+            if (!CompleteThePictureCard.IsVisible)
+            {
+                SafetyBannerList.IsVisible = false;
+                Header.SetNudgeIndicator(false);
+            }
         }
     }
 
-    private void RenderNudges(NotificationSummaryResponse summary)
+    /// <summary>Open items for the "Complete the picture" card — everything but the safety banners.</summary>
+    private static int WaitingNudges(NotificationSummaryResponse summary) =>
+        Math.Max(0, summary.OpenCount - summary.SafetyBanners.Count);
+
+    /// <param name="waiting">
+    /// How many items are open for this card in all, when known better than the summary knows it —
+    /// see <see cref="LoadNudgesAsync"/>. Defaults to the summary's own count.
+    /// </param>
+    private void RenderNudges(
+        NotificationSummaryResponse summary, IReadOnlyList<NotificationResponse> cards, int? waiting = null)
     {
         SafetyBannerList.Clear();
         NudgeList.Clear();
+        SingleNudgeHost.Content = null;
+
+        // Set-up progress as rings, one per member with something left to do. The reminders a ring
+        // stands for leave the rows, so one missing emergency contact is asked about once.
+        var rings = SetupProgressLine.For(summary.MemberSetup);
+        var ringed = rings.Select(r => r.CardiMemberId).ToHashSet();
+        bool StandsInARing(NotificationResponse n) =>
+            n.CardiMemberId is { } id && ringed.Contains(id) && SetupProgressLine.SetupRuleCodes.Contains(n.RuleCode);
+        var folded = cards.Count(StandsInARing);
+        cards = cards.Where(n => !StandsInARing(n)).ToList();
+
+        SetupRingList.Clear();
+        foreach (var ring in rings)
+            SetupRingList.Add(BuildSetupRing(ring));
+        SetupRingList.IsVisible = rings.Count > 0;
 
         foreach (var banner in summary.SafetyBanners)
         {
@@ -1242,19 +1466,119 @@ public partial class DashboardPage : ContentPage
             SafetyBannerList.Add(row);
         }
 
-        foreach (var card in summary.DashboardCards)
+        // One item fills the card; two or more scroll sideways — see SizeNudgeRows.
+        foreach (var card in cards)
         {
             var row = new NudgeMiniRow(card);
             row.Tapped += OnNudgeTapped;
-            NudgeList.Add(row);
+            if (cards.Count == 1)
+                SingleNudgeHost.Content = row;
+            else
+                NudgeList.Add(row);
         }
+        SingleNudgeHost.IsVisible = cards.Count == 1;
+        NudgeScroller.IsVisible = cards.Count > 1;
+        SizeNudgeRows();
 
         SafetyBannerList.IsVisible = summary.SafetyBanners.Count > 0;
-        CompleteThePictureCard.IsVisible = summary.DashboardCards.Count > 0;
+        CompleteThePictureCard.IsVisible = cards.Count + rings.Count > 0;
         Header.SetNudgeIndicator(summary.OpenCount > 0);
 
-        // The link is only worth offering when there is more behind it than the two on screen.
-        CompleteThePictureLink.IsVisible = summary.OpenCount > summary.DashboardCards.Count;
+        // How many are waiting, on the title, so a caregiver knows there is more than the one in
+        // view before they swipe. Not on a lone item — "1" beside a single card is the card again.
+        // Each ring counts once, however many of its member's reminders it folded in.
+        var rows = Math.Max((waiting ?? WaitingNudges(summary)) - folded, cards.Count);
+        var total = rows + rings.Count;
+        NudgeCountBadge.IsVisible = total > 1;
+        NudgeCountLabel.Text = total > 9 ? "9+" : total.ToString(CultureInfo.CurrentCulture);
+        SemanticProperties.SetDescription(NudgeCountBadge, $"{total} to complete");
+
+        // The link is only worth offering when there is more behind it than the row can show.
+        CompleteThePictureLink.IsVisible = rows > cards.Count;
+    }
+
+    /// <summary>A member's set-up ring, title and next step, opening that step on a tap.</summary>
+    private View BuildSetupRing(SetupProgressLine line)
+    {
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+
+        var row = new Grid
+        {
+            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto)],
+            ColumnSpacing = 10,
+            Padding = new Thickness(10, 7),
+        };
+        row.Add(new ProgressRing
+        {
+            Progress = line.Fraction,
+            WidthRequest = 28,
+            HeightRequest = 28,
+            VerticalOptions = LayoutOptions.Center,
+        }, 0, 0);
+        row.Add(new VerticalStackLayout
+        {
+            Spacing = 0,
+            VerticalOptions = LayoutOptions.Center,
+            Children =
+            {
+                new Label { Text = line.Title, Style = (Style)resources["Body1SemiBoldDark"], FontSize = 14 },
+                new Label
+                {
+                    Text = line.Next,
+                    Style = (Style)resources["Body2"],
+                    FontSize = 12,
+                    LineBreakMode = LineBreakMode.TailTruncation,
+                },
+            },
+        }, 1, 0);
+        row.Add(new Image
+        {
+            Source = "icon_chevron.svg",
+            WidthRequest = 16,
+            HeightRequest = 16,
+            VerticalOptions = LayoutOptions.Center,
+        }, 2, 0);
+
+        var card = new Border
+        {
+            StrokeThickness = 0,
+            BackgroundColor = (Color)resources["InputBackground"],
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
+            Content = row,
+        };
+        SemanticProperties.SetDescription(card, $"{line.Title}. {line.Next}");
+        SemanticProperties.SetHint(card, "Double tap to do the next step");
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await OpenSetupStepAsync(line.NextStep);
+        card.GestureRecognizers.Add(tap);
+        return card;
+    }
+
+    /// <summary>
+    /// The step's own screen. The time zone is answered on the reminders page, which confirms the
+    /// phone's zone in a tap; a step whose screen this version does not have goes there too.
+    /// </summary>
+    private static async Task OpenSetupStepAsync(MemberSetupStep step)
+    {
+        var link = NudgeLinkParser.Parse(step.ActionDeepLink);
+        var destination = link.Kind == NudgeDestinationKind.TimeZone ? null : DeepLinkRouter.Resolve(link);
+        await Shell.Current.GoToAsync(destination ?? NotificationsPage.Route);
+    }
+
+    /// <summary>
+    /// Sizes the "Complete the picture" row's items to most of the card's content width, the
+    /// Recent Alerts carousel's rule, so the next item peeks in at the edge. Measured off the
+    /// heading, since the row itself runs edge to edge.
+    /// </summary>
+    private void SizeNudgeRows()
+    {
+        if (NudgeHeader.Width <= 0)
+            return;
+
+        var width = Math.Floor(NudgeHeader.Width * CarouselCardWidthFraction);
+        foreach (var row in NudgeList.Children.OfType<NudgeMiniRow>())
+            row.WidthRequest = width;
     }
 
     private async void OnNudgeTapped(object? sender, NotificationResponse notification) =>

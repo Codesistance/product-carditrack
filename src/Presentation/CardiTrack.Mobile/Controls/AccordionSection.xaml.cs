@@ -171,7 +171,25 @@ public partial class AccordionSection : ContentView
         BodyClip.HeightRequest = BodyHost.Measure(width, double.PositiveInfinity).Height;
     }
 
-    private void OnHeaderTapped(object? sender, TappedEventArgs e)
+    /// <summary>
+    /// Whether the section draws its own header. Off for a caller that opens the section from a
+    /// control of its own elsewhere — the dashboard's stacked member cards, whose "Metrics" link
+    /// sits on the actions line — and then drives it through <see cref="Toggle"/>.
+    /// </summary>
+    public bool ShowHeader
+    {
+        set
+        {
+            HeaderChrome.IsVisible = value;
+            RootLayout.Spacing = value ? 10 : 0;
+        }
+    }
+
+    /// <summary>Raised as the body starts to open (true) or close (false).</summary>
+    public event EventHandler<bool>? ExpandedChanged;
+
+    /// <summary>Opens a closed section or closes an open one, as a tap on its header would.</summary>
+    public void Toggle()
     {
         if (_isAnimating)
             return;
@@ -180,7 +198,10 @@ public partial class AccordionSection : ContentView
             Collapse();
         else
             Expand();
+        ExpandedChanged?.Invoke(this, IsExpanded);
     }
+
+    private void OnHeaderTapped(object? sender, TappedEventArgs e) => Toggle();
 
     private void Expand()
     {

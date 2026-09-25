@@ -49,6 +49,68 @@ public partial class QuickActionRow : ContentView
         InitializeComponent();
     }
 
+    public static readonly BindableProperty CompactProperty = BindableProperty.Create(
+        nameof(Compact),
+        typeof(bool),
+        typeof(QuickActionRow),
+        false,
+        propertyChanged: (bindable, _, isCompact) => ((QuickActionRow)bindable).ApplyCompact((bool)isCompact));
+
+    /// <summary>
+    /// Icon-only, 36-square tiles packed to the right, for a screen where the four actions sit
+    /// inside a card rather than as a row of their own — Alert Details' member card. The tiles
+    /// keep their tints, so SOS is still the red one and a dimmed tile still reads as
+    /// unavailable, and the words move into each tile's accessible name.
+    /// </summary>
+    public bool Compact
+    {
+        get => (bool)GetValue(CompactProperty);
+        set => SetValue(CompactProperty, value);
+    }
+
+    private void ApplyCompact(bool compact)
+    {
+        const double Tile = 36;
+        const double Glyph = 18;
+
+        Tiles.ColumnDefinitions.Clear();
+        for (var i = 0; i < 4; i++)
+            Tiles.ColumnDefinitions.Add(new ColumnDefinition(compact ? GridLength.Auto : GridLength.Star));
+        Tiles.ColumnSpacing = compact ? 8 : 10;
+        Tiles.HorizontalOptions = compact ? LayoutOptions.End : LayoutOptions.Fill;
+
+        foreach (var (tile, icon, label) in new (Border, Image, Label)[]
+                 {
+                     (EmergencyCallAction, SosIcon, SosLabel),
+                     (CallAction, CallIcon, CallLabel),
+                     (MessageAction, MessageIcon, MessageLabel),
+                     (DetailsAction, DetailsIcon, DetailsLabel),
+                 })
+        {
+            label.IsVisible = !compact;
+            icon.WidthRequest = icon.HeightRequest = compact ? Glyph : 22;
+
+            if (compact)
+            {
+                tile.WidthRequest = tile.HeightRequest = Tile;
+                tile.Padding = new Thickness(0);
+            }
+            else
+            {
+                // Back to whatever QuickActionTile says, rather than a copy of it here.
+                tile.ClearValue(WidthRequestProperty);
+                tile.ClearValue(HeightRequestProperty);
+                tile.ClearValue(Border.PaddingProperty);
+            }
+
+            if (tile.Content is VerticalStackLayout stack)
+            {
+                stack.Spacing = compact ? 0 : 10;
+                stack.VerticalOptions = compact ? LayoutOptions.Center : LayoutOptions.Fill;
+            }
+        }
+    }
+
     /// <summary>Binds the row to one CardiMember and applies each tile's availability.</summary>
     public void Apply(QuickActionTarget target, IPopupService popups)
     {

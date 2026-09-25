@@ -14,7 +14,7 @@
          MemberChatLauncher. Hosts that know which member their content belongs to set
          MemberId/MemberFirstName; hosts without a single member (Alerts list, Settings) leave
          them unset and the launcher resolves the account's members itself on tap — opening
-         directly for the ordinary one-member family, or asking via an action sheet.
+         directly for the ordinary one-member family, or opening the chat for its bot to ask who.
          No Figma frame; as-built, see the design-sync backlog. -->
 
     <ContentView.GestureRecognizers>

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.MedicalEntryEditPopupPage"
+             BackgroundColor="Transparent">
+
+    <!-- One line of the medical-information ledger: what kind of thing it is, and what it says.
+         The shell of ContactEditPopupPage, so every record a family keeps is edited in the same
+         place the same way. -->
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24"
+                Margin="32,0"
+                Scale="0.92"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout>
+                <Label x:Name="TitleLabel"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"/>
+
+                <Label x:Name="DescriptionLabel"
+                       Margin="0,6,0,0"
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap"/>
+
+                <!-- The four kinds as a segmented row, the set one filled. A row rather than a
+                     choice sheet: four short words fit across the card, and the kind is a
+                     one-tap decision a caregiver makes on the way to typing. Built in code. -->
+                <Label Text="What is it?"
+                       Margin="0,20,0,6"
+                       Style="{StaticResource AuthFieldLabel}"/>
+                <Grid x:Name="KindRow" ColumnDefinitions="*,*,*,*" ColumnSpacing="6"/>
+
+                <VerticalStackLayout Spacing="4" Margin="0,16,0,0">
+                    <!-- Same borrowed field as the notes form. MaxLength is the server's ceiling
+                         on one line, enforced at the keyboard. -->
+                    <Border Style="{StaticResource AuthEntryBorder}" HeightRequest="96" Padding="16,8">
+                        <Editor x:Name="TextEditor"
+                                FontFamily="Quicksand"
+                                FontSize="14"
+                                PlaceholderColor="{StaticResource BodyText}"
+                                TextColor="{StaticResource HeadingText}"
+                                BackgroundColor="Transparent"
+                                AutoSize="Disabled"
+                                TextChanged="OnTextChanged"/>
+                    </Border>
+
+                    <Label x:Name="CounterLabel"
+                           Style="{StaticResource Caption}"
+                           HorizontalTextAlignment="End"/>
+
+                    <Label x:Name="TextError"
+                           Style="{StaticResource AuthErrorLabel}"
+                           IsVisible="False"/>
+                </VerticalStackLayout>
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,20,0,0">
+                    <Button Grid.Column="0"
+                            Text="Cancel"
+                            Style="{StaticResource ActionButtonDark}"
+                            ImageSource="icon_btn_close.svg"
+                            Clicked="OnCancelClicked"/>
+                    <Button x:Name="SaveBtn"
+                            Grid.Column="1"
+                            Text="Save"
+                            Style="{StaticResource ActionButtonBlue}"
+                            ImageSource="icon_btn_save.svg"
+                            Clicked="OnSaveClicked"/>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

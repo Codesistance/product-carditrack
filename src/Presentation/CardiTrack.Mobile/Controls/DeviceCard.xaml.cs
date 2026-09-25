@@ -21,16 +21,25 @@ public partial class DeviceCard : ContentView
     /// <summary>False while a re-pull is open or its cooldown is in force — the row then only reports.</summary>
     private bool _canRepull = true;
 
-    /// <summary>Raised with the new state when the user opens or closes the sharing detail.</summary>
-    public event EventHandler<bool>? SharingExpansionChanged;
+    /// <summary>Raised when the user opens a family's readings (the family) or folds them (null).</summary>
+    public event EventHandler<DatasetFamily?>? SharingFamilyChanged;
 
     private Guid _deviceId;
+
+    /// <summary>This card's device is the member's primary one — its star only reports.</summary>
+    private bool _isPrimary;
 
     /// <summary>Guards the Toggled handler while <see cref="Apply"/> sets the switch itself.</summary>
     private bool _applying;
 
-    /// <summary>False when every family names a single dataset — the pills already say it all.</summary>
-    private bool _canExpandSharing;
+    /// <summary>What this device shares, by family, as last applied.</summary>
+    private IReadOnlyList<DeviceDatasetGroup> _groups = [];
+
+    /// <summary>The pills that open a strip — families with more than one reading.</summary>
+    private readonly Dictionary<DatasetFamily, Border> _pills = [];
+
+    /// <summary>The family whose readings the strip is showing, if any.</summary>
+    private DatasetFamily? _openFamily;
 
     public DeviceCard()
     {
@@ -64,38 +73,36 @@ public partial class DeviceCard : ContentView
             // cannot currently pull anything.
             var needsReconnect = device.Status == "token_expired";
             DeviceInfoSection.Opacity = needsReconnect ? 0.55 : 1;
-            ReconnectRow.IsVisible = needsReconnect;
-            RefreshRow.IsVisible = !needsReconnect;
-            RepullRow.IsVisible = !needsReconnect;
-            PrimaryRow.IsVisible = !needsReconnect;
-            SemanticProperties.SetDescription(ReconnectRow,
-                $"{device.DisplayName} needs reconnecting. Opens sign-in to restore the connection.");
+            ReconnectButton.IsVisible = needsReconnect;
+            RefreshButton.IsVisible = !needsReconnect;
+            RepullButton.IsVisible = !needsReconnect;
+            SemanticProperties.SetDescription(ReconnectButton,
+                $"Reconnect {device.DisplayName}. Opens sign-in to restore the connection.");
 
-            SyncedLabel.Text = device.LastSyncedAt is { } synced
-                ? $"synced {RelativeTime.Format(synced)}"
-                : "not synced yet";
+            // One sentence for both ends of the sync: when it last sent, and when it next will.
+            // The second half is left off while the connection cannot sync at all.
+            var last = device.LastSyncedAt is { } synced
+                ? $"Synced {RelativeTime.Format(synced)}"
+                : "Not synced yet";
+            SyncedLabel.Text = needsReconnect || device.NextSyncAt is null
+                ? last
+                : $"{last} · next {NextSyncText(device.NextSyncAt)}";
 
             ApplyDatasets(device.Scopes);
-
-            LastSyncValue.Text = device.LastSyncedAt is { } last
-                ? RelativeTime.Format(last)
-                : "—";
-            NextSyncValue.Text = NextSyncText(device.NextSyncAt);
-            TodayValue.Text = device.TodayUpdateCount switch
-            {
-                0 => "No updates",
-                1 => "1 update",
-                var n => $"{n} updates",
-            };
 
             ApplyBattery(device);
             ApplyHistoryRepull(device.HistoryRepull);
 
-            PrimaryStar.IsVisible = device.IsPrimary;
-            PrimarySwitch.IsToggled = device.IsPrimary;
-            // Turning the only primary off would leave the member without one; promotion
-            // happens by switching a different device on.
-            PrimarySwitch.IsEnabled = !device.IsPrimary;
+            // Filled on the primary; outlined, and a way to promote, on the others. Turning the
+            // primary off would leave the member without one, so its star only reports. A
+            // connection that needs reconnecting is offered no promotion: it is sending nothing.
+            _isPrimary = device.IsPrimary;
+            PrimaryStar.IsVisible = device.IsPrimary || !needsReconnect;
+            PrimaryStarIcon.Source = device.IsPrimary ? "icon_star_on.svg" : "icon_star_off.svg";
+            SemanticProperties.SetDescription(PrimaryStar, device.IsPrimary ? "Primary device" : "Make primary device");
+            SemanticProperties.SetHint(PrimaryStar, device.IsPrimary
+                ? "Its readings are used when two devices overlap"
+                : "Double tap to use this device's readings when two overlap");
         }
         finally
         {
@@ -104,37 +111,31 @@ public partial class DeviceCard : ContentView
     }
 
     /// <summary>
-    /// Shows the battery tile, but only when the server sent a reading. It withholds one whenever
-    /// the connection never granted the settings scope, the hardware has no battery, or the last
-    /// reading has aged out — so "no battery field" means "nothing trustworthy to say", and an
-    /// empty or guessed tile is never drawn in its place.
+    /// Shows the battery beside the device name, but only when the server sent a reading. It
+    /// withholds one whenever the connection never granted the settings scope, the hardware has
+    /// no battery, or the last reading has aged out — so "no battery field" means "nothing
+    /// trustworthy to say", and an empty or guessed badge is never drawn in its place.
     /// </summary>
-    /// <remarks>
-    /// A hidden child does not release its grid column, so the column width is collapsed alongside
-    /// it; otherwise the three remaining tiles would sit in three quarters of the row with a gap
-    /// where the fourth belongs.
-    /// </remarks>
     private void ApplyBattery(DeviceResponse device)
     {
         var text = device.BatteryLevel is { } level
             ? $"{level}%"
             : device.BatteryStatus;
 
-        var hasReading = !string.IsNullOrWhiteSpace(text);
-
-        BatteryTile.IsVisible = hasReading;
-        BatteryColumn.Width = hasReading ? GridLength.Star : new GridLength(0);
-
-        if (!hasReading)
+        BatteryBadge.IsVisible = !string.IsNullOrWhiteSpace(text);
+        if (!BatteryBadge.IsVisible)
             return;
 
         BatteryValue.Text = text;
 
-        // Red at the same threshold DEVICE_BATTERY_LOW fires at, so the tile and the notification
+        // Red at the same threshold DEVICE_BATTERY_LOW fires at, so the badge and the notification
         // a caregiver may already have received agree about what counts as low.
-        BatteryValue.TextColor = DeviceBattery.IsLow(device.BatteryLevel, device.BatteryStatus)
-            ? Color.FromArgb("#C42F2F")
-            : Color.FromArgb("#1E8C6E");
+        var low = DeviceBattery.IsLow(device.BatteryLevel, device.BatteryStatus);
+        BatteryValue.TextColor = low ? Color.FromArgb("#C42F2F") : Color.FromArgb("#1E8C6E");
+        BatteryIcon.Source = low
+            ? "icon_battery_low.svg"
+            : device.BatteryLevel is >= 60 ? "icon_battery_full.svg" : "icon_battery_half.svg";
+        SemanticProperties.SetDescription(BatteryBadge, $"Battery {text}{(low ? ", low" : string.Empty)}");
     }
 
     /// <summary>
@@ -150,17 +151,14 @@ public partial class DeviceCard : ContentView
         var status = HistoryRepullCopy.StatusLine(repull, now);
         RepullStatusLabel.Text = status ?? string.Empty;
         RepullStatusLabel.IsVisible = status is not null;
-        RepullLabel.Opacity = _canRepull ? 1 : 0.5;
-
         // Genuinely not a control while withheld, rather than a tap that silently does nothing:
-        // a disabled row is announced as such by a screen reader, and the gesture never fires.
-        RepullRow.IsEnabled = _canRepull;
-        RepullRow.InputTransparent = !_canRepull;
+        // a disabled button is announced as such by a screen reader, and dimmed for everyone.
+        RepullButton.IsEnabled = _canRepull;
 
-        SemanticProperties.SetDescription(RepullRow, status is null
+        SemanticProperties.SetDescription(RepullButton, status is null
             ? "Re-pull history"
             : $"Re-pull history. {status}");
-        SemanticProperties.SetHint(RepullRow, _canRepull
+        SemanticProperties.SetHint(RepullButton, _canRepull
             ? "Re-reads past days from the device's provider to fill gaps"
             : string.Empty);
     }
@@ -169,57 +167,65 @@ public partial class DeviceCard : ContentView
     public void SetBusy(bool busy)
     {
         IsEnabled = !busy;
-        RefreshLabel.Text = busy ? "Working..." : "Refresh Connection";
+        RefreshButton.Text = busy ? "Working…" : "Refresh";
     }
 
     private static string NextSyncText(DateTime? nextSyncAt)
     {
         if (nextSyncAt is not { } next)
-            return "When connected";
+            return "when connected";
 
         var minutes = (int)Math.Ceiling(
             (DateTime.SpecifyKind(next, DateTimeKind.Utc) - DateTime.UtcNow).TotalMinutes);
         return minutes switch
         {
-            <= 0 => "Any moment",
-            1 => "In 1 min",
-            < 60 => $"In {minutes} mins",
-            _ => $"In {minutes / 60}h",
+            <= 0 => "any moment",
+            1 => "in 1 min",
+            < 60 => $"in {minutes} mins",
+            _ => $"in {minutes / 60}h",
         };
     }
 
     /// <summary>
-    /// Rebuilds the sharing row: one pill per dataset family, with the family's readings on a
-    /// detail line behind the chevron. A connection sharing nothing is worth saying out loud —
+    /// Rebuilds the sharing row: one pill per dataset family, each that stands for several readings
+    /// opening them in the strip below it. A connection sharing nothing is worth saying out loud —
     /// it looks connected but sends no data — so the row keeps a pill either way.
     /// </summary>
     private void ApplyDatasets(List<string> scopes)
     {
         DatasetPills.Children.Clear();
-        SharingDetail.Children.Clear();
+        _pills.Clear();
+        _groups = DeviceDatasets.GroupedFor(scopes);
 
-        var groups = DeviceDatasets.GroupedFor(scopes);
-        if (groups.Count == 0)
+        if (_groups.Count == 0)
         {
             DatasetPills.Children.Add(BuildWarningPill("Not sharing any data"));
-            SetSharingExpandable(false);
+            SetOpenFamily(null);
             return;
         }
 
-        foreach (var group in groups)
+        foreach (var group in _groups)
         {
-            DatasetPills.Children.Add(BuildPill(group));
-            SharingDetail.Children.Add(BuildDetailLine(group));
+            var pill = BuildPill(group);
+            DatasetPills.Children.Add(pill);
+
+            // A pill that names its one reading already says everything it could open.
+            if (group.Datasets.Count > 1)
+            {
+                _pills[group.Family] = pill;
+                var tap = new TapGestureRecognizer();
+                tap.Tapped += (_, _) => OnPillTapped(group.Family);
+                pill.GestureRecognizers.Add(tap);
+            }
         }
 
-        // Nothing to reveal when every pill already names its one dataset.
-        SetSharingExpandable(groups.Any(g => g.Datasets.Count > 1));
+        // Re-applied so a rebuild keeps (or drops, if that family has gone) whatever was open.
+        SetOpenFamily(_openFamily);
     }
 
     /// <summary>
     /// A family pill: the label, plus the number of readings when the family carries several.
-    /// The count is the whole point of collapsing the row — it keeps "how much" visible after
-    /// "which ones" moves behind the chevron.
+    /// The count keeps "how much" visible while "which ones" waits behind a tap.
     /// </summary>
     private static Border BuildPill(DeviceDatasetGroup group)
     {
@@ -245,7 +251,23 @@ public partial class DeviceCard : ContentView
             });
         }
 
-        var pill = Pill(background, new Label { FormattedText = text });
+        // The family's glyph in the pill's own ink, so the row reads at a glance — a heart, a
+        // moon, a runner — before the words are read. Decorative: the pill's description says it.
+        var pill = Pill(background, new HorizontalStackLayout
+        {
+            Spacing = 5,
+            Children =
+            {
+                new Image
+                {
+                    Source = IconFor(group.Family),
+                    WidthRequest = 14,
+                    HeightRequest = 14,
+                    VerticalOptions = LayoutOptions.Center,
+                },
+                new Label { FormattedText = text, VerticalOptions = LayoutOptions.Center },
+            },
+        });
 
         // "Activity  5" is only unambiguous once you can see the colour grouping; spell it out
         // for a screen reader, which gets the pills one after another with no row to compare.
@@ -271,9 +293,23 @@ public partial class DeviceCard : ContentView
         });
     }
 
-    private static Border Pill(Color background, Label content) => new()
+    private static string IconFor(DatasetFamily family) => family switch
     {
-        StrokeThickness = 0,
+        DatasetFamily.Activity => "icon_dataset_activity.svg",
+        DatasetFamily.Heart => "icon_dataset_heart.svg",
+        DatasetFamily.Sleep => "icon_dataset_sleep.svg",
+        DatasetFamily.Body => "icon_dataset_body.svg",
+        _ => "icon_dataset_other.svg",
+    };
+
+    /// <remarks>
+    /// Always carries a 1.5 stroke, transparent until the pill is the open one: a stroke that
+    /// appeared only on selection would widen the pill and reflow the row under the finger.
+    /// </remarks>
+    private static Border Pill(Color background, View content) => new()
+    {
+        StrokeThickness = 1.5,
+        Stroke = Colors.Transparent,
         BackgroundColor = background,
         Padding = new Thickness(10, 4),
         // FlexLayout has no spacing of its own; the margin is the gutter between pills.
@@ -281,30 +317,6 @@ public partial class DeviceCard : ContentView
         StrokeShape = new RoundRectangle { CornerRadius = 10 },
         Content = content,
     };
-
-    /// <summary>"Heart  Heart Rate · Resting HR" — the family in its own ink, the readings after.</summary>
-    private static Label BuildDetailLine(DeviceDatasetGroup group)
-    {
-        var (_, foreground) = PillColours(group.Family);
-
-        var text = new FormattedString();
-        text.Spans.Add(new Span
-        {
-            Text = $"{DeviceDatasetGroup.DisplayName(group.Family)}  ",
-            TextColor = foreground,
-            FontFamily = "QuicksandSemiBold",
-            FontSize = 11,
-        });
-        text.Spans.Add(new Span
-        {
-            Text = group.Detail,
-            TextColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources["BodyText"],
-            FontFamily = "Quicksand",
-            FontSize = 11,
-        });
-
-        return new Label { FormattedText = text };
-    }
 
     /// <summary>Resolves a family's tint/ink pair from the Colors.xaml palette.</summary>
     private static (Color Background, Color Foreground) PillColours(DatasetFamily family)
@@ -322,39 +334,44 @@ public partial class DeviceCard : ContentView
         return ((Color)resources[$"{token}Background"], (Color)resources[$"{token}Text"]);
     }
 
+    private void OnPillTapped(DatasetFamily family)
+    {
+        var open = _openFamily == family ? (DatasetFamily?)null : family;
+        SetOpenFamily(open);
+        SharingFamilyChanged?.Invoke(this, open);
+    }
+
     /// <summary>
-    /// Restores the disclosure state after a reload. The page re-creates every card on refresh,
-    /// so without this an open detail would snap shut each time an action reloads the list.
+    /// Opens <paramref name="family"/>'s readings in the strip under the pills, or folds the strip
+    /// for <c>null</c>. Also how the page restores what was open after a reload: it re-creates
+    /// every card on refresh, so without this an open strip would snap shut each time an action
+    /// reloads the list. A family this device no longer shares (or one with a single reading,
+    /// which has nothing to open) folds the strip.
     /// </summary>
-    public void SetSharingExpanded(bool expanded)
+    public void SetOpenFamily(DatasetFamily? family)
     {
-        SharingDetail.IsVisible = _canExpandSharing && expanded;
-        SharingChevron.Source = SharingDetail.IsVisible ? "icon_chevron.svg" : "icon_chevron_down.svg";
-        SemanticProperties.SetDescription(SharingHeader, !_canExpandSharing
-            ? "Shared data"
-            : SharingDetail.IsVisible ? "Shared data, expanded" : "Shared data, collapsed");
-        SemanticProperties.SetHint(SharingHeader, !_canExpandSharing
-            ? string.Empty
-            : SharingDetail.IsVisible ? "Hides each reading" : "Lists each reading shared");
-    }
+        var group = family is { } f && _pills.ContainsKey(f)
+            ? _groups.FirstOrDefault(g => g.Family == f)
+            : null;
+        _openFamily = group?.Family;
 
-    private void SetSharingExpandable(bool expandable)
-    {
-        _canExpandSharing = expandable;
-        SharingChevron.IsVisible = expandable;
-        // Re-applied either way so the chevron glyph and the semantic description match the
-        // panel after a rebuild, whichever state the card was left in.
-        SetSharingExpanded(SharingDetail.IsVisible);
-    }
+        foreach (var (pillFamily, pill) in _pills)
+        {
+            var isOpen = pillFamily == _openFamily;
+            pill.Stroke = isOpen ? PillColours(pillFamily).Foreground : Colors.Transparent;
+            SemanticProperties.SetHint(pill, isOpen
+                ? "Double tap to hide its readings"
+                : "Double tap to list its readings");
+        }
 
-    private void OnSharingTapped(object? sender, TappedEventArgs e)
-    {
-        if (!_canExpandSharing)
+        SharingStrip.IsVisible = group is not null;
+        if (group is null)
             return;
 
-        var expanded = !SharingDetail.IsVisible;
-        SetSharingExpanded(expanded);
-        SharingExpansionChanged?.Invoke(this, expanded);
+        var (background, foreground) = PillColours(group.Family);
+        SharingStrip.BackgroundColor = background;
+        SharingStripLabel.TextColor = foreground;
+        SharingStripLabel.Text = group.Detail;
     }
 
     private static string ProviderImageFor(string provider) => provider.ToLowerInvariant() switch
@@ -369,25 +386,25 @@ public partial class DeviceCard : ContentView
         _ => "device_other.png",
     };
 
-    private void OnRefreshTapped(object? sender, TappedEventArgs e) =>
+    private void OnRefreshClicked(object? sender, EventArgs e) =>
         RefreshRequested?.Invoke(this, _deviceId);
 
-    private void OnReconnectTapped(object? sender, TappedEventArgs e) =>
+    private void OnReconnectClicked(object? sender, EventArgs e) =>
         ReconnectRequested?.Invoke(this, _deviceId);
 
-    private void OnRepullTapped(object? sender, TappedEventArgs e)
+    private void OnRepullClicked(object? sender, EventArgs e)
     {
         if (!_canRepull)
             return;
         RepullRequested?.Invoke(this, _deviceId);
     }
 
-    private void OnRemoveTapped(object? sender, TappedEventArgs e) =>
+    private void OnRemoveClicked(object? sender, EventArgs e) =>
         RemoveRequested?.Invoke(this, _deviceId);
 
-    private void OnPrimaryToggled(object? sender, ToggledEventArgs e)
+    private void OnPrimaryStarTapped(object? sender, TappedEventArgs e)
     {
-        if (_applying || !e.Value)
+        if (_applying || _isPrimary)
             return;
         SetPrimaryRequested?.Invoke(this, _deviceId);
     }

@@ -75,16 +75,21 @@ public static class AlertAnswerKinds
     public static IReadOnlyList<AlertResponseOptionResponse> OptionsFor(AlertDetailResponse alert, AlertAnswerKind kind) =>
         kind == AlertAnswerKind.Close ? alert.ResponseOptions.Close : alert.ResponseOptions.Acknowledge;
 
+    /// <remarks>
+    /// "Resolve", not "Close", in everything a caregiver reads: closing reads as shutting a
+    /// screen, and what this records is that the episode is over and how. The wire value stays
+    /// "close" (<see cref="Wire"/>) — the API's word, not the caregiver's.
+    /// </remarks>
     public static string Title(AlertAnswerKind kind) =>
-        kind == AlertAnswerKind.Close ? "Close this alert" : "Acknowledge this alert";
+        kind == AlertAnswerKind.Close ? "Resolve this alert" : "Acknowledge this alert";
 
     public static string Prompt(AlertAnswerKind kind) => kind == AlertAnswerKind.Close
-        ? "It's dealt with. Tell the family what happened — the rule can fire again if it comes back."
+        ? "Let the family know how it was sorted. If it happens again, you'll get a new alert."
         : "You're on it. Tell the family what you're doing so nobody else has to guess.";
 
     /// <summary>The one button on the page, naming the action it takes.</summary>
     public static string ButtonText(AlertAnswerKind kind) =>
-        kind == AlertAnswerKind.Close ? "Close alert" : "Acknowledge";
+        kind == AlertAnswerKind.Close ? "Resolve" : "Acknowledge";
 
     public static string Wire(AlertAnswerKind kind) => kind == AlertAnswerKind.Close ? "close" : "acknowledge";
 

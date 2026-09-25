@@ -606,7 +606,7 @@ public partial class JournalPage : ContentPage
             BackgroundColor = Tinted("White"),
             StrokeThickness = 0,
             Padding = new Thickness(15, 14, 14, 14),
-            StrokeShape = new RoundRectangle { CornerRadius = 20 },
+            StrokeShape = new RoundRectangle { CornerRadius = CardCornerRadius },
             Content = new VerticalStackLayout
             {
                 Spacing = 8,
@@ -624,7 +624,7 @@ public partial class JournalPage : ContentPage
             BackgroundColor = JournalPresentation.UrgencyRailColor(review.Urgency) ?? Tinted("White"),
             StrokeThickness = 0,
             Padding = new Thickness(4, 0, 0, 0),
-            StrokeShape = new RoundRectangle { CornerRadius = 20 },
+            StrokeShape = new RoundRectangle { CornerRadius = CardCornerRadius },
             Shadow = new Shadow
             {
                 Brush = (Brush)Microsoft.Maui.Controls.Application.Current!.Resources["CardShadowBrush"],
@@ -741,6 +741,10 @@ public partial class JournalPage : ContentPage
     /// <summary>A colour from the same place, for the same reason.</summary>
     private static Color Tinted(string key) =>
         (Color)Microsoft.Maui.Controls.Application.Current!.Resources[key];
+
+    /// <summary>The standard card corner (Styles.xaml), so this code-built card matches the styled ones.</summary>
+    private static CornerRadius CardCornerRadius =>
+        (CornerRadius)Microsoft.Maui.Controls.Application.Current!.Resources["CardCornerRadius"];
 
     private void SetState(
         bool loading = false, bool loaded = false, bool empty = false, bool error = false)

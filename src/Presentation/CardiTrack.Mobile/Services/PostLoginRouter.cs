@@ -198,6 +198,9 @@ public sealed class PostLoginRouter
             // after an earlier pass already signed telemetry in.
             await MainThread.InvokeOnMainThreadAsync(DiagnosticsConsent.SignedOut);
             await _auth.SignOutAsync();
+            // The photos of the people this account watched go with the session, as they do on
+            // the Settings sign-out.
+            MemberPhotoCache.Clear();
             await MainThread.InvokeOnMainThreadAsync(() =>
                 WindowNavigation.SetRootPage(current, new NavigationPage(new SignInPage())));
             return true;
@@ -215,6 +218,9 @@ public sealed class PostLoginRouter
             // after an earlier pass already signed telemetry in.
             await MainThread.InvokeOnMainThreadAsync(DiagnosticsConsent.SignedOut);
             await _auth.SignOutAsync();
+            // The photos of the people this account watched go with the session, as they do on
+            // the Settings sign-out.
+            MemberPhotoCache.Clear();
             await MainThread.InvokeOnMainThreadAsync(() =>
                 WindowNavigation.SetRootPage(current, new NavigationPage(new SignInPage())));
             return true;

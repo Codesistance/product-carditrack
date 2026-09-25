@@ -62,4 +62,7 @@
 	<!-- Runtime permission on API 33+; PushRegistrationCoordinator requests it via
 	     IFirebaseCloudMessaging.CheckIfValidAsync() at the moment of value (§4), not on launch. -->
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+	<!-- The bottom bar's tap tick (HapticFeedback.Perform). A normal-level permission, granted at
+	     install with no prompt; MAUI's Android haptics throw a PermissionException without it. -->
+	<uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

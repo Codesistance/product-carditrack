@@ -105,6 +105,8 @@ public static class DeviceDatasets
         ["hr"] = "HR",
         ["hrv"] = "HRV",
         ["ecg"] = "ECG",
+        // Irregular rhythm notifications — Google Health's irn scope.
+        ["irn"] = "IRN",
         ["spo2"] = "SpO2",
         ["vo2"] = "VO2",
         ["bmi"] = "BMI",

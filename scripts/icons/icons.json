@@ -275,6 +275,102 @@
     "BodyText",
     "White"
    ]
+  },
+  "onAmber": {
+   "title": "On the amber Undo button",
+   "style": "linear",
+   "slots": [
+    "#5A3300"
+   ],
+   "tokens": [
+    "ActionAmberInk"
+   ]
+  },
+  "datasetActivity": {
+   "title": "Sharing pill · Activity",
+   "style": "linear",
+   "slots": [
+    "#10659F"
+   ],
+   "tokens": [
+    "DatasetActivityText"
+   ]
+  },
+  "datasetHeart": {
+   "title": "Sharing pill · Heart",
+   "style": "linear",
+   "slots": [
+    "#B93A55"
+   ],
+   "tokens": [
+    "DatasetHeartText"
+   ]
+  },
+  "datasetSleep": {
+   "title": "Sharing pill · Sleep",
+   "style": "linear",
+   "slots": [
+    "#5A4EBF"
+   ],
+   "tokens": [
+    "DatasetSleepText"
+   ]
+  },
+  "datasetBody": {
+   "title": "Sharing pill · Body",
+   "style": "linear",
+   "slots": [
+    "#1F8A72"
+   ],
+   "tokens": [
+    "DatasetBodyText"
+   ]
+  },
+  "datasetOther": {
+   "title": "Sharing pill · Settings and other",
+   "style": "linear",
+   "slots": [
+    "#5C6672"
+   ],
+   "tokens": [
+    "DatasetOtherText"
+   ]
+  },
+  "actionTintRed": {
+   "title": "Compact tinted action · red",
+   "style": "linear",
+   "slots": [
+    "#C42F2F"
+   ],
+   "tokens": [
+    "ActionTintRedInk"
+   ]
+  },
+  "actionTintBlue": {
+   "title": "Compact tinted action · blue",
+   "style": "linear",
+   "slots": [
+    "#10659F"
+   ],
+   "tokens": [
+    "ActionTintBlueInk"
+   ]
+  },
+  "primaryStar": {
+   "title": "Primary device star · amber",
+   "style": "Multicolor",
+   "slots": [
+    "#B45309",
+    "#EF9F27",
+    "#FFFFFF",
+    "#EF9F27"
+   ],
+   "tokens": [
+    "CautionAmber",
+    "derived, StatusYellow warmed",
+    "White",
+    "derived, StatusYellow warmed"
+   ]
   }
  },
  "icons": [
@@ -332,6 +428,13 @@
    "source": "iconpark",
    "name": "tips",
    "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_check_white.svg",
+   "source": "iconpark",
+   "name": "check",
+   "group": "white",
    "size": 24
   },
   {
@@ -570,9 +673,94 @@
    "size": 24
   },
   {
+   "file": "icon_device_off.svg",
+   "source": "material",
+   "name": "watch_off",
+   "fill": "#C42F2F",
+   "token": "DangerRed",
+   "size": 24
+  },
+  {
+   "file": "icon_help.svg",
+   "source": "iconpark",
+   "name": "help",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_ledger_allergy.svg",
+   "source": "iconpark",
+   "name": "caution",
+   "group": "red",
+   "size": 24
+  },
+  {
+   "file": "icon_ledger_medication.svg",
+   "source": "iconpark",
+   "name": "pills",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_ledger_condition.svg",
+   "source": "iconpark",
+   "name": "heartbeat",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_ledger_other.svg",
+   "source": "iconpark",
+   "name": "notes",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_more_vertical.svg",
+   "source": "iconpark",
+   "name": "more-one",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_pin.svg",
+   "source": "iconpark",
+   "name": "pushpin",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_pin_on.svg",
+   "source": "iconpark",
+   "name": "pushpin",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_refresh.svg",
+   "source": "iconpark",
+   "name": "refresh",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_history.svg",
+   "source": "iconpark",
+   "name": "history",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_sort.svg",
+   "source": "iconpark",
+   "name": "list-checkbox",
+   "group": "onAmber",
+   "size": 24
+  },
+  {
    "file": "icon_metric_sleep.svg",
    "source": "material",
-   "name": "bedtime",
+   "name": "bed",
    "fill": "#7C6FDC",
    "token": "MetricSleepInk",
    "size": 24
@@ -607,14 +795,6 @@
    "name": "link-out",
    "group": "brand",
    "size": 24
-  },
-  {
-   "file": "icon_people.svg",
-   "source": "iconpark",
-   "name": "peoples",
-   "group": "ink",
-   "size": 24,
-   "solid": true
   },
   {
    "file": "icon_pause.svg",
@@ -685,7 +865,7 @@
   {
    "file": "icon_reason_sleep_white.svg",
    "source": "material",
-   "name": "bedtime",
+   "name": "bed",
    "fill": "#FFFFFF",
    "token": "White",
    "size": 24
@@ -837,6 +1017,167 @@
    "group": "ink",
    "size": 24,
    "solid": true
+  },
+  {
+   "file": "icon_btn_close.svg",
+   "source": "iconpark",
+   "name": "close",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_delete.svg",
+   "source": "iconpark",
+   "name": "delete",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_save.svg",
+   "source": "iconpark",
+   "name": "save",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_plus.svg",
+   "source": "iconpark",
+   "name": "plus",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_edit.svg",
+   "source": "iconpark",
+   "name": "edit",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_connect.svg",
+   "source": "iconpark",
+   "name": "iwatch",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_later.svg",
+   "source": "iconpark",
+   "name": "time",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_undo.svg",
+   "source": "iconpark",
+   "name": "undo",
+   "group": "onAmber",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_resolve.svg",
+   "source": "iconpark",
+   "name": "check-one",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_dataset_activity.svg",
+   "source": "iconpark",
+   "name": "sport",
+   "group": "datasetActivity",
+   "size": 24
+  },
+  {
+   "file": "icon_dataset_heart.svg",
+   "source": "iconpark",
+   "name": "heart-rate",
+   "group": "datasetHeart",
+   "size": 24
+  },
+  {
+   "file": "icon_dataset_sleep.svg",
+   "source": "iconpark",
+   "name": "sleep",
+   "group": "datasetSleep",
+   "size": 24
+  },
+  {
+   "file": "icon_dataset_body.svg",
+   "source": "iconpark",
+   "name": "people",
+   "group": "datasetBody",
+   "size": 24
+  },
+  {
+   "file": "icon_dataset_other.svg",
+   "source": "iconpark",
+   "name": "setting-two",
+   "group": "datasetOther",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_refresh_tint.svg",
+   "source": "iconpark",
+   "name": "refresh",
+   "group": "actionTintBlue",
+   "size": 16
+  },
+  {
+   "file": "icon_btn_history_tint.svg",
+   "source": "iconpark",
+   "name": "history",
+   "group": "actionTintBlue",
+   "size": 16
+  },
+  {
+   "file": "icon_btn_connect_tint.svg",
+   "source": "iconpark",
+   "name": "iwatch",
+   "group": "actionTintBlue",
+   "size": 16
+  },
+  {
+   "file": "icon_btn_delete_tint.svg",
+   "source": "iconpark",
+   "name": "delete",
+   "group": "actionTintRed",
+   "size": 16
+  },
+  {
+   "file": "icon_battery_full.svg",
+   "source": "iconpark",
+   "name": "battery-full",
+   "group": "infoGreen",
+   "size": 24
+  },
+  {
+   "file": "icon_battery_half.svg",
+   "source": "iconpark",
+   "name": "battery-working",
+   "group": "infoGreen",
+   "size": 24
+  },
+  {
+   "file": "icon_battery_low.svg",
+   "source": "iconpark",
+   "name": "battery-empty",
+   "group": "infoRed",
+   "size": 24
+  },
+  {
+   "file": "icon_star_on.svg",
+   "source": "iconpark",
+   "name": "star",
+   "group": "primaryStar",
+   "size": 24
+  },
+  {
+   "file": "icon_star_off.svg",
+   "source": "iconpark",
+   "name": "star",
+   "group": "muted",
+   "size": 24
   }
  ]
 }

@@ -3,80 +3,95 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.AlertMiniCard">
 
-    <!-- Figma 101:2902. Tile tint carries severity; the pill carries whether the alert has
-         been dealt with. -->
-    <!-- Squarer and flatter than the shared ElevatedCard: 20 of radius and a 14-radius shadow
-         are drawn for the full-width cards the style was written for, and on a 245-wide tile
-         they eat the corners and pool underneath. 14 and a shadow half the spread at two thirds
-         the opacity, sitting 2 down rather than 4, leave the strip reading as a row of cards
-         rather than a row of pills. The padding comes in too, from the style's 14,14,13,17 —
-         drawn for a full-width card, and a wide frame on a 245 tile — to an even 12,10.
-         Overridden here rather than in the style, which every full-width card on every page
-         shares. -->
-    <Border Style="{StaticResource ElevatedCard}" WidthRequest="245" Padding="12,10">
+    <!-- Figma 101:2902, departed from on purpose: the design's status pill is gone (this strip
+         only ever carries unacknowledged alerts, so it read "New" on every card and said
+         nothing), severity moves to a coloured left edge, and the alert's message is shown so a
+         caregiver can decide whether to open it without opening it. The tile keeps its tint.
+         Width is the dashboard's call, not the card's — full width when it is the only alert,
+         most of the width in the carousel when it is not (see DashboardPage.ApplyAlerts). -->
+    <!-- A row inside the Recent Alerts card, not a card of its own: filled and flat like the
+         "Complete the picture" rows (NudgeMiniRow) — InputBackground, no stroke, no shadow.
+         White with a shadow was right while these floated on the page background; inside a
+         white card it is white on white, held apart only by a shadow the card's own clip cuts
+         off at the edges.
+
+         The severity edge is the Alerts List's (AlertListCard, Figma 101:6525): two stacked
+         rounded rects, the severity colour underneath and the row inset 4 from its left edge,
+         so the colour rounds into the corners rather than running down the side as a straight
+         bar. The same rail on both lists, so an alert reads as the same object wherever it
+         turns up. -->
+    <Border x:Name="SeverityRail"
+            StrokeThickness="0"
+            Padding="4,0,0,0">
         <Border.StrokeShape>
-            <RoundRectangle CornerRadius="14"/>
+            <RoundRectangle CornerRadius="6"/>
         </Border.StrokeShape>
-        <Border.Shadow>
-            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.1" Radius="7" Offset="0,2"/>
-        </Border.Shadow>
         <Border.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnTapped"/>
         </Border.GestureRecognizers>
 
-        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
+        <Border BackgroundColor="{StaticResource InputBackground}"
+                StrokeThickness="0"
+                Padding="12,10,10,12">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="6"/>
+            </Border.StrokeShape>
 
-            <!-- 56 rather than the 46 this tile carried while the labels were smaller: the two
-                 lines of title plus the timestamp measure a shade under 57, and a tile shorter
-                 than the text beside it leaves the card looking bottom-heavy. The glyph keeps
-                 the tile's old proportion — 26 of 46 — so 32 of 56. -->
-            <Border x:Name="IconTileBorder"
-                    Grid.Column="0"
-                    Style="{StaticResource IconTile}"
-                    WidthRequest="56" HeightRequest="56"
-                    VerticalOptions="Center">
-                <Image x:Name="TypeIcon"
-                       WidthRequest="32" HeightRequest="32"/>
-            </Border>
+            <!-- Only the title sits beside the tile. The message and the timestamp run the full
+                 width underneath it, from the tile's left edge: indenting them under the title
+                 spent a tile's width of every line on nothing, and the message is the line that
+                 needs the room. -->
+            <Grid RowDefinitions="Auto,Auto,Auto"
+                  ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="11"
+                  RowSpacing="4">
 
-            <!-- Sized for reading first and for the tile second. The title keeps two lines —
-                 truncating "Long daytime rest" to one loses the half that says which rest —
-                 and the timestamp stays the smaller of the two, since "11 hours ago" is the
-                 least load-bearing line on the card.
+                <!-- 40 to sit level with a two-line title (two lines at 15 measure about 38);
+                     the 56 this tile carried was sized for a title-and-timestamp stack that
+                     no longer sits beside it. The glyph keeps its old proportion, 32 of 56. -->
+                <Border x:Name="IconTileBorder"
+                        Grid.Row="0" Grid.Column="0"
+                        Style="{StaticResource IconTile}"
+                        Padding="8"
+                        WidthRequest="40" HeightRequest="40"
+                        VerticalOptions="Center">
+                    <Image x:Name="TypeIcon"
+                           WidthRequest="24" HeightRequest="24"/>
+                </Border>
 
-                 At 15 and 12 the stack runs past the 46dp tile and the card settles around
-                 88dp rather than the 77 the tile alone would ask for. That is deliberate: 13
-                 and 10 did fit inside the tile, and read as small. Anything that has to be
-                 inside 46 has to come off the title's two lines, not off these sizes.
-
-                 No height cap: MaximumHeightRequest="46" was tried and clipped the timestamp
-                 to a sliver, because the stack measures a little above the sum of its lines. -->
-            <VerticalStackLayout Grid.Column="1"
-                                 Spacing="0"
-                                 VerticalOptions="Center">
+                <!-- Two lines rather than one: truncating "Long daytime rest" to one loses the
+                     half that says which rest. -->
                 <Label x:Name="TitleLabel"
+                       Grid.Row="0" Grid.Column="1"
                        FontFamily="QuicksandSemiBold"
                        FontSize="15"
-                       LineHeight="0.95"
+                       LineHeight="1.0"
                        TextColor="{StaticResource HeadingText}"
                        MaxLines="2"
-                       LineBreakMode="TailTruncation"/>
-                <Label x:Name="TimeLabel"
-                       Style="{StaticResource MetricRowLabel}"
-                       FontSize="12"
-                       LineHeight="0.95"/>
-            </VerticalStackLayout>
+                       LineBreakMode="TailTruncation"
+                       VerticalOptions="Center"/>
 
-            <!-- Top right rather than centred: the pill labels the card, and a badge that
-                 floats level with the middle of a two-line title reads as though it belongs to
-                 whichever line it happens to sit beside. -->
-            <Border x:Name="StatusPillBorder"
-                    Grid.Column="2"
-                    Style="{StaticResource StatusPill}"
-                    VerticalOptions="Start">
-                <Label x:Name="StatusPillLabel"
-                       Style="{StaticResource StatusPillText}"/>
-            </Border>
-        </Grid>
+                <!-- The same glyph, size and ink as the "Complete the picture" rows' chevron,
+                     so the two tappable rows on this screen say "opens" the same way. -->
+                <Label Grid.Row="0" Grid.Column="2"
+                       Text="›"
+                       FontSize="20"
+                       TextColor="{StaticResource MutedText}"
+                       VerticalOptions="Center"/>
+
+                <!-- Hidden when the alert carries no message, rather than holding an empty
+                     line's height open. -->
+                <Label x:Name="MessageLabel"
+                       Grid.Row="1" Grid.ColumnSpan="3"
+                       Style="{StaticResource Body2}"
+                       MaxLines="2"
+                       LineBreakMode="TailTruncation"/>
+
+                <!-- The least load-bearing line on the card, so the smallest and palest. -->
+                <Label x:Name="TimeLabel"
+                       Grid.Row="2" Grid.ColumnSpan="3"
+                       Style="{StaticResource Caption}"/>
+            </Grid>
+        </Border>
     </Border>
 </ContentView>

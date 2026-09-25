@@ -148,28 +148,14 @@ public partial class AlertDetailPage : ContentPage
         ChatBot.MemberId = alert.CardiMemberId;
         ChatBot.MemberFirstName = firstName;
 
-        // NOTICE, not INFO, for yellow. The badge word and the banner fill are both read off
-        // severity, so a yellow alert used to put the mildest word in the vocabulary on an amber
-        // banner and read as a contradiction — and "INFO" was doing duty for green as well, which
-        // flattened "nothing to report" and "something is different" into one word. The colour is
-        // deliberately unchanged: see AlertListCard, which colours by our own severity scale
-        // rather than by Figma's blue INFO chip so a badge can never disagree with the rail
-        // beside it. This diverges from M1-10's CRITICAL/URGENT/INFO wording on purpose.
-        var (badge, bannerKey) = alert.Severity switch
-        {
-            "red" => ("CRITICAL", "StatusRed"),
-            "orange" => ("URGENT", "StatusOrange"),
-            "yellow" => ("NOTICE", "StatusYellow"),
-            // Green still reaches this screen two ways — the AI assessor grades its mildest
-            // findings green (AssessmentSeverityParser), and alerts raised before the sleep rule's
-            // benign branch was retired are still on file — so it keeps its own colour rather than
-            // the unknown-severity grey the fallback hands out. Same word and same ink as
-            // AlertListCard, so a card and the screen it opens agree.
-            "green" => ("INFO", "StatusGreen"),
-            _ => ("INFO", "StatusUnknown"),
-        };
+        // The badge word and the banner fill are both read off severity — see AlertSeverityLook for
+        // why yellow says NOTICE and green keeps its own colour. The colour is our own severity
+        // scale rather than Figma's blue INFO chip, as on AlertListCard, so a badge can never
+        // disagree with the rail beside it.
+        var (badge, bannerKey) = AlertSeverityLook.For(alert.Severity);
 
         SeverityBanner.BackgroundColor = (Color)resources[bannerKey];
+        MemberSeverityRail.BackgroundColor = (Color)resources[bannerKey];
         SeverityBadge.Text = badge;
         // On the white member card now, so it wears the banner's colour rather than white on it.
         SeverityBadge.TextColor = (Color)resources[bannerKey];
@@ -456,13 +442,34 @@ public partial class AlertDetailPage : ContentPage
     /// is final for caregivers: it re-arms the rule, so taking it back would mean un-firing an
     /// alert that may already have fired again.
     /// </summary>
+    /// <summary>
+    /// Lays the visible action buttons side by side in equal columns, primary first and Remove
+    /// last — [Acknowledge][Close][Remove] while open, [Close][Undo][Remove] once acknowledged,
+    /// Remove alone once resolved. Rebuilt from what is visible so a hidden button never leaves
+    /// an empty column in the row.
+    /// </summary>
+    private void PackActionRow(bool acknowledged)
+    {
+        Button[] order = acknowledged
+            ? [CloseButton, UndoAcknowledgeButton, AcknowledgeButton, RemoveButton]
+            : [AcknowledgeButton, CloseButton, UndoAcknowledgeButton, RemoveButton];
+        var shown = order.Where(button => button.IsVisible).ToList();
+
+        ActionRow.ColumnDefinitions.Clear();
+        for (var column = 0; column < shown.Count; column++)
+        {
+            ActionRow.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            Grid.SetColumn(shown[column], column);
+        }
+    }
+
     private void ApplyAcknowledgement(AlertDetailResponse alert)
     {
         var acknowledged = alert.Status == "acknowledged";
         var handled = acknowledged || alert.Status == "resolved";
 
         AcknowledgeButton.IsVisible = !handled;
-        AcknowledgeButton.Text = alert.Severity == "red" ? "I'm on my way" : "Mark as acknowledged";
+        AcknowledgeButton.Text = alert.Severity == "red" ? "I'm on my way" : "Acknowledge";
         UndoAcknowledgeButton.IsVisible = acknowledged;
 
         // Closing stays available on an alert somebody has acknowledged — that is the ordinary
@@ -470,14 +477,20 @@ public partial class AlertDetailPage : ContentPage
         // it is resolved, which is what closed means.
         CloseButton.IsVisible = alert.Status != "resolved";
 
+        // Order says what comes next: acknowledge first while nobody has, close first once
+        // somebody has — the next real step either way.
+        PackActionRow(acknowledged);
+
         if (!handled)
         {
-            AcknowledgedLabel.IsVisible = false;
+            HandledStrip.IsVisible = false;
             return;
         }
 
         AcknowledgedLabel.Text = AlertAnswerCopy.HandledLine(alert) ?? AlertAnswerCopy.SettledOnItsOwn;
-        AcknowledgedLabel.IsVisible = true;
+        HandledStrip.BackgroundColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[
+            AlertAnswerCopy.IsClosed(alert) ? "HandledStripBackground" : "AcknowledgedStripBackground"];
+        HandledStrip.IsVisible = true;
     }
 
     /// <summary>
@@ -492,9 +505,9 @@ public partial class AlertDetailPage : ContentPage
     private void ApplyResponses(AlertDetailResponse alert)
     {
         var responses = AlertAnswerCopy.NewestFirst(alert.Responses);
-        ResponsesSection.IsVisible = responses.Count > 0;
+        ResponsesSection.IsVisible = AlertAnswerCopy.HistoryAddsToTheStrip(responses);
         ResponsesHost.Clear();
-        if (responses.Count == 0)
+        if (!ResponsesSection.IsVisible)
             return;
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
@@ -647,7 +660,7 @@ public partial class AlertDetailPage : ContentPage
     /// of the two.
     /// </para>
     /// </remarks>
-    private async void OnDeleteAlertTapped(object? sender, TappedEventArgs e)
+    private async void OnDeleteAlertTapped(object? sender, EventArgs e)
     {
         if (_alert is not { } alert)
             return;

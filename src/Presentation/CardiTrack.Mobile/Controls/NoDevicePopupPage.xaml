@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.NoDevicePopupPage"
+             BackgroundColor="Transparent">
+
+    <!-- Figma M1-09 D's no-device card as a modal, opened from the struck-through watch beside
+         Alerts on the member card. Same shell as the other popups (scrim, card, entry animation)
+         so it reads as the same kind of object. -->
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24,24,24,12"
+                Margin="32,0"
+                Scale="0.92"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout Spacing="6">
+                <Image Source="illustration_no_device.png"
+                       WidthRequest="72" HeightRequest="72"
+                       HorizontalOptions="Center"
+                       SemanticProperties.Description="No device connected"/>
+                <Label Text="No device connected"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"
+                       Margin="0,4,0,0"/>
+                <Label x:Name="MessageLabel"
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Center"/>
+
+                <!-- Later on the left, the way out; Connect on the right, the step forward. -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,14,0,8">
+                    <Button Text="Later"
+                            Style="{StaticResource ActionButtonDark}"
+                            ImageSource="icon_btn_later.svg"
+                            Clicked="OnLaterClicked"/>
+                    <Button Grid.Column="1"
+                            Text="Connect"
+                            Style="{StaticResource ActionButtonBlue}"
+                            ImageSource="icon_btn_connect.svg"
+                            Clicked="OnConnectClicked"/>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

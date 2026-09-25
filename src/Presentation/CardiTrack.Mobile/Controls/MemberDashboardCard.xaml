@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.Controls.MemberDashboardCard">
+
+    <!-- One CardiMember on the dashboard: hero, data-freshness/baseline-progress, quick actions,
+         the poor-sleep nudge, Key Metrics and the "all quiet" line, all in one card so each
+         member the family watches is another instance of it, stacked. Moved here from
+         DashboardPage, which drew exactly one; the comments on each part are the ones it carried
+         there. -->
+    <VerticalStackLayout Spacing="10">
+
+        <!-- Monitoring paused (M1-13), for this member. -->
+        <Border x:Name="PausedBanner"
+                IsVisible="False"
+                BackgroundColor="{StaticResource StaleBannerBackground}"
+                StrokeThickness="0"
+                Padding="14,10">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="12"/>
+            </Border.StrokeShape>
+            <Label x:Name="PausedBannerLabel"
+                   Style="{StaticResource Body2Medium}"
+                   TextColor="{StaticResource HeadingText}"/>
+        </Border>
+
+        <Border Style="{StaticResource ElevatedCard}" Padding="16,15,16,16">
+            <VerticalStackLayout Spacing="16">
+
+                <controls:StatusHeroCard x:Name="Hero"/>
+
+                <!-- Data-pipeline freshness, the baseline learning progress while it's still
+                     running, and "Updated X ago" — one line, carrying the freshness in its colour
+                     and, for a screen reader, in its description. -->
+                <VerticalStackLayout x:Name="FreshnessBlock" Spacing="8" Margin="0,-4,0,0">
+                    <ProgressBar x:Name="LearningProgress"
+                                 IsVisible="False"
+                                 HeightRequest="6"/>
+                    <Label x:Name="LastUpdatedFooterLabel"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="14"/>
+                </VerticalStackLayout>
+
+                <!-- SOS / Call / Message / Details, and — while several members stack — the Key
+                     Metrics link on the same line, in the space the compact icons leave at the
+                     left. The accordion's own header row goes, and this opens it instead. -->
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <HorizontalStackLayout x:Name="MetricsLink"
+                                           Spacing="6"
+                                           VerticalOptions="Center"
+                                           IsVisible="False"
+                                           SemanticProperties.Description="Key metrics"
+                                           SemanticProperties.Hint="Shows or hides the key metrics">
+                        <HorizontalStackLayout.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnMetricsLinkTapped"/>
+                        </HorizontalStackLayout.GestureRecognizers>
+                        <Image Source="icon_action_details.svg" WidthRequest="18" HeightRequest="18" VerticalOptions="Center"/>
+                        <Label Text="Metrics"
+                               FontFamily="QuicksandSemiBold"
+                               FontSize="14"
+                               TextColor="{StaticResource Primary}"
+                               VerticalOptions="Center"/>
+                        <Image x:Name="MetricsChevron"
+                               Source="icon_chevron_down.svg"
+                               WidthRequest="16" HeightRequest="16"
+                               VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                    <controls:QuickActionRow x:Name="QuickActions" Grid.ColumnSpan="2"/>
+                </Grid>
+
+                <!-- Poor-sleep nudge: points at the real Sleep alert the statistical pass raised.
+                     Dismissing it is a local convenience, not an acknowledgement. -->
+                <Border x:Name="SleepConcernBanner"
+                        IsVisible="False"
+                        BackgroundColor="{StaticResource StaleBannerBackground}"
+                        StrokeThickness="0"
+                        Padding="14,10">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <Label Grid.Column="0"
+                               x:Name="SleepConcernBannerLabel"
+                               Style="{StaticResource Body2}"
+                               TextColor="{StaticResource HeadingText}"
+                               VerticalOptions="Center">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnSleepConcernTapped"/>
+                            </Label.GestureRecognizers>
+                        </Label>
+                        <Button Grid.Column="1"
+                                Text="✕"
+                                FontSize="14"
+                                TextColor="{StaticResource BodyText}"
+                                BackgroundColor="Transparent"
+                                Padding="6,0"
+                                MinimumWidthRequest="32"
+                                MinimumHeightRequest="32"
+                                VerticalOptions="Center"
+                                Clicked="OnDismissSleepConcernClicked"/>
+                    </Grid>
+                </Border>
+
+                <!-- "All quiet" — the server's verdict that the silence has earned saying so
+                     (DashboardResponse.Reassurance). A line of the card rather than a card of its
+                     own now that several members stack: it is about this member. -->
+                <Grid x:Name="ReassuranceRow" ColumnDefinitions="Auto,*" ColumnSpacing="12" IsVisible="False">
+                    <Border WidthRequest="36" HeightRequest="36"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource SelectedOptionBackground}"
+                            VerticalOptions="Start">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="10"/>
+                        </Border.StrokeShape>
+                        <Image Source="icon_status_check.svg" WidthRequest="20" HeightRequest="20"/>
+                    </Border>
+                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                        <Label x:Name="ReassuranceTitleLabel"
+                               FontFamily="QuicksandSemiBold"
+                               FontSize="15"
+                               TextColor="{StaticResource StatusGreen}"/>
+                        <Label x:Name="ReassuranceDetailLabel"
+                               Style="{StaticResource Body2}"
+                               TextColor="{StaticResource BodyText}"/>
+                    </VerticalStackLayout>
+                </Grid>
+
+                <!-- Key metrics, collapsed by default, two per row, packed in reading order by
+                     LayoutMetricCards so an absent optional tile never leaves a gap. -->
+                <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics" IconSource="icon_action_details.svg">
+                    <controls:AccordionSection.Body>
+                        <Grid ColumnDefinitions="*,*"
+                              RowDefinitions="Auto,Auto,Auto"
+                              ColumnSpacing="10" RowSpacing="10">
+                            <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="0"/>
+                            <controls:MetricCard x:Name="SleepCard" Grid.Row="0" Grid.Column="1"/>
+                            <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="0" IsVisible="False"/>
+                            <controls:MetricCard x:Name="StepsCard" Grid.Row="1" Grid.Column="1"/>
+                            <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
+                            <controls:MetricCard x:Name="BreathingRateCard" Grid.Row="2" Grid.Column="1" IsVisible="False"/>
+                        </Grid>
+                    </controls:AccordionSection.Body>
+                </controls:AccordionSection>
+
+            </VerticalStackLayout>
+        </Border>
+    </VerticalStackLayout>
+</ContentView>

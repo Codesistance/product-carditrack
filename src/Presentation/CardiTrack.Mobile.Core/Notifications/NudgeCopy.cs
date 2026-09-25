@@ -27,12 +27,12 @@ public static class NudgeCopy
     private static readonly Dictionary<string, string> Strings = new(StringComparer.Ordinal)
     {
         // ---- Safety: monitoring is degraded ----
-        ["nudge.DEVICE_AUTH_BROKEN.expired.title"] = "{name}'s watch needs reconnecting",
+        ["nudge.DEVICE_AUTH_BROKEN.expired.title"] = "{name}'s {device} needs reconnecting",
         ["nudge.DEVICE_AUTH_BROKEN.expired.body"] =
-            "The connection to {name}'s watch has expired, so no new data is reaching CardiTrack.",
+            "The connection to {name}'s {device} has expired, so no new data is reaching CardiTrack. Sign in again so readings keep coming through.",
         ["nudge.DEVICE_AUTH_BROKEN.expired.benefit"] = "Reconnecting takes a minute and restores monitoring.",
 
-        ["nudge.DEVICE_AUTH_BROKEN.revoked.title"] = "CardiTrack lost access to {name}'s watch",
+        ["nudge.DEVICE_AUTH_BROKEN.revoked.title"] = "CardiTrack lost access to {name}'s {device}",
         ["nudge.DEVICE_AUTH_BROKEN.revoked.body"] =
             "Permission to read {name}'s health data was withdrawn, so nothing is being collected.",
         ["nudge.DEVICE_AUTH_BROKEN.revoked.benefit"] = "Reconnect to restore monitoring.",
@@ -183,13 +183,20 @@ public static class NudgeCopy
             StringComparison.Ordinal);
 
         if (!result.Contains('{') || string.IsNullOrWhiteSpace(n.TemplateData))
-            return result;
+            return WithoutMissingDevice(result);
 
         foreach (var (token, value) in ParseTemplateData(n.TemplateData))
             result = result.Replace($"{{{token}}}", value, StringComparison.Ordinal);
 
-        return result;
+        return WithoutMissingDevice(result);
     }
+
+    /// <summary>
+    /// "{device}" reached the reconnect reminder's data after its copy did: a reminder raised
+    /// before then has none, and reads "watch" rather than showing the placeholder.
+    /// </summary>
+    private static string WithoutMissingDevice(string text) =>
+        text.Replace("{device}", "watch", StringComparison.Ordinal);
 
     private static IEnumerable<KeyValuePair<string, string>> ParseTemplateData(string json)
     {

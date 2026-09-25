@@ -253,6 +253,31 @@ public partial class StatusHeroCard : ContentView
     private void OnAlertsTapped(object? sender, TappedEventArgs e) =>
         AlertsTapped?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>Raised by the no-device button beside Alerts; the page shows or hides its card.</summary>
+    public event EventHandler? NoDeviceTapped;
+
+    /// <summary>Shows the no-device button while this member has no active device connection.</summary>
+    public void SetNoDevice(bool noDevice) => NoDeviceButton.IsVisible = noDevice;
+
+    /// <summary>Raised when the caregiver taps the pin; the dashboard owns the pins and the order.</summary>
+    public event EventHandler? PinTapped;
+
+    /// <summary>
+    /// Shows the pin button — the dashboard does while several members stack — and whether this
+    /// member is pinned, as the filled glyph and for a screen reader.
+    /// </summary>
+    public void SetPinning(bool available, bool pinned)
+    {
+        PinButton.IsVisible = available;
+        PinIcon.Source = pinned ? "icon_pin_on.svg" : "icon_pin.svg";
+        SemanticProperties.SetDescription(PinButton, pinned ? "Unpin from the top" : "Pin to the top");
+    }
+
+    private void OnPinTapped(object? sender, TappedEventArgs e) => PinTapped?.Invoke(this, EventArgs.Empty);
+
+    private void OnNoDeviceTapped(object? sender, TappedEventArgs e) =>
+        NoDeviceTapped?.Invoke(this, EventArgs.Empty);
+
     private void OnQaTapped(object? sender, TappedEventArgs e)
     {
         if (_pendingQuestionId is { } questionId)

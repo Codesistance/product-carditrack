@@ -61,14 +61,14 @@ public sealed class PopupService : IPopupService
             }
         });
 
-    public Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex) =>
+    public Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex, string? hint = null) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {
             var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
             if (page is null)
                 return null;
 
-            var sheet = new ChoiceSheetPage(title, options, selectedIndex);
+            var sheet = new ChoiceSheetPage(title, options, selectedIndex, hint);
             Interlocked.Increment(ref _open);
             try
             {
@@ -133,14 +133,15 @@ public sealed class PopupService : IPopupService
             }
         });
 
-    public Task<string?> EditMedicalNotesAsync(string? firstName, string? notes) =>
+    public Task<(MedicalEntryKind Kind, string Text)?> EditMedicalEntryAsync(
+        string? firstName, MedicalEntryKind kind, string? text) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {
             var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
             if (page is null)
-                return null;
+                return ((MedicalEntryKind, string)?)null;
 
-            var form = new MedicalNotesEditPopupPage(firstName, notes);
+            var form = new MedicalEntryEditPopupPage(firstName, kind, text);
             Interlocked.Increment(ref _open);
             try
             {
@@ -151,6 +152,28 @@ public sealed class PopupService : IPopupService
             {
                 // Released only once the form has left the modal stack — same handshake as the
                 // contact form above, and the page underneath reads IsShowing to know it never left.
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
+    public Task<IReadOnlyList<(MedicalEntryKind Kind, string Text)>?> SortMedicalNotesAsync(
+        IReadOnlyList<string> statements) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return (IReadOnlyList<(MedicalEntryKind, string)>?)null;
+
+            var form = new MedicalSortPopupPage(statements);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(form, animated: false);
+                return await form.Result;
+            }
+            finally
+            {
+                // Same handshake as the forms above.
                 Interlocked.Decrement(ref _open);
             }
         });
@@ -168,6 +191,26 @@ public sealed class PopupService : IPopupService
             {
                 await page.Navigation.PushModalAsync(popup, animated: false);
                 await popup.Closed;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
+    public Task<bool> ShowNoDeviceAsync(string firstName) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return false;
+
+            var popup = new NoDevicePopupPage(firstName);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(popup, animated: false);
+                return await popup.Result;
             }
             finally
             {

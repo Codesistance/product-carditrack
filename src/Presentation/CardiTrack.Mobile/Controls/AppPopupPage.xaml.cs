@@ -45,9 +45,11 @@ public partial class AppPopupPage : ContentPage
         MessageLabel.Text = Truncate(message);
 
         ConfirmBtn.Text = confirmText;
+        ActionButtons.Dress(ConfirmBtn);
         if (_isConfirmation)
         {
             CancelBtn.Text = cancelText;
+            ActionButtons.Dress(CancelBtn, isDismiss: true);
             CancelBtn.IsVisible = true;
             CancelColumn.Width = GridLength.Star;
             // Only now is there a second button for the gutter to separate — see the row's

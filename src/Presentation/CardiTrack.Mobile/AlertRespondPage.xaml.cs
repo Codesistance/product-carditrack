@@ -123,6 +123,7 @@ public partial class AlertRespondPage : ContentPage
         SetState(loading: true);
         HeaderTitle.Text = AlertAnswerKinds.Title(_kind);
         SubmitButton.Text = AlertAnswerKinds.ButtonText(_kind);
+        SubmitButton.ImageSource = _kind == AlertAnswerKind.Close ? "icon_btn_resolve.svg" : "icon_check_white.svg";
 
         try
         {
@@ -143,6 +144,19 @@ public partial class AlertRespondPage : ContentPage
         var first = alert.MemberFirstName();
         HeaderSubtitle.Text = string.IsNullOrWhiteSpace(first) ? alert.Title : $"{first} · {alert.Title}";
         PromptLabel.Text = AlertAnswerKinds.Prompt(_kind);
+
+        // The context card: who, what, when, and how serious, in the alert's own colour.
+        var (word, colorKey) = AlertSeverityLook.For(alert.Severity);
+        ContextRail.BackgroundColor = MetricStatus.Resource(colorKey, Colors.Gray);
+        ContextAvatar.Apply(alert.CardiMemberName, alert.CardiMemberPhotoUrl);
+        ContextTitleLabel.Text = alert.Title;
+        var when = alert.AboutDate != default
+            ? alert.AboutDate.ToString("d MMM")
+            : DateTime.SpecifyKind(alert.TriggeredAt, DateTimeKind.Utc).ToLocalTime().ToString("d MMM");
+        var severity = char.ToUpperInvariant(word[0]) + word[1..].ToLowerInvariant();
+        ContextDetailLabel.Text = string.IsNullOrWhiteSpace(first)
+            ? $"{when} · {severity}"
+            : $"{first} · {when} · {severity}";
 
         NoteHintLabel.Text = _kind == AlertAnswerKind.Close
             ? "Whatever you write here is shown to everybody else watching, with your name on it."
@@ -165,26 +179,37 @@ public partial class AlertRespondPage : ContentPage
     }
 
     /// <summary>
-    /// One canned response. Tapping the chosen chip again clears it — a caregiver who picked the
-    /// wrong one should not have to send it or leave the page to take it back, and a note alone
-    /// is a complete answer.
+    /// One canned response, as a radio row — the pickers' pattern (ChoiceSheetPage): a filled row
+    /// with an empty ring, and the chosen one tinted, ringed in Primary and carrying a filled
+    /// check. Tapping the chosen row again clears it — a caregiver who picked the wrong one should
+    /// not have to send it or leave the page to take it back, and a note alone is a complete
+    /// answer.
     /// </summary>
     private Border Chip(AlertResponseOptionResponse option)
     {
         var label = new Label
         {
             Text = option.Label,
-            Style = Named("Body2Medium"),
+            FontFamily = "QuicksandMedium",
+            FontSize = 15,
             LineBreakMode = LineBreakMode.WordWrap,
+            VerticalOptions = LayoutOptions.Center,
         };
+
+        var row = new Grid
+        {
+            ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto)],
+            ColumnSpacing = 12,
+            MinimumHeightRequest = 48,
+            Padding = new Thickness(14, 8),
+        };
+        row.Add(label, 0, 0);
+        row.Add(new ContentView { VerticalOptions = LayoutOptions.Center }, 1, 0);
 
         var chip = new Border
         {
-            Padding = new Thickness(14, 9),
-            Margin = new Thickness(0, 0, 8, 8),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 16 },
-            Content = label,
+            StrokeShape = new RoundRectangle { CornerRadius = 6 },
+            Content = row,
         };
 
         var tap = new TapGestureRecognizer();
@@ -200,24 +225,59 @@ public partial class AlertRespondPage : ContentPage
 
     private void ApplyChipSelection()
     {
+        var primary = MetricStatus.Resource("Primary", Colors.Blue);
         foreach (var (code, chip) in _chips)
         {
             var selected = _draft.Code == code;
             chip.BackgroundColor = MetricStatus.Resource(
-                selected ? "QuickActionTint" : "InputBackground", Colors.LightGray);
-            chip.Stroke = new SolidColorBrush(MetricStatus.Resource(
-                selected ? "Primary" : "InputBorder", Colors.Gray));
-            if (chip.Content is Label label)
-            {
-                label.TextColor = MetricStatus.Resource(
-                    selected ? "PrimaryDark" : "HeadingText", Colors.Black);
-            }
+                selected ? "SelectedOptionBackground" : "InputBackground", Colors.LightGray);
+            chip.Stroke = selected ? new SolidColorBrush(primary) : new SolidColorBrush(Colors.Transparent);
+            chip.StrokeThickness = selected ? 1.5 : 0;
 
-            SemanticProperties.SetDescription(chip,
-                chip.Content is Label l ? (selected ? $"{l.Text}, chosen" : l.Text) : null);
+            if (chip.Content is Grid row && row.Children[0] is Label label && row.Children[1] is ContentView markHost)
+            {
+                label.TextColor = selected ? primary : MetricStatus.Resource("HeadingText", Colors.Black);
+                label.FontFamily = selected ? "QuicksandSemiBold" : "QuicksandMedium";
+                markHost.Content = RadioMark(selected, primary);
+                SemanticProperties.SetDescription(chip, selected ? $"{label.Text}, chosen" : label.Text);
+            }
         }
 
         SubmitButton.IsEnabled = _draft.CanSubmit;
+    }
+
+    /// <summary>An empty ring, or — for the chosen row — a filled check in Primary.</summary>
+    private static View RadioMark(bool selected, Color primary) => selected
+        ? new Border
+        {
+            WidthRequest = 20,
+            HeightRequest = 20,
+            StrokeThickness = 0,
+            BackgroundColor = primary,
+            StrokeShape = new Ellipse(),
+            Content = new Image
+            {
+                Source = "icon_check_white.svg",
+                WidthRequest = 12,
+                HeightRequest = 12,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+            },
+        }
+        : new Border
+        {
+            WidthRequest = 20,
+            HeightRequest = 20,
+            Stroke = MetricStatus.Resource("MutedText", Colors.Gray),
+            StrokeThickness = 2,
+            BackgroundColor = Colors.Transparent,
+            StrokeShape = new Ellipse(),
+        };
+
+    private async void OnCancelClicked(object? sender, EventArgs e)
+    {
+        SaveDraft();
+        await this.GoBackAsync(AppShell.AlertsRoute);
     }
 
     /// <summary>
@@ -269,7 +329,7 @@ public partial class AlertRespondPage : ContentPage
                     1 => "Saved, and the other person watching has been told.",
                     var n => $"Saved, and the {n} other people watching have been told.",
                 },
-                _kind == AlertAnswerKind.Close ? "Closed" : "Acknowledged");
+                _kind == AlertAnswerKind.Close ? "Resolved" : "Acknowledged");
 
             await Shell.Current.GoToAsync($"//alerts/{AlertDetailPage.Route}?alertId={alert.AlertId}");
         }
@@ -361,9 +421,4 @@ public partial class AlertRespondPage : ContentPage
         ErrorPanel.IsVisible = error;
         ActionsPanel.IsVisible = loaded;
     }
-
-    private static Style? Named(string key) =>
-        Microsoft.Maui.Controls.Application.Current?.Resources.TryGetValue(key, out var found) == true
-            ? found as Style
-            : null;
 }

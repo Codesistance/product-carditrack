@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.MedicalSortPopupPage"
+             BackgroundColor="Transparent">
+
+    <!-- Turns one block of old notes into lines: each statement in it, with what kind of thing it
+         is chosen by the caregiver. The shell of MedicalEntryEditPopupPage; the pieces can run
+         long, so the list scrolls inside a card that is capped at most of the screen. -->
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="20"
+                Margin="20,40"
+                Scale="0.92"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="0">
+                <Label Text="Sort into lines"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"/>
+                <Label Grid.Row="1"
+                       Margin="0,6,0,12"
+                       Text="Say what each part is. Skip anything that no longer applies — the original stays in the history."
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap"/>
+
+                <!-- A ScrollView here is safe where the sibling popups avoid one: every piece is
+                     laid out in a Grid whose star column is bounded by the card, so the text has a
+                     width to wrap against. -->
+                <ScrollView Grid.Row="2" x:Name="PiecesScroller">
+                    <VerticalStackLayout x:Name="PiecesHost" Spacing="14"/>
+                </ScrollView>
+
+                <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,16,0,0">
+                    <Button Text="Cancel"
+                            Style="{StaticResource ActionButtonDark}"
+                            ImageSource="icon_btn_close.svg"
+                            Clicked="OnCancelClicked"/>
+                    <Button Grid.Column="1"
+                            Text="Save"
+                            Style="{StaticResource ActionButtonBlue}"
+                            ImageSource="icon_btn_save.svg"
+                            Clicked="OnSaveClicked"/>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</ContentPage>

@@ -92,73 +92,139 @@
                              this card's top-right corner, in the severity's own colour, in a
                              column of its own so the avatar and the name/type stack keep their
                              places and alignment exactly as before. -->
-                        <Border Style="{StaticResource ElevatedCard}">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                <controls:MemberAvatar x:Name="Avatar" BoxWidth="52"/>
-                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                    <Label x:Name="MemberNameLabel"
-                                           Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="MemberTypeLabel"
-                                           Style="{StaticResource Body2}"/>
+                        <!-- The severity rail the Alerts list card and the dashboard alert rows
+                             wear (AlertListCard): the colour underneath, the white card inset 4
+                             from its left edge so the colour rounds into the corners. Coloured in
+                             code with the banner (ApplySeverity), so the person and the alert
+                             about them read in one colour down the screen. -->
+                        <Border x:Name="MemberSeverityRail"
+                                StrokeThickness="0"
+                                Padding="4,0,0,0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
+                            </Border.StrokeShape>
+                            <Border.Shadow>
+                                <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
+                            </Border.Shadow>
+                            <Border BackgroundColor="{StaticResource White}"
+                                    StrokeThickness="0"
+                                    Padding="14,14,13,17">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
+                                </Border.StrokeShape>
+                                <VerticalStackLayout Spacing="10">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                        <controls:MemberAvatar x:Name="Avatar" BoxWidth="52"/>
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                            <Label x:Name="MemberNameLabel"
+                                                   Style="{StaticResource Body1SemiBoldDark}"/>
+                                            <Label x:Name="MemberTypeLabel"
+                                                   Style="{StaticResource Body2}"/>
+                                        </VerticalStackLayout>
+                                        <Label x:Name="SeverityBadge"
+                                               Grid.Column="2"
+                                               HorizontalOptions="End"
+                                               VerticalOptions="Start"
+                                               FontFamily="QuicksandSemiBold"
+                                               FontSize="12"/>
+                                    </Grid>
+
+                                    <!-- The four ways to reach this person, inside their card and under a
+                                         hairline: icon-only and packed to the right, where they sat as a
+                                         full row of labelled tiles further down the page. Same control as
+                                         the Dashboard's (Compact) — tints, dimming and taps unchanged. -->
+                                    <BoxView Style="{StaticResource DividerLine}"/>
+                                    <controls:QuickActionRow x:Name="QuickActions" Compact="True"/>
                                 </VerticalStackLayout>
-                                <Label x:Name="SeverityBadge"
-                                       Grid.Column="2"
-                                       HorizontalOptions="End"
-                                       VerticalOptions="Start"
-                                       FontFamily="QuicksandSemiBold"
-                                       FontSize="12"/>
-                            </Grid>
+                            </Border>
                         </Border>
 
+                        <!-- No padding on the banner itself: the handled strip runs edge to edge
+                             across its top and is clipped by its corners, so the padding lives on
+                             the strip and on the content below it instead. -->
                         <Border x:Name="SeverityBanner"
                                 StrokeThickness="0"
-                                Padding="16,14">
+                                Padding="0">
                             <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="20"/>
+                                <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
                             </Border.StrokeShape>
-                            <!-- The icon says what the alert is about; the banner's colour already
-                                 says how bad it is. It used to be a second severity glyph — and
-                                 one stroked in the severity colour at that, so on the yellow and
-                                 orange banners it was the same colour as the ground behind it and
-                                 the title simply had no icon at all. Hence the translucent-white
-                                 tile and the white-stroke variants: on a coloured ground the mark
-                                 has to bring its own contrast.
+                            <VerticalStackLayout Spacing="0">
 
-                                 NOTICE / URGENT / CRITICAL is not on this banner at all: it sits
-                                 in the top-right of the CardiMember card above, where the banner's
-                                 colour has already said how bad it is. The tile spans both rows,
-                                 from the title's top to the date's bottom — the same Fill +
-                                 width-bound-to-height treatment the header's back button uses. -->
-                            <Grid RowDefinitions="Auto,Auto"
-                                  ColumnDefinitions="Auto,*"
-                                  ColumnSpacing="12"
-                                  RowSpacing="4">
-                                <!-- Fill + width-bound-to-height: the tile matches the title and
-                                     date exactly and stays square at whatever that is. -->
-                                <controls:SquareBorder Grid.Row="0" Grid.RowSpan="2"
-                                        Grid.Column="0"
-                                        StrokeThickness="0"
-                                        BackgroundColor="#33FFFFFF"
-                                        VerticalOptions="Fill">
-                                    <controls:SquareBorder.StrokeShape>
-                                        <RoundRectangle CornerRadius="14"/>
-                                    </controls:SquareBorder.StrokeShape>
-                                    <Image x:Name="ReasonIcon"
-                                           WidthRequest="24" HeightRequest="24"
-                                           HorizontalOptions="Center"
+                                <!-- Once the alert has been dealt with, the banner says so first: a
+                                     green strip across its top, part of the same card rather than a
+                                     caption under the buttons, because "it settled on its own" or "Tom
+                                     acknowledged" changes how everything below it reads. Green once
+                                     the episode is over, dark blue while somebody has only
+                                     acknowledged it (set in ApplyAcknowledgement), whatever colour the
+                                     alert itself was; the severity ground stays underneath so the two
+                                     never blur. -->
+                                <Grid x:Name="HandledStrip"
+                                      IsVisible="False"
+                                      BackgroundColor="{StaticResource HandledStripBackground}"
+                                      Padding="16,7"
+                                      ColumnDefinitions="Auto,*"
+                                      ColumnSpacing="6">
+                                    <Image Source="icon_check_white.svg"
+                                           WidthRequest="15" HeightRequest="15"
                                            VerticalOptions="Center"/>
-                                </controls:SquareBorder>
-                                <Label x:Name="TitleLabel"
-                                       Grid.Row="0" Grid.Column="1"
-                                       Style="{StaticResource Heading3}"
-                                       TextColor="{StaticResource White}"
-                                       LineBreakMode="WordWrap"/>
-                                <Label x:Name="TimeLabel"
-                                       Grid.Row="1" Grid.Column="1"
-                                       Style="{StaticResource Body2}"
-                                       TextColor="{StaticResource White}"
-                                       VerticalOptions="Center"/>
-                            </Grid>
+                                    <Label x:Name="AcknowledgedLabel"
+                                           Grid.Column="1"
+                                           FontFamily="QuicksandSemiBold"
+                                           FontSize="12"
+                                           TextColor="{StaticResource White}"
+                                           VerticalTextAlignment="Center"/>
+                                </Grid>
+                                <!-- The icon says what the alert is about; the banner's colour already
+                                     says how bad it is. It used to be a second severity glyph — and
+                                     one stroked in the severity colour at that, so on the yellow and
+                                     orange banners it was the same colour as the ground behind it and
+                                     the title simply had no icon at all. Hence the translucent-white
+                                     tile and the white-stroke variants: on a coloured ground the mark
+                                     has to bring its own contrast.
+
+                                     NOTICE / URGENT / CRITICAL is not on this banner at all: it sits
+                                     in the top-right of the CardiMember card above, where the banner's
+                                     colour has already said how bad it is. The tile spans both rows,
+                                     from the title's top to the date's bottom — the same Fill +
+                                     width-bound-to-height treatment the header's back button uses. -->
+                                <Grid RowDefinitions="Auto,Auto"
+                                      ColumnDefinitions="Auto,*"
+                                      ColumnSpacing="12"
+                                      RowSpacing="4"
+                                      Padding="16,14">
+                                    <!-- Fill + width-bound-to-height: the tile matches the title and
+                                         date exactly and stays square at whatever that is. -->
+                                    <controls:SquareBorder Grid.Row="0" Grid.RowSpan="2"
+                                            Grid.Column="0"
+                                            StrokeThickness="0"
+                                            BackgroundColor="#33FFFFFF"
+                                            VerticalOptions="Fill">
+                                        <controls:SquareBorder.StrokeShape>
+                                            <RoundRectangle CornerRadius="14"/>
+                                        </controls:SquareBorder.StrokeShape>
+                                        <Image x:Name="ReasonIcon"
+                                               WidthRequest="24" HeightRequest="24"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center"/>
+                                    </controls:SquareBorder>
+                                    <Label x:Name="TitleLabel"
+                                           Grid.Row="0" Grid.Column="1"
+                                           Style="{StaticResource Heading3}"
+                                           TextColor="{StaticResource White}"
+                                           LineBreakMode="WordWrap"/>
+                                    <!-- A size under the body text: when it happened is the least
+                                         load-bearing line on the banner, and at body size it competed
+                                         with the title. Pinned to the bottom of its row so its last line
+                                         sits on the icon tile's bottom edge — the tile spans both rows,
+                                         so the two finish on the same line whatever the title wraps to. -->
+                                    <Label x:Name="TimeLabel"
+                                           Grid.Row="1" Grid.Column="1"
+                                           Style="{StaticResource Body2}"
+                                           FontSize="12"
+                                           TextColor="{StaticResource White}"
+                                           VerticalOptions="End"/>
+                                </Grid>
+                            </VerticalStackLayout>
                         </Border>
 
                         <Border Style="{StaticResource ElevatedCard}">
@@ -357,13 +423,6 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- The same four actions the Dashboard's CardiMember card offers, and the
-                             same control — this screen used to carry its own pair of full-width
-                             Call/Message buttons, worded differently and with their own
-                             availability rules. -->
-                        <!-- 2 points of separation, less the control's own shadow gutter. -->
-                        <controls:QuickActionRow x:Name="QuickActions" Margin="-10,-8,-10,-13"/>
-
                         <Label Text="More Options"
                                Style="{StaticResource DashboardSectionTitle}"
                                Margin="0,6,0,0"/>
@@ -422,60 +481,51 @@
                             </Border>
                         </VerticalStackLayout>
 
-                        <Label x:Name="AcknowledgedLabel"
-                               Style="{StaticResource Body2}"
-                               HorizontalTextAlignment="Center"
-                               Margin="0,6,0,0"
-                               IsVisible="False"/>
+                        <!-- The alert's actions, side by side as equals in one row, the primary one
+                             filled: Acknowledge while nobody has, Close once somebody has (see
+                             ApplyAcknowledgement, which also packs the row — only the buttons the
+                             alert's state allows are placed, so a row never carries a gap).
 
-                        <Button x:Name="AcknowledgeButton"
-                                Style="{StaticResource PrimaryGradientButton}"
-                                Clicked="OnAcknowledgeClicked"/>
+                             Close is caregiver-owned resolution: the family has dealt with it, and
+                             the rule re-arms so a condition that persists fires again rather than
+                             staying silent behind a note (D-20). Undo stays on the screen rather
+                             than living in a toast that is gone by the time they notice, because
+                             acknowledging is a claim a caregiver can make by accident. Remove wears
+                             the destructive red outline; it is deliberately not a row inside "More
+                             Options", which navigate, and it repeats the list's swipe delete because
+                             a caregiver who opened an alert to decide about it should not have to
+                             go back and find the row again.
 
-                        <!-- Close is caregiver-owned resolution: the family has dealt with it,
-                             and the rule re-arms so a condition that persists fires again rather
-                             than staying silent behind a note (D-20). Offered beside acknowledge
-                             rather than instead of it — they are different claims. -->
-                        <Button x:Name="CloseButton"
-                                Text="Close this alert"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                Clicked="OnCloseClicked"/>
-
-                        <!-- Acknowledging is a claim a caregiver makes about themselves, and they
-                             can make it by accident. Undo stays on the screen rather than living
-                             in a toast that is gone by the time they notice. -->
-                        <Button x:Name="UndoAcknowledgeButton"
-                                Text="Undo — mark as not handled"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                IsVisible="False"
-                                Clicked="OnUndoAcknowledgeClicked"/>
-
-                        <!-- Removal, in the same shape M1-13 gives its destructive row: its own
-                             card, red ink, and below the acknowledge pair rather than above it, so
-                             the irreversible action never sits where the primary one is expected.
-                             The same trash glyph the alert list's swipe action uses — one action
-                             reached two ways should not look like two.
-
-                             Deliberately not a row inside "More Options": those two navigate and
-                             carry a chevron, and this ends the screen. It repeats the list's swipe
-                             delete because a caregiver who opened an alert to decide about it
-                             should not have to go back and find the row again to act on it. -->
-                        <Border Style="{StaticResource ElevatedCard}"
-                                Padding="14,4"
-                                Margin="0,2,0,0">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnDeleteAlertTapped"/>
-                            </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="52">
-                                <Image Grid.Column="0" Source="icon_trash.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Remove this alert"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       TextColor="{StaticResource DangerRed}"
-                                       VerticalTextAlignment="Center"/>
-                            </Grid>
-                        </Border>
+                             Labels are one or two words so three fit a phone's width at 14 — the
+                             sentences they replaced ("Mark as not handled") only fitted stacked. -->
+                        <!-- The bottom margin clears the floating chat button: without it the row's
+                             last button — Remove — sat under the button at the end of the scroll. -->
+                        <Grid x:Name="ActionRow" ColumnSpacing="8" Margin="0,4,0,72">
+                            <!-- The action buttons (Styles.xaml ActionButton*): the colour is the
+                                 meaning — blue does the thing, amber takes it back, red removes.
+                                 Acknowledge carries no icon: on a red alert it reads "I'm on my
+                                 way", which needs the third of the row it has. -->
+                            <Button x:Name="AcknowledgeButton"
+                                    Style="{StaticResource ActionButtonBlue}"
+                                    Padding="6,0"
+                                    Clicked="OnAcknowledgeClicked"/>
+                            <Button x:Name="CloseButton"
+                                    Text="Resolve"
+                                    Style="{StaticResource ActionButtonBlue}"
+                                    ImageSource="icon_btn_resolve.svg"
+                                    Clicked="OnCloseClicked"/>
+                            <Button x:Name="UndoAcknowledgeButton"
+                                    Text="Undo"
+                                    Style="{StaticResource ActionButtonAmber}"
+                                    ImageSource="icon_btn_undo.svg"
+                                    IsVisible="False"
+                                    Clicked="OnUndoAcknowledgeClicked"/>
+                            <Button x:Name="RemoveButton"
+                                    Text="Remove"
+                                    Style="{StaticResource ActionButtonRed}"
+                                    ImageSource="icon_btn_delete.svg"
+                                    Clicked="OnDeleteAlertTapped"/>
+                        </Grid>
 
                     </VerticalStackLayout>
                 </Grid>

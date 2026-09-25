@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Microsoft.Maui.Controls.Shapes;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
@@ -8,6 +9,8 @@ using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Chat;
+using CardiTrack.Mobile.Core.Members;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -40,9 +43,17 @@ public partial class MemberChatPage : ContentView
     /// never touches <see cref="_turns"/> and the live thread survives the visit intact.</summary>
     private readonly ObservableCollection<ChatTurnItem> _pastTurns = [];
 
-    private readonly Guid _memberId;
-    private readonly string? _memberFirstName;
-    private readonly string _threadSubtitle;
+    /// <summary>Who the conversation is about. <see cref="Guid.Empty"/> until one is chosen when
+    /// the sheet opened without one — see <see cref="ShowChooserAsync"/>.</summary>
+    private Guid _memberId;
+    private string? _memberFirstName;
+    private string _threadSubtitle;
+
+    /// <summary>The "who" question is on screen in place of the thread.</summary>
+    private bool _choosing;
+
+    /// <summary>There is more than one member to chat about, so the subtitle offers a switch.</summary>
+    private bool _canSwitch;
     private ChatViewMode _mode = ChatViewMode.Thread;
 
     /// <summary>The completed conversation currently open read-only — what the Continue button
@@ -92,6 +103,10 @@ public partial class MemberChatPage : ContentView
     /// <see cref="LoadAsync"/> task — the history list's loads have no such race to guard.)</summary>
     private Task? _loadTask;
 
+    /// <param name="memberId">
+    /// Who the conversation is about, or <see cref="Guid.Empty"/> to have the sheet ask — the
+    /// launcher on a page showing several members opens it that way.
+    /// </param>
     public MemberChatPage(ICardiTrackApiClient api, Guid memberId, string? memberFirstName)
     {
         InitializeComponent();
@@ -101,13 +116,22 @@ public partial class MemberChatPage : ContentView
         TurnsList.ItemsSource = _turns;
         SessionsList.ItemsSource = _sessions;
 
-        if (!string.IsNullOrWhiteSpace(memberFirstName))
-            SubtitleLabel.Text = $"What would you like to know about {memberFirstName}?";
-        _threadSubtitle = SubtitleLabel.Text;
+        _threadSubtitle = SubtitleFor(memberFirstName);
+        SubtitleLabel.Text = _threadSubtitle;
 
         // No OnAppearing on a ContentView — the host adds this to its tree only at the moment
         // it's shown (see MemberChatLauncher), so construction time is the right time to load.
-        _loadTask = LoadAsync();
+        if (memberId == Guid.Empty)
+        {
+            _ = ShowChooserAsync();
+        }
+        else
+        {
+            _loadTask = LoadAsync();
+            // Whether the subtitle may offer a switch: only worth a tap when there is somebody
+            // else to switch to.
+            _ = LearnWhetherSwitchableAsync();
+        }
 
         // The AI notice is owed at the first interaction, and opening the sheet is it. Posted
         // rather than shown from the constructor: the host adds this view to its tree only after
@@ -135,6 +159,237 @@ public partial class MemberChatPage : ContentView
             // fire-and-forget, so the catch is also what keeps it from surfacing as an
             // unobserved task exception.
         }
+    }
+
+    private static string SubtitleFor(string? firstName) =>
+        string.IsNullOrWhiteSpace(firstName)
+            ? "What would you like to know?"
+            : $"What would you like to know about {firstName}?";
+
+    private async Task LearnWhetherSwitchableAsync()
+    {
+        try
+        {
+            var members = await _api.GetCardiMembersAsync();
+            _canSwitch = members.Count > 1;
+            SwitchChevron.IsVisible = _canSwitch && !_choosing;
+        }
+        catch (Exception)
+        {
+            // No switch offered is the safe default; the conversation itself is unaffected.
+        }
+    }
+
+    private async void OnSubtitleTapped(object? sender, TappedEventArgs e)
+    {
+        // Mid-send the thread belongs to the member being asked about; history browsing has its
+        // own way out. Only a live thread with somebody else to talk about offers the switch.
+        if (!_canSwitch || _choosing || _isSending || _mode != ChatViewMode.Thread)
+            return;
+        await ShowChooserAsync();
+    }
+
+    /// <summary>
+    /// Puts the bot's "who" question in the conversation area, one row per member. A family of
+    /// one is not asked: that member is chosen at once.
+    /// </summary>
+    private async Task ShowChooserAsync()
+    {
+        _choosing = true;
+        SwitchChevron.IsVisible = false;
+        HistoryButton.IsVisible = false;
+        SuggestionsPanel.IsVisible = false;
+        NewConversationAction.IsVisible = false;
+        ExportThreadAction.IsVisible = false;
+        MessageEditor.IsEnabled = false;
+        MessageEditor.Placeholder = "Choose someone first";
+        SubtitleLabel.Text = "Choose who this is about";
+        SetState(loading: ChoiceList.Count == 0);
+
+        List<CardiMemberResponse> members;
+        try
+        {
+            members = await _api.GetCardiMembersAsync();
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while listing members to chat about");
+            ErrorDetailLabel.Text = ex is ApiException api ? api.Message : "Something went wrong while showing this.";
+            SetState(error: true);
+            return;
+        }
+
+        _canSwitch = members.Count > 1;
+        if (members.Count == 1)
+        {
+            await ChooseAsync(members[0]);
+            return;
+        }
+
+        ChoiceList.Clear();
+        _choiceStatus.Clear();
+        foreach (var member in members)
+            ChoiceList.Add(BuildChoiceRow(member));
+
+        SetState();
+        ChooserPanel.IsVisible = true;
+
+        // Each row's status line fills in from what the phone already holds — the dashboard's
+        // saved copy and its last status line — so the list is never held up by the network.
+        foreach (var member in members)
+            _ = FillChoiceStatusAsync(member);
+    }
+
+    /// <summary>Each chooser row's status dot and line, filled in after the rows are drawn.</summary>
+    private readonly Dictionary<Guid, (Ellipse Dot, Label Status)> _choiceStatus = [];
+
+    private Border BuildChoiceRow(CardiMemberResponse member)
+    {
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        var firstName = member.DisplayFirstName();
+
+        var avatar = new Controls.MemberAvatar { BoxWidth = 44, VerticalOptions = LayoutOptions.Center };
+        avatar.Apply(member.Name, member.PhotoUrl);
+
+        var status = new Label
+        {
+            FontFamily = "Quicksand",
+            FontSize = 12,
+            TextColor = (Color)resources["BodyText"],
+            LineBreakMode = LineBreakMode.TailTruncation,
+            IsVisible = false,
+        };
+        var dot = new Ellipse
+        {
+            WidthRequest = 8,
+            HeightRequest = 8,
+            VerticalOptions = LayoutOptions.Center,
+            IsVisible = false,
+        };
+
+        var current = member.Id == _memberId;
+        var row = new Grid
+        {
+            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto)],
+            ColumnSpacing = 12,
+        };
+        row.Add(avatar, 0);
+        row.Add(new VerticalStackLayout
+        {
+            Spacing = 2,
+            VerticalOptions = LayoutOptions.Center,
+            Children =
+            {
+                new Label
+                {
+                    Text = firstName,
+                    FontFamily = "QuicksandSemiBold",
+                    FontSize = 16,
+                    TextColor = (Color)resources["HeadingText"],
+                },
+                new HorizontalStackLayout { Spacing = 6, Children = { dot, status } },
+            },
+        }, 1);
+        row.Add(new Image
+        {
+            Source = current ? "icon_status_check.svg" : "icon_chevron.svg",
+            WidthRequest = 20,
+            HeightRequest = 20,
+            VerticalOptions = LayoutOptions.Center,
+        }, 2);
+
+        var card = new Border
+        {
+            StrokeThickness = 1,
+            Stroke = current ? (Color)resources["Primary"] : ((Color)resources["PrimaryDark"]).WithAlpha(0.18f),
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 16 },
+            BackgroundColor = (Color)resources["White"],
+            Padding = new Thickness(12, 10),
+            Content = row,
+        };
+
+        SemanticProperties.SetDescription(card, current ? $"{firstName}, chatting now" : firstName);
+        SemanticProperties.SetHint(card, $"Double tap to chat about {firstName}");
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await ChooseAsync(member);
+        card.GestureRecognizers.Add(tap);
+
+        _choiceStatus[member.Id] = (dot, status);
+        return card;
+    }
+
+    private async Task FillChoiceStatusAsync(CardiMemberResponse member)
+    {
+        try
+        {
+            var dashboard = await _api.PeekDashboardAsync(member.Id);
+            string? saved = null;
+            if (dashboard is not null)
+            {
+                saved = (await ServiceHelper.GetRequiredService<IStatusLineStore>().TryGetAsync(
+                    member.Id, dashboard.HealthStatus, TimeSpan.FromHours(6)))?.Headline;
+            }
+
+            var (text, colorKey) = ChatMemberChoice.Status(
+                dashboard?.HealthStatus,
+                dashboard?.MonitoringPaused ?? false,
+                everSynced: (dashboard?.LastSyncedAt ?? member.LastSyncedAt) is not null,
+                saved);
+
+            if (text is null || !_choiceStatus.TryGetValue(member.Id, out var parts))
+                return;
+
+            var (dot, status) = parts;
+            status.Text = text;
+            status.IsVisible = true;
+            dot.Fill = new SolidColorBrush(
+                (Color)Microsoft.Maui.Controls.Application.Current!.Resources[colorKey]);
+            dot.IsVisible = true;
+        }
+        catch (Exception ex)
+        {
+            // A missing status line leaves the name alone on the row — still a valid choice.
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while reading a member's status for the chooser");
+        }
+    }
+
+    /// <summary>
+    /// Makes <paramref name="member"/> the one this conversation is about and loads their live
+    /// thread and chips. Choosing the member already on screen just puts that thread back.
+    /// </summary>
+    private async Task ChooseAsync(CardiMemberResponse member)
+    {
+        ChooserPanel.IsVisible = false;
+        _choosing = false;
+        HistoryButton.IsVisible = true;
+        MessageEditor.IsEnabled = true;
+        MessageEditor.Placeholder = "Ask a question…";
+        SwitchChevron.IsVisible = _canSwitch;
+
+        if (member.Id == _memberId)
+        {
+            ShowThread();
+            return;
+        }
+
+        // An earlier load still in flight belongs to the member being left; let it finish (it
+        // never faults) so its result lands before the new member's thread is started, and the
+        // member check in LoadAsync throws it away.
+        if (_loadTask is { } pending)
+            await pending;
+
+        _memberId = member.Id;
+        _memberFirstName = member.DisplayFirstName();
+        _threadSubtitle = SubtitleFor(_memberFirstName);
+        _turns.Clear();
+        _sessions.Clear();
+        _currentSessionId = Guid.Empty;
+        _currentStartedOn = default;
+        _threadLoadFailed = false;
+        SuggestionsRow.Clear();
+
+        ShowThread();
+        _loadTask = LoadAsync();
     }
 
     /// <summary>
@@ -723,13 +978,17 @@ public partial class MemberChatPage : ContentView
     /// </summary>
     private async Task LoadSuggestionsAsync()
     {
+        var memberId = _memberId;
         try
         {
-            if (await _api.PeekMemberChatSuggestionsAsync(_memberId) is { Suggestions.Count: > 0 } saved)
+            if (await _api.PeekMemberChatSuggestionsAsync(memberId) is { Suggestions.Count: > 0 } saved
+                && memberId == _memberId)
                 ShowSuggestions(saved);
 
-            var response = await _api.GetMemberChatSuggestionsAsync(_memberId);
-            ShowSuggestions(response);
+            var response = await _api.GetMemberChatSuggestionsAsync(memberId);
+            // Chips for a member the caregiver has since switched away from are not theirs.
+            if (memberId == _memberId)
+                ShowSuggestions(response);
         }
         catch (Exception ex)
         {
@@ -745,7 +1004,7 @@ public partial class MemberChatPage : ContentView
         // The mode check is the same race one layer out — a caregiver already looking at
         // history must not get the thread's chips drawn under the sessions list.
         if (response.Suggestions.Count == 0 || _turns.Count > 0 || _isSending
-            || _mode != ChatViewMode.Thread)
+            || _mode != ChatViewMode.Thread || _choosing)
             return;
 
         SuggestionsRow.Clear();
@@ -843,14 +1102,18 @@ public partial class MemberChatPage : ContentView
     {
         // A reload while a send is in flight would rebuild the list out from under the turns
         // the send just appended — and the send's own completion is the fresher state anyway.
-        if (_isLoading || _isSending)
+        if (_isLoading || _isSending || _memberId == Guid.Empty)
             return;
         _isLoading = true;
+
+        // The member this load is for. ChooseAsync waits for a load in flight before switching,
+        // so this only guards the stretch between that wait and the switch — cheap to be sure.
+        var memberId = _memberId;
 
         var shownFromCache = false;
         if (_turns.Count == 0)
         {
-            if (await _api.PeekCurrentMemberChatSessionAsync(_memberId) is { } saved)
+            if (await _api.PeekCurrentMemberChatSessionAsync(memberId) is { } saved && memberId == _memberId)
             {
                 ApplyThread(saved);
                 SetState(loaded: true);
@@ -862,7 +1125,9 @@ public partial class MemberChatPage : ContentView
 
         try
         {
-            var history = await _api.GetCurrentMemberChatSessionAsync(_memberId);
+            var history = await _api.GetCurrentMemberChatSessionAsync(memberId);
+            if (memberId != _memberId || _choosing)
+                return;
             ApplyThread(history);
 
             _threadLoadFailed = false;

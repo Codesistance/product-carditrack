@@ -38,16 +38,20 @@ internal static class WizardLauncher
     /// M1-05's picker — the caregiver already told us which device is broken by tapping
     /// Reconnect on it. Ignored when <paramref name="member"/> is null: M1-04 has to run first.
     /// </param>
+    /// <param name="reconnectDeviceId">
+    /// The connection being reconnected, so the grant is stored on it (and consent is asked for
+    /// again) rather than matched to it by account after the fact.
+    /// </param>
     public static async Task<WizardResult> RunModalAsync(
         INavigation navigation, CardiMemberResponse? member, bool showBaselineIntro = true,
-        ConnectableDevice? reconnectDevice = null)
+        ConnectableDevice? reconnectDevice = null, Guid? reconnectDeviceId = null)
     {
         var ctx = WizardContext.ForModal(member);
         ctx.ShowBaselineIntro = showBaselineIntro;
         Page entry = member is null
             ? new AddCardiMemberPage(ctx)
             : reconnectDevice is not null
-                ? new DeviceConnectionPage(ctx, reconnectDevice)
+                ? new DeviceConnectionPage(ctx, reconnectDevice, reconnectDeviceId)
                 : new DeviceSelectionPage(ctx);
         var wizardNav = new NavigationPage(entry);
         var tcs = new TaskCompletionSource<WizardResult>(TaskCreationOptions.RunContinuationsAsynchronously);

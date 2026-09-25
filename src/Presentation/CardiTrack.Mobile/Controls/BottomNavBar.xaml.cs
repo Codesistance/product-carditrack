@@ -34,26 +34,157 @@ public partial class BottomNavBar : ContentView
         set => SetValue(TabProperty, value);
     }
 
+    /// <summary>How long the pill takes to slide to a tapped tab, and the navigation waits for it.</summary>
+    private const uint SlideMs = 240;
+
+    /// <summary>The selected glyph's size against the others — the magnification.</summary>
+    private const double SelectedIconScale = 1.25;
+
+    /// <summary>How much smaller the glyphs of the tabs not selected are drawn.</summary>
+    private const double UnselectedIconShrink = 3;
+
+    /// <summary>
+    /// How far the selected glyph is lifted off the tabs' shared centre line. None: the pill is
+    /// symmetric about the row, so the selected glyph and label sit where every other tab's do.
+    /// </summary>
+    private const double SelectedIconLift = 0;
+
+    private bool _navigating;
+
+    /// <summary>The tab this bar is drawing as selected right now — see <see cref="ApplySelection(NavTab, bool)"/>.</summary>
+    private NavTab _shown;
+
+    /// <summary>
+    /// This bar left its own tab for another and still shows that one. Put back when its page
+    /// next appears, not the moment the navigation returns: Shell's tab switch finishes drawing
+    /// after <c>GoToAsync</c> completes, and resetting then showed the pill jump back to where it
+    /// came from on the page still on screen before the new page covered it.
+    /// </summary>
+    private bool _resetOnReturn;
+
+    private Page? _page;
+
     public BottomNavBar()
     {
         InitializeComponent();
         ApplySelection();
+        TabsGrid.SizeChanged += (_, _) => SnapPill(_shown);
+        BarBorder.SizeChanged += (_, _) => PaintGround();
+        Loaded += (_, _) =>
+        {
+            _page = FindPage();
+            if (_page is not null)
+                _page.Appearing += OnPageAppearing;
+        };
+        Unloaded += (_, _) =>
+        {
+            if (_page is not null)
+                _page.Appearing -= OnPageAppearing;
+            _page = null;
+        };
     }
 
-    private void ApplySelection()
+    /// <summary>How much of the bar's top is see-through, for the pill to rise into.</summary>
+    private const double ClearStrip = 8;
+
+    /// <summary>
+    /// The bar's fill: nothing for its top <see cref="ClearStrip"/>, then TabBarBrush's white into
+    /// pale blue down to the bottom of the screen. Built against the bar's height because a
+    /// gradient's stops are fractions of it, and the bar's height depends on the phone's bottom
+    /// inset; a hard stop at the strip's fraction is the only way to say "8 down" in them.
+    /// </summary>
+    private void PaintGround()
     {
+        var height = BarBorder.Height;
+        if (height <= ClearStrip)
+            return;
+
+        var edge = (float)(ClearStrip / height);
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        var stops = ((LinearGradientBrush)resources["TabBarBrush"]).GradientStops;
+
+        var ground = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+        ground.GradientStops.Add(new GradientStop(Colors.Transparent, 0));
+        ground.GradientStops.Add(new GradientStop(Colors.Transparent, edge));
+        foreach (var stop in stops)
+            ground.GradientStops.Add(new GradientStop(stop.Color, edge + (stop.Offset * (1 - edge))));
+        BarBorder.Background = ground;
+    }
+
+    private Page? FindPage()
+    {
+        Element? cursor = Parent;
+        while (cursor is not null and not Page)
+            cursor = cursor.Parent;
+        return cursor as Page;
+    }
+
+    private void OnPageAppearing(object? sender, EventArgs e)
+    {
+        if (!_resetOnReturn)
+            return;
+        _resetOnReturn = false;
+        ApplySelection();
+    }
+
+    private Image IconFor(NavTab tab) => tab switch
+    {
+        NavTab.Alerts => AlertsIcon,
+        NavTab.Family => FamilyIcon,
+        NavTab.Journal => JournalIcon,
+        NavTab.Settings => SettingsIcon,
+        _ => DashboardIcon,
+    };
+
+    /// <summary>One column's width: the pill moves in whole columns.</summary>
+    private double ColumnWidth => TabsGrid.Width / TabsGrid.ColumnDefinitions.Count;
+
+    /// <summary>Puts the pill under <paramref name="tab"/> with no animation — layout, and a hidden bar coming back.</summary>
+    private void SnapPill(NavTab tab)
+    {
+        if (TabsGrid.Width <= 0)
+            return;
+
+        this.AbortAnimation("pill");
+        SelectionPill.TranslationX = (int)tab * ColumnWidth;
+    }
+
+    private void ApplySelection() => ApplySelection(Tab);
+
+    /// <param name="shown">
+    /// The tab to draw as selected — <see cref="Tab"/>, except for the moment between a tap and
+    /// the navigation it starts, when this bar already shows the tab it is on its way to.
+    /// </param>
+    private void ApplySelection(NavTab shown, bool snapPill = true)
+    {
+        _shown = shown;
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         var selectedColor = (Color)resources["PrimaryDark"];
         var unselectedColor = (Color)resources["MutedText"];
 
-        Style(DashboardIcon, DashboardLabel, "icon_tab_home", Tab == NavTab.Dashboard);
-        Style(AlertsIcon, AlertsLabel, "icon_tab_alerts", Tab == NavTab.Alerts);
-        Style(FamilyIcon, FamilyLabel, "icon_tab_family", Tab == NavTab.Family);
-        Style(JournalIcon, JournalLabel, "icon_tab_journal", Tab == NavTab.Journal);
-        Style(SettingsIcon, SettingsLabel, "icon_tab_settings", Tab == NavTab.Settings);
+        // Two glyph boxes, as the XAML explains: the Figma pair in a 28 box, the others in 24.
+        Style(DashboardIcon, DashboardLabel, "icon_tab_home", 28, shown == NavTab.Dashboard);
+        Style(AlertsIcon, AlertsLabel, "icon_tab_alerts", 28, shown == NavTab.Alerts);
+        Style(FamilyIcon, FamilyLabel, "icon_tab_family", 24, shown == NavTab.Family);
+        Style(JournalIcon, JournalLabel, "icon_tab_journal", 24, shown == NavTab.Journal);
+        Style(SettingsIcon, SettingsLabel, "icon_tab_settings", 24, shown == NavTab.Settings);
+        if (snapPill)
+            SnapPill(shown);
 
-        void Style(Image icon, Label label, string iconStem, bool isSelected)
+        void Style(Image icon, Label label, string iconStem, double box, bool isSelected)
         {
+            // The tabs not selected step down — the glyph by 2, the label by 1 — so the selected
+            // one stands out by more than colour. The margin gives the 2 back, split above and
+            // below, so every label keeps the same baseline whichever tab is selected.
+            var size = isSelected ? box : box - UnselectedIconShrink;
+            var inset = (box == 24 ? 2 : 0) + (isSelected ? 0 : UnselectedIconShrink / 2);
+            icon.WidthRequest = size;
+            icon.HeightRequest = size;
+            icon.Margin = new Thickness(0, inset);
+            label.FontSize = isSelected ? 12 : 11;
+
+            icon.Scale = isSelected ? SelectedIconScale : 1;
+            icon.TranslationY = isSelected ? SelectedIconLift : 0;
             icon.Source = isSelected ? $"{iconStem}_active.svg" : $"{iconStem}.svg";
             // Figma puts a drop shadow under the selected glyph only. It lives here rather than
             // in the SVG because Resizetizer rasterises these at build time and drops filters.
@@ -100,7 +231,7 @@ public partial class BottomNavBar : ContentView
     /// the tap is swallowed — but announced first, for a tab that has something to say about
     /// being tapped twice.
     /// </remarks>
-    private void GoTo(NavTab tab, string route)
+    private async void GoTo(NavTab tab, string route)
     {
         var isTabRoot = Shell.Current.Navigation.NavigationStack.Count <= 1;
         if (Tab == tab && isTabRoot)
@@ -109,12 +240,95 @@ public partial class BottomNavBar : ContentView
             return;
         }
 
+        // A second tap while the pill is still travelling would start a second navigation.
+        if (_navigating)
+            return;
+        _navigating = true;
+
         // Choosing a tab ends whatever journey a content affordance had started. The bar
         // deliberately records no origin of its own (see TabNavigation), but it must cancel one
         // still pending, or a back press at the tab the caregiver just chose would return them to
         // a page they left two navigations ago and undo the tap that brought them here.
         Services.TabNavigation.Origin.Clear();
 
-        _ = Shell.Current.GoToAsync(route);
+        try
+        {
+            Tick();
+
+            // Each tab page carries its own bar, so the slide can only be seen on this one: it
+            // plays here first and the page changes once it lands, where the new page's bar
+            // already draws its pill in the same place. A tap on the tab already selected (from
+            // a page deeper in its stack) has nowhere to slide, so it goes straight away.
+            if (tab != Tab)
+                await SlideToAsync(tab);
+
+            await Shell.Current.GoToAsync(route);
+
+            // This bar stays on a page that is now hidden (Shell keeps tab pages). It is put back
+            // as its own tab when that page appears again (see _resetOnReturn), so coming back
+            // doesn't show another tab selected.
+            _resetOnReturn = _shown != Tab;
+        }
+        catch (Exception ex)
+        {
+            // The navigation never happened: the page is still this one, so its own tab goes
+            // straight back. Logged, not rethrown — this is async void, where a rethrow ends the
+            // app rather than reaching any caller.
+            ApplySelection();
+            Services.ScreenRefresh.LogFailure(ex, nameof(BottomNavBar), "while switching tab");
+        }
+        finally
+        {
+            _navigating = false;
+        }
+    }
+
+    /// <summary>
+    /// Slides the pill under <paramref name="tab"/> and magnifies its glyph — overshooting, then
+    /// settling at <see cref="SelectedIconScale"/> — while the one it leaves shrinks back.
+    /// </summary>
+    private async Task SlideToAsync(NavTab tab)
+    {
+        var from = Tab;
+        ApplySelection(tab, snapPill: false);
+
+        var leaving = IconFor(from);
+        var arriving = IconFor(tab);
+        leaving.Scale = SelectedIconScale;
+        leaving.TranslationY = SelectedIconLift;
+        arriving.Scale = 1;
+        arriving.TranslationY = 0;
+
+        var start = SelectionPill.TranslationX;
+        var end = (int)tab * ColumnWidth;
+        var slide = new TaskCompletionSource();
+        this.AbortAnimation("pill");
+        new Animation(v => SelectionPill.TranslationX = v, start, end)
+            .Commit(this, "pill", 16, SlideMs, Easing.CubicOut, (_, _) => slide.TrySetResult());
+
+        await Task.WhenAll(
+            slide.Task,
+            leaving.ScaleToAsync(1, SlideMs, Easing.CubicOut),
+            leaving.TranslateToAsync(0, 0, SlideMs, Easing.CubicOut),
+            arriving.TranslateToAsync(0, SelectedIconLift, SlideMs, Easing.CubicOut),
+            MagnifyAsync(arriving));
+    }
+
+    private static async Task MagnifyAsync(Image icon)
+    {
+        await icon.ScaleToAsync(1.4, SlideMs / 2, Easing.CubicOut);
+        await icon.ScaleToAsync(SelectedIconScale, SlideMs / 2, Easing.SpringOut);
+    }
+
+    /// <summary>The light tick a tap gives. Best-effort: a device without haptics just doesn't.</summary>
+    private static void Tick()
+    {
+        try
+        {
+            HapticFeedback.Default.Perform(HapticFeedbackType.Click);
+        }
+        catch (Exception ex) when (ex is FeatureNotSupportedException or PermissionException)
+        {
+        }
     }
 }
