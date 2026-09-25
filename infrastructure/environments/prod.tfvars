@@ -90,7 +90,7 @@ device_pull_params = [
 
     sync_lookback_days            = 3
     backfill_days                 = 90 # History fetched behind a new connection, a chunk per pull
-    backfill_chunk_days           = 7  # ~91 requests per pull on top of the routine window
+    backfill_chunk_days           = 7  # Up to 147 requests per pull on top of the routine window
     history_repull_cooldown_hours = 48 # A caregiver may re-pull one connection's history once every two days
     audit_lookback_days           = 14 # Widest range the Google Health API accepts for HR/AZM/calorie roll-ups
     min_pull_interval_minutes     = 10

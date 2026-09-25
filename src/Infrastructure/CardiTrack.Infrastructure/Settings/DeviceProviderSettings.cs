@@ -66,13 +66,18 @@ public class DeviceProviderSettings
     /// Re-fetching a short trailing window makes the job self-healing; the upsert keeps it
     /// idempotent.
     /// <para>
-    /// Note the cost: one day's snapshot is <b>13 requests</b> (6 activity roll-ups, 2 heart rate,
-    /// 1 sleep, 4 additional metrics), so each day here is another 13 against a ceiling of 300
-    /// requests per minute <em>per wearer</em>. That is why these days are re-fetched once a UTC
-    /// day rather than on every pull — see <c>DeviceSyncService.SyncCardiMemberAsync</c>. Nothing
-    /// enforces the ceiling at runtime: the interval bounds and dormancy settings below are
-    /// validated at startup but never consulted by the sync pipeline, and
-    /// <see cref="MaxRequestsPerSecond"/> is not read at all.
+    /// Note the cost: one day's snapshot is <b>17 requests</b> every time (6 activity roll-ups,
+    /// 2 heart rate, 1 sleep, 6 additional metrics, 2 exertion) and <b>up to 21</b>: 3 more on a
+    /// day a night ended (the next day's sleep list, for the bedtime clip; the
+    /// <c>activity-level</c> list behind the longest sedentary stretch; and the heart-rate
+    /// <c>rollUp</c> that checks the watch was worn, once any sedentary time is left outside
+    /// sleep), and 1 more when the SpO2 series is empty and the daily summary is read instead. A
+    /// series that runs past one page adds a request per page. So each day here is up to another
+    /// 21 against a ceiling of 300 requests per minute <em>per wearer</em>. That is why these days
+    /// are re-fetched once a UTC day rather than on every pull — see
+    /// <c>DeviceSyncService.SyncCardiMemberAsync</c>. Nothing enforces the ceiling at runtime: the
+    /// interval bounds and dormancy settings below are validated at startup but never consulted by
+    /// the sync pipeline, and <see cref="MaxRequestsPerSecond"/> is not read at all.
     /// </para>
     /// </remarks>
     public int SyncLookbackDays { get; set; } = 3;
@@ -88,17 +93,20 @@ public class DeviceProviderSettings
 
     /// <summary>
     /// Days of history fetched per pull while a connection still has backfilling to do. Sized
-    /// against the per-wearer request ceiling: a day's snapshot is 13 requests, so 7 days is ~91
-    /// requests on top of the routine pull — comfortably inside 300/min while still finishing a
-    /// 90-day horizon in about two hours at a 10-minute cadence.
+    /// against the per-wearer request ceiling: a day's snapshot is up to 21 requests at one page per
+    /// series, so 7 days is up to 147 requests on top of the routine pull, plus any extra pages —
+    /// comfortably inside 300/min while still finishing a 90-day horizon in about two hours at a
+    /// 10-minute cadence.
     /// </summary>
     public int BackfillChunkDays { get; set; } = 7;
 
     /// <summary>
     /// How long after a caregiver-requested history re-pull completes the same connection may be
-    /// re-pulled again. A re-pull re-reads up to 90 days at ~18 requests a day, so this is the
-    /// guard on a caregiver spending the wearer's per-user quota by tapping the action twice in
-    /// an afternoon. 0 disables the cooldown. Failed and cancelled re-pulls do not start one.
+    /// re-pulled again. A re-pull re-reads up to 90 days at up to 26 requests a day (the snapshot
+    /// and the five granular series, one page each) — up to 2,340 in all, more when a series spans
+    /// several pages — so this is the guard on a caregiver spending the wearer's per-user quota by
+    /// tapping the action twice in an afternoon. 0 disables the cooldown. Failed and cancelled
+    /// re-pulls do not start one.
     /// </summary>
     public int HistoryRepullCooldownHours { get; set; } = 48;
 

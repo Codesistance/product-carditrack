@@ -236,7 +236,7 @@ public class DevicesController : BaseApiController
     /// gaps the routine sync left (M1-15 "Re-pull History").
     /// </summary>
     /// <remarks>
-    /// 202, not 200: the pull is too large to run inside a request (up to 90 days at ~18
+    /// 202, not 200: the pull is too large to run inside a request (up to 90 days at up to 26
     /// provider calls a day), so this records the request and <c>HistoryRepullWorker</c> in
     /// <c>CardiTrack.Worker</c> walks it in chunks. Progress surfaces on the device list as
     /// <c>historyRepull</c>. Refusals carry their own status: 409 when monitoring is paused,

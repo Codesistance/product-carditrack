@@ -10,7 +10,7 @@ public interface IDeviceSyncService
     /// is followed by one history-backfill chunk — the Worker's cadence opts in so a fresh
     /// connection's history and granular substrate fill on schedule, while the user-facing manual
     /// sync stays at <see cref="SyncScope.Routine"/>: a caregiver waiting on a refresh must not
-    /// pay for ninety days of history or four extra series.
+    /// pay for ninety days of history or five extra series.
     /// </summary>
     Task SyncCardiMemberAsync(DeviceConnection connection, SyncScope scope = SyncScope.Routine);
 

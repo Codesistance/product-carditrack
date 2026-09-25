@@ -135,7 +135,7 @@ public class DeviceSyncService : IDeviceSyncService
             // window next pull and could park a working connection in SyncError over a series
             // the caregiver never sees directly. Scoped to the worker cadence because the
             // manual-sync path shares this method, and a caregiver waiting on a refresh must not
-            // pay for a chunk of last month or four extra series.
+            // pay for a chunk of last month or five extra series.
             if (scope == SyncScope.WorkerCadence)
             {
                 await IngestGranularWindowAsync(connection, accessToken, lookbackDays, today);
@@ -658,8 +658,9 @@ public class DeviceSyncService : IDeviceSyncService
     /// <remarks>
     /// A fresh connection starts with only the routine window, which leaves the 30-day baseline
     /// unreachable for weeks even when the wearable holds months of history the provider would
-    /// serve today. Fetching it in one pull is not an option either: a day's snapshot costs 13
-    /// requests against the 300/min per-wearer ceiling, so a 90-day one-shot would rate-limit
+    /// serve today. Fetching it in one pull is not an option either: a day's snapshot costs up to
+    /// 21 requests against the 300/min per-wearer ceiling, so a 90-day one-shot (up to 1,890
+    /// requests at one page per series, more when a series spans several) would rate-limit
     /// partway, fail the sync, and start over from scratch on the next pull — burning quota
     /// without ever completing. Each pull therefore takes one chunk, newest-first (the days the
     /// 30-day baseline needs soonest), and <see cref="DeviceConnection.HistoryBackfilledTo"/>
