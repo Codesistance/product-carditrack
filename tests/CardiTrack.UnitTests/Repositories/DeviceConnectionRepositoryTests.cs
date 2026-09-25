@@ -476,6 +476,29 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.Equal("enc(refreshed_access)", saved.AccessToken);
     }
 
+    /// <summary>
+    /// Copilot review round 13 on #1290: a refresh that finishes after the device was removed must
+    /// not write fresh tokens — or a Connected status — back onto the removed row.
+    /// </summary>
+    [Fact]
+    public async Task UpdateTokenAsync_OfAConnectionRemovedSinceTheRefreshRead_WritesNothing()
+    {
+        using var scope = fixture.CreateScope();
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var removed = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.Disconnected, isActive: false);
+
+        await scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>()
+            .UpdateTokenAsync(removed.Id, "enc(new_access)", "enc(new_refresh)", DateTime.UtcNow.AddHours(1));
+
+        using var check = fixture.CreateScope();
+        var saved = await check.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>()
+            .GetByIdAsync(removed.Id);
+        Assert.NotEqual("enc(new_refresh)", saved!.RefreshToken);
+        Assert.Equal(ConnectionStatus.Disconnected, saved.ConnectionStatus);
+    }
+
     /// <summary>A connection built outside this unit of work still saves in full.</summary>
     [Fact]
     public async Task Update_OfADetachedConnection_WritesItInFull()

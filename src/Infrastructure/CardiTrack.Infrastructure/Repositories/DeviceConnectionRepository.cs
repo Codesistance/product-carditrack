@@ -193,8 +193,14 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
 
     public async Task UpdateTokenAsync(Guid id, string encryptedAccessToken, string encryptedRefreshToken, DateTime tokenExpiry)
     {
+        // Same guard as MarkSyncSucceededAsync. A refresh reads the connection and calls the
+        // provider outside the member's device lock; a removal that commits in between has cleared
+        // the tokens and queued the grant for revocation, and writing fresh ones back would leave
+        // live credentials — and a Connected status — on a row the user has removed.
         await _dbSet
-            .Where(dc => dc.Id == id)
+            .Where(dc => dc.Id == id
+                         && dc.IsActive
+                         && dc.ConnectionStatus != ConnectionStatus.Disconnected)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(dc => dc.AccessToken, encryptedAccessToken)
                 .SetProperty(dc => dc.RefreshToken, encryptedRefreshToken)

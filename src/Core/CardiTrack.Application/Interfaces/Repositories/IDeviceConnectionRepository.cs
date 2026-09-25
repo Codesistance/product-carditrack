@@ -27,6 +27,10 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// must not be collected by any path, and an audit is still collection.
     /// </summary>
     Task<IEnumerable<DeviceConnection>> GetRandomSyncableSampleAsync(int count);
+    /// <summary>
+    /// Stores refreshed tokens and marks the connection connected — unless it has been removed since
+    /// the refresh read it, in which case nothing is written.
+    /// </summary>
     Task UpdateTokenAsync(Guid id, string encryptedAccessToken, string encryptedRefreshToken, DateTime tokenExpiry);
     Task UpdateStatusAsync(Guid id, ConnectionStatus status);
 

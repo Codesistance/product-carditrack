@@ -416,6 +416,52 @@ public class MemberErasureCascadeTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Copilot review round 13 on #1290: the provider calls are made before erasure takes its
+    /// locks, so a slow provider never holds them. A grant stored by a device change that held the
+    /// lock meanwhile is still found under the lock and revoked there — and a grant already revoked
+    /// is not revoked twice.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_RevokesBeforeTakingItsLocks_AndCatchesAGrantStoredMeanwhile()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        using var holder = _services.CreateScope();
+        var holderDb = holder.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        await using var held = await holderDb.Database.BeginTransactionAsync();
+        await DeviceMemberLock.AcquireAsync(holderDb.Database, memberId);
+
+        var erasure = EraseAsync(memberId);
+        var raced = await Task.WhenAny(erasure, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.NotSame(erasure, raced);
+
+        // Revoked while erasure still waits for the lock: the provider was called outside it.
+        await _grantRevoker.Received().TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId && c.RefreshToken == SeededQueuedToken),
+            Arg.Any<CancellationToken>());
+
+        // What a connect holding the lock stores before erasure gets it.
+        holderDb.DeviceConnections.Add(new DeviceConnection
+        {
+            CardiMemberId = memberId,
+            DeviceType = DeviceType.Fitbit,
+            DeviceName = "Connected during erasure",
+            ConnectionStatus = ConnectionStatus.Connected,
+            IsActive = true,
+            RefreshToken = "enc(late_refresh)",
+        });
+        await holderDb.SaveChangesAsync();
+        await held.CommitAsync();
+
+        await erasure.WaitAsync(TimeSpan.FromSeconds(30));
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.RefreshToken == "enc(late_refresh)"), Arg.Any<CancellationToken>());
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.RefreshToken == SeededQueuedToken), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// Copilot review round 11 on #1290: erasure takes the device lock before the member row, the
     /// order a removal takes them in — device lock, then an update of the member row. The other
     /// way round, the removal's update would wait on erasure's row lock while erasure waited on the

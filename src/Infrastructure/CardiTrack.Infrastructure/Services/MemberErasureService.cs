@@ -58,6 +58,14 @@ public class MemberErasureService : IMemberErasureService
         var rows = new List<(string Table, int Rows)>();
         var reportObjects = new List<string>();
 
+        // The provider calls are made here, before the transaction, so the locks below are not held
+        // across them: a provider that answers slowly — or times out, once per grant — would
+        // otherwise keep this member's device lock and row lock for as long. Under the locks the
+        // grants are read again and only one that appeared in between is revoked there, which a
+        // device change racing the erasure is the only way to produce.
+        var handled = new HashSet<(Guid Id, string? Token)>();
+        await RevokeDeviceGrantsAsync(cardiMemberId, handled, unrevoked, ct);
+
         await using var transaction = await _db.Database.BeginTransactionAsync(ct);
         try
         {
@@ -90,7 +98,16 @@ public class MemberErasureService : IMemberErasureService
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"""SELECT 1 FROM "CardiMembers" WHERE "Id" = {cardiMemberId} FOR UPDATE""", ct);
 
-            await RevokeDeviceGrantsAsync(cardiMemberId, unrevoked, ct);
+            await RevokeDeviceGrantsAsync(cardiMemberId, handled, unrevoked, ct);
+            if (unrevoked.Count > 0)
+            {
+                _logger.LogWarning(
+                    "Erasure of CardiMember {CardiMemberId} could not confirm revocation of "
+                    + "{Count} device grant(s): {Connections}. They are still live at the provider "
+                    + "and the tokens that could have ended them are about to be deleted — revoke "
+                    + "from the wearer's provider account by hand.",
+                    cardiMemberId, unrevoked.Count, string.Join(", ", unrevoked));
+            }
 
             // These name files outside Postgres, and once the rows are gone nothing remembers
             // which. Read here — under the lock, inside the transaction — and not before it: a
@@ -272,14 +289,24 @@ public class MemberErasureService : IMemberErasureService
     /// known account can be matched, so a grant whose account was never captured is revoked, as
     /// before — ending an erased member's access is what this is for.
     /// </para>
+    /// <para>
+    /// Called twice, before the transaction and again under its locks. A grant already decided —
+    /// revoked, kept or failed — is recorded in <paramref name="handled"/> by connection and token,
+    /// so the second call acts only on one that appeared since, or whose token a reconnect replaced.
+    /// The reads are untracked for the same reason: a tracked read would hand the second call the
+    /// first call's copy of each row.
+    /// </para>
     /// </remarks>
-    private async Task RevokeDeviceGrantsAsync(Guid cardiMemberId, List<Guid> unrevoked, CancellationToken ct)
+    private async Task RevokeDeviceGrantsAsync(
+        Guid cardiMemberId, HashSet<(Guid Id, string? Token)> handled, List<Guid> unrevoked, CancellationToken ct)
     {
         var grants = (await _db.DeviceConnections
+                .AsNoTracking()
                 .Where(c => c.CardiMemberId == cardiMemberId)
                 .ToListAsync(ct))
             .Select(c => (Grant: c, Account: c.HealthUserId))
             .Concat((await _db.PendingGrantRevocations
+                    .AsNoTracking()
                     .Where(r => r.CardiMemberId == cardiMemberId)
                     .ToListAsync(ct))
                 .Select(r => (Grant: new DeviceConnection
@@ -293,6 +320,9 @@ public class MemberErasureService : IMemberErasureService
 
         foreach (var (grant, account) in grants)
         {
+            if (!handled.Add((grant.Id, grant.RefreshToken ?? grant.AccessToken)))
+                continue;
+
             if (account is not null
                 && await _db.DeviceConnections.AnyAsync(c =>
                     c.CardiMemberId != cardiMemberId
@@ -322,16 +352,6 @@ public class MemberErasureService : IMemberErasureService
 
             if (!revoked)
                 unrevoked.Add(grant.Id);
-        }
-
-        if (unrevoked.Count > 0)
-        {
-            _logger.LogWarning(
-                "Erasure of CardiMember {CardiMemberId} could not confirm revocation of "
-                + "{Count} device grant(s): {Connections}. They are still live at the provider "
-                + "and the tokens that could have ended them are about to be deleted — revoke "
-                + "from the wearer's provider account by hand.",
-                cardiMemberId, unrevoked.Count, string.Join(", ", unrevoked));
         }
     }
 }
