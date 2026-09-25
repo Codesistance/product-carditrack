@@ -193,8 +193,14 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
 
     public async Task UpdateTokenAsync(Guid id, string encryptedAccessToken, string encryptedRefreshToken, DateTime tokenExpiry)
     {
+        // Same guard as MarkSyncSucceededAsync. A refresh reads the connection and calls the
+        // provider outside the member's device lock; a removal that commits in between has cleared
+        // the tokens and queued the grant for revocation, and writing fresh ones back would leave
+        // live credentials — and a Connected status — on a row the user has removed.
         await _dbSet
-            .Where(dc => dc.Id == id)
+            .Where(dc => dc.Id == id
+                         && dc.IsActive
+                         && dc.ConnectionStatus != ConnectionStatus.Disconnected)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(dc => dc.AccessToken, encryptedAccessToken)
                 .SetProperty(dc => dc.RefreshToken, encryptedRefreshToken)
@@ -329,9 +335,52 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     /// watcher clause is the negation of
     /// <c>IUserCardiMemberRepository.IsLeftUnwatchedByPendingDeletionAsync</c>.
     /// </summary>
+    /// <summary>
+    /// Marks a connection for saving without writing back columns this unit of work never changed.
+    /// </summary>
+    /// <remarks>
+    /// <c>DbSet.Update</c> marks every column modified, so a connection read before another
+    /// transaction committed would write that transaction's columns back to what they were. A token
+    /// refresh runs its provider call outside the member's device lock, and a suspension committed
+    /// while it was in flight was silently undone by its save. A tracked connection is therefore left
+    /// to change tracking, which writes only what this unit of work changed; only a detached one, which
+    /// change tracking cannot see, is attached as a whole-entity update.
+    /// </remarks>
+    public override void Update(DeviceConnection entity)
+    {
+        if (_context.Entry(entity).State == EntityState.Detached)
+            _dbSet.Update(entity);
+    }
+
+    public async Task<bool> AnyOtherActiveWithHealthUserIdAsync(Guid excludingId, string healthUserId)
+    {
+        return await _dbSet
+            .AnyAsync(dc => dc.Id != excludingId
+                            && dc.HealthUserId == healthUserId
+                            && dc.IsActive
+                            && dc.ConnectionStatus != ConnectionStatus.Disconnected);
+    }
+
+    public async Task<bool> LockMemberDevicesAsync(Guid cardiMemberId, CancellationToken ct = default)
+    {
+        await DeviceMemberLock.AcquireAsync(_context.Database, cardiMemberId, ct);
+
+        // From the database, not the change tracker: an entity loaded before the lock would say
+        // the member is still there after an erasure that committed while this waited.
+        return await _context.CardiMembers.AnyAsync(m => m.Id == cardiMemberId && m.IsActive, ct);
+    }
+
+    public async Task<bool> IsSuspendedAsync(Guid id)
+    {
+        return await _dbSet.AnyAsync(dc => dc.Id == id && dc.SuspendedAt != null);
+    }
+
     private IQueryable<DeviceConnection> WhereMemberAllowsCollection(
         IQueryable<DeviceConnection> connections, DateTime now) =>
         connections
+            // A suspended connection is out of every collection path the same way a paused member
+            // is — this is the one gate they all go through.
+            .Where(dc => dc.SuspendedAt == null)
             .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
             .Where(x => x.cm.IsActive
                         && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now)

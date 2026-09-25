@@ -72,6 +72,18 @@ public class DeviceAuthRecoveryServiceTests
             Arg.Any<Guid>(), Arg.Any<DateTime>());
     }
 
+    [Fact]
+    public async Task AConnectionSuspendedSinceItWasSelected_IsNotRefreshed_AndIsNotPenalised()
+    {
+        _connections.IsSuspendedAsync(_connectionId).Returns(true);
+
+        var recovered = await CreateSut().RecoverDueConnectionsAsync(UtcNow);
+
+        Assert.Equal(0, recovered);
+        await _tokenRefresh.DidNotReceiveWithAnyArgs().RefreshIfExpiredAsync(default!, default!);
+        await _connections.DidNotReceiveWithAnyArgs().MarkAuthRecoveryFailedAsync(default, default);
+    }
+
     /// <summary>
     /// The caregiver is told to reconnect while the connection is broken, so a connection that
     /// fixes itself has to clear that ask immediately — not at tomorrow's rule run.

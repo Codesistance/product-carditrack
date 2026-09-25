@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.UnitTests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -358,6 +359,265 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         var result = await repo.GetDueForSyncAsync();
 
         Assert.DoesNotContain(result, c => c.Id == connection.Id);
+    }
+
+    // A suspended device keeps its tokens, so nothing about the grant stops a pull — only the
+    // suspension itself, which every collection path reads through the same gate.
+    [Fact]
+    public async Task GetDueForSyncAsync_ExcludesConnection_WhenSuspended()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var suspended = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, lastSyncDate: null, suspendedAt: DateTime.UtcNow.AddHours(-1));
+        var collecting = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id, lastSyncDate: null);
+
+        var result = await repo.GetDueForSyncAsync();
+
+        Assert.DoesNotContain(result, c => c.Id == suspended.Id);
+        Assert.Contains(result, c => c.Id == collecting.Id);
+    }
+
+    [Fact]
+    public async Task GetSyncableByHealthUserIdAsync_ExcludesSuspendedConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var account = $"hu-{Guid.NewGuid():N}";
+        await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, suspendedAt: DateTime.UtcNow, healthUserId: account);
+
+        Assert.Empty(await repo.GetSyncableByHealthUserIdAsync(account));
+    }
+
+    // ── AnyOtherActiveWithHealthUserIdAsync ──────────────────────────────────────
+
+    [Fact]
+    public async Task AnyOtherActiveWithHealthUserIdAsync_IsTrue_ForAnotherMembersLiveConnectionOnTheAccount()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var first = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var second = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var account = $"hu-{Guid.NewGuid():N}";
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(scope, first.Id, healthUserId: account);
+        // Suspended still counts: it keeps its tokens, and would lose them with the grant.
+        await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, second.Id, healthUserId: account, suspendedAt: DateTime.UtcNow);
+
+        Assert.True(await repo.AnyOtherActiveWithHealthUserIdAsync(connection.Id, account));
+    }
+
+    [Fact]
+    public async Task AnyOtherActiveWithHealthUserIdAsync_IgnoresItselfAndRemovedConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var account = $"hu-{Guid.NewGuid():N}";
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id, healthUserId: account);
+        await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.Disconnected, isActive: false, healthUserId: account);
+
+        Assert.False(await repo.AnyOtherActiveWithHealthUserIdAsync(connection.Id, account));
+    }
+
+    // ── GetByCardiMemberIdAsync ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// A removed connection is never one of the member's devices. Every device action, and a
+    /// reconnect or replace completing at the callback, finds its target in this list — so a
+    /// removed device cannot be revived onto a grant already queued for revocation (Copilot review
+    /// round 14 on #1290).
+    /// </summary>
+    [Fact]
+    public async Task GetByCardiMemberIdAsync_LeavesOutRemovedConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var live = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
+        var removed = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.Disconnected, isActive: false);
+
+        var result = (await repo.GetByCardiMemberIdAsync(member.Id)).ToList();
+
+        Assert.Contains(result, c => c.Id == live.Id);
+        Assert.DoesNotContain(result, c => c.Id == removed.Id);
+    }
+
+    // ── Update ───────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Copilot review round 12 on #1290: a token refresh reads the connection, calls the provider
+    /// outside the member's device lock, then saves. A suspension committed in between must survive
+    /// that save — the refresh changed the tokens, not the suspension.
+    /// </summary>
+    [Fact]
+    public async Task Update_OfAConnectionReadBeforeASuspension_DoesNotUndoTheSuspension()
+    {
+        using var seedScope = fixture.CreateScope();
+        var org = await TestDataSeeder.SeedOrganizationAsync(seedScope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(seedScope, org.Id);
+        var seeded = await TestDataSeeder.SeedDeviceConnectionAsync(seedScope, member.Id);
+
+        using var refresh = fixture.CreateScope();
+        var refreshUow = refresh.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var stale = (await refreshUow.DeviceConnections.GetByCardiMemberIdAsync(member.Id))
+            .Single(c => c.Id == seeded.Id);
+
+        var suspendedAt = DateTime.UtcNow;
+        using (var suspend = fixture.CreateScope())
+        {
+            var suspendUow = suspend.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var fresh = (await suspendUow.DeviceConnections.GetByCardiMemberIdAsync(member.Id))
+                .Single(c => c.Id == seeded.Id);
+            fresh.SuspendedAt = suspendedAt;
+            fresh.SuspendedByUserId = Guid.NewGuid();
+            suspendUow.DeviceConnections.Update(fresh);
+            await suspendUow.SaveChangesAsync();
+        }
+
+        stale.AccessToken = "enc(refreshed_access)";
+        stale.UpdatedDate = DateTime.UtcNow;
+        refreshUow.DeviceConnections.Update(stale);
+        await refreshUow.SaveChangesAsync();
+
+        using var check = fixture.CreateScope();
+        var saved = await check.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>()
+            .GetByIdAsync(seeded.Id);
+        Assert.NotNull(saved!.SuspendedAt);
+        Assert.Equal("enc(refreshed_access)", saved.AccessToken);
+    }
+
+    /// <summary>
+    /// Copilot review round 13 on #1290: a refresh that finishes after the device was removed must
+    /// not write fresh tokens — or a Connected status — back onto the removed row.
+    /// </summary>
+    [Fact]
+    public async Task UpdateTokenAsync_OfAConnectionRemovedSinceTheRefreshRead_WritesNothing()
+    {
+        using var scope = fixture.CreateScope();
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var removed = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.Disconnected, isActive: false);
+
+        await scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>()
+            .UpdateTokenAsync(removed.Id, "enc(new_access)", "enc(new_refresh)", DateTime.UtcNow.AddHours(1));
+
+        using var check = fixture.CreateScope();
+        var saved = await check.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>()
+            .GetByIdAsync(removed.Id);
+        Assert.NotEqual("enc(new_refresh)", saved!.RefreshToken);
+        Assert.Equal(ConnectionStatus.Disconnected, saved.ConnectionStatus);
+    }
+
+    /// <summary>A connection built outside this unit of work still saves in full.</summary>
+    [Fact]
+    public async Task Update_OfADetachedConnection_WritesItInFull()
+    {
+        using var seedScope = fixture.CreateScope();
+        var org = await TestDataSeeder.SeedOrganizationAsync(seedScope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(seedScope, org.Id);
+        var detached = await TestDataSeeder.SeedDeviceConnectionAsync(seedScope, member.Id);
+
+        using var scope = fixture.CreateScope();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        detached.AccessToken = "enc(detached_access)";
+        uow.DeviceConnections.Update(detached);
+        await uow.SaveChangesAsync();
+
+        using var check = fixture.CreateScope();
+        var saved = await check.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>()
+            .GetByIdAsync(detached.Id);
+        Assert.Equal("enc(detached_access)", saved!.AccessToken);
+    }
+
+    // ── LockMemberDevicesAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LockMemberDevicesAsync_HoldsASecondChangeForTheSameMember_UntilTheFirstCommits()
+    {
+        using var first = fixture.CreateScope();
+        using var second = fixture.CreateScope();
+        var firstUow = first.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var secondUow = second.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var memberId = Guid.NewGuid();
+
+        await firstUow.BeginTransactionAsync();
+        await firstUow.DeviceConnections.LockMemberDevicesAsync(memberId);
+
+        await secondUow.BeginTransactionAsync();
+        var waiting = secondUow.DeviceConnections.LockMemberDevicesAsync(memberId);
+        var raced = await Task.WhenAny(waiting, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.NotSame(waiting, raced);
+
+        await firstUow.CommitTransactionAsync();
+        await waiting.WaitAsync(TimeSpan.FromSeconds(10));
+        await secondUow.CommitTransactionAsync();
+    }
+
+    [Fact]
+    public async Task LockMemberDevicesAsync_DoesNotHoldChangesForAnotherMember()
+    {
+        using var first = fixture.CreateScope();
+        using var second = fixture.CreateScope();
+        var firstUow = first.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var secondUow = second.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+        await firstUow.BeginTransactionAsync();
+        await firstUow.DeviceConnections.LockMemberDevicesAsync(Guid.NewGuid());
+
+        await secondUow.BeginTransactionAsync();
+        await secondUow.DeviceConnections.LockMemberDevicesAsync(Guid.NewGuid())
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        await secondUow.CommitTransactionAsync();
+        await firstUow.CommitTransactionAsync();
+    }
+
+    // ── PendingGrantRevocations ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task PendingGrantRevocations_GetDueAsync_ReturnsOnlyDueEntries_OldestFirst()
+    {
+        using var scope = fixture.CreateScope();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var memberId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        PendingGrantRevocation Entry(DateTime due) => new()
+        {
+            CardiMemberId = memberId,
+            DeviceConnectionId = Guid.NewGuid(),
+            DeviceType = DeviceType.Fitbit,
+            Token = "enc_refresh",
+            NextAttemptAt = due,
+        };
+        var later = Entry(now.AddMinutes(-1));
+        var earlier = Entry(now.AddMinutes(-10));
+        var notYet = Entry(now.AddMinutes(10));
+        await uow.PendingGrantRevocations.AddRangeAsync([later, earlier, notYet]);
+        await uow.SaveChangesAsync();
+
+        var due = (await uow.PendingGrantRevocations.GetDueAsync(now, max: 1000))
+            .Where(r => r.CardiMemberId == memberId)
+            .ToList();
+
+        Assert.Equal([earlier.Id, later.Id], due.Select(r => r.Id));
+        Assert.Equal(3, (await uow.PendingGrantRevocations.GetByCardiMemberIdAsync(memberId)).Count);
     }
 
     // ── UpdateTokenAsync ─────────────────────────────────────────────────────────

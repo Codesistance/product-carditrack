@@ -53,6 +53,7 @@ public class UnitOfWork : IUnitOfWork
     public IGenerationLeaseRepository GenerationLeases { get; }
     public IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
     public IDeviceConnectionInviteRepository DeviceConnectionInvites { get; }
+    public IPendingGrantRevocationRepository PendingGrantRevocations { get; }
 
     public UnitOfWork(
         CardiTrackDbContext context,
@@ -99,7 +100,8 @@ public class UnitOfWork : IUnitOfWork
         IGenerationLeaseRepository generationLeases,
         IDeviceHistoryRepullRepository deviceHistoryRepulls,
         IDeviceConnectionInviteRepository deviceConnectionInvites,
-        ICardiMemberCreationKeyRepository cardiMemberCreationKeys)
+        ICardiMemberCreationKeyRepository cardiMemberCreationKeys,
+        IPendingGrantRevocationRepository pendingGrantRevocations)
     {
         _context = context;
         Organizations = organizations;
@@ -146,6 +148,7 @@ public class UnitOfWork : IUnitOfWork
         DeviceHistoryRepulls = deviceHistoryRepulls;
         DeviceConnectionInvites = deviceConnectionInvites;
         CardiMemberCreationKeys = cardiMemberCreationKeys;
+        PendingGrantRevocations = pendingGrantRevocations;
     }
 
     public async Task<int> SaveChangesAsync()

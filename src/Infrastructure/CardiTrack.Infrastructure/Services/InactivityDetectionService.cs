@@ -120,7 +120,10 @@ public class InactivityDetectionService : IInactivityDetectionService
     private async Task<bool> ProbedIntoLifeAsync(
         Guid memberId, DateTime utcNow, InactivityDetectionRules rules, CancellationToken ct)
     {
-        var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(memberId)).ToList();
+        // A suspended device is not collecting, so it is not one to probe for signs of life.
+        var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(memberId))
+            .Where(c => c.SuspendedAt is null)
+            .ToList();
         if (connections.Count == 0)
             return false;
 
@@ -233,6 +236,13 @@ public class InactivityDetectionService : IInactivityDetectionService
         var rulePrefs = AlertRuleOverrides.FromJson(
             (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
         if (!rulePrefs.IsEnabled(AlertRuleCatalogue.DeviceSilence))
+            return false;
+
+        // Every device suspended: collection stopped because a caregiver stopped it, and "the watch
+        // has gone quiet" would be telling them something they did themselves. A member with no
+        // devices at all is a different case and still falls through.
+        var devices = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(memberId)).ToList();
+        if (devices.Count > 0 && devices.All(c => c.SuspendedAt is not null))
             return false;
 
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);

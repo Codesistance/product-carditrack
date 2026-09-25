@@ -116,6 +116,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IReportRepository, CardiTrack.Infrastructure.Repositories.ReportRepository>();
         services.AddScoped<IExportConsentRepository, CardiTrack.Infrastructure.Repositories.ExportConsentRepository>();
         services.AddScoped<ICardiMemberCreationKeyRepository, CardiTrack.Infrastructure.Repositories.CardiMemberCreationKeyRepository>();
+        services.AddScoped<IPendingGrantRevocationRepository, CardiTrack.Infrastructure.Repositories.PendingGrantRevocationRepository>();
         services.AddScoped<IExportConsentService, ExportConsentService>();
         services.AddScoped<IMemberAdviseRepository, CardiTrack.Infrastructure.Repositories.MemberAdviseRepository>();
         services.AddScoped<IMemberAdviseObservationRepository, CardiTrack.Infrastructure.Repositories.MemberAdviseObservationRepository>();
@@ -148,6 +149,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Clients.IOAuthGrantRevoker, OAuthGrantRevoker>();
         services.AddScoped<IOAuthCodeExchangeService, OAuthCodeExchangeService>();
+        services.AddScoped<IDeviceAccountIdentityResolver, DeviceAccountIdentityResolver>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAuth0ManagementService, Auth0ManagementClient>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceConnectionService,
             CardiTrack.Infrastructure.Services.DeviceConnectionService>();

@@ -65,4 +65,66 @@ public class ConnectDeviceValidatorTests
     {
         Assert.False(_sut.Validate(Request(redirectUri)).IsValid);
     }
+
+    // ── Mode (issue #1286) ────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("add")]
+    [InlineData("ADD")]
+    public void Accepts_AnAdd_WithoutADeviceId(string? mode)
+    {
+        var request = Request("carditrack://oauth/callback");
+        request.Mode = mode;
+
+        Assert.True(_sut.Validate(request).IsValid);
+    }
+
+    [Theory]
+    [InlineData("reconnect")]
+    [InlineData("replace")]
+    public void Accepts_AReconnectOrReplace_NamingItsDevice(string mode)
+    {
+        var request = Request("carditrack://oauth/callback");
+        request.Mode = mode;
+        request.DeviceId = Guid.NewGuid();
+
+        Assert.True(_sut.Validate(request).IsValid);
+    }
+
+    [Theory]
+    [InlineData("reconnect")]
+    [InlineData("replace")]
+    public void Rejects_AReconnectOrReplace_WithoutADeviceId(string mode)
+    {
+        var request = Request("carditrack://oauth/callback");
+        request.Mode = mode;
+
+        var result = _sut.Validate(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(ConnectDeviceRequest.DeviceId));
+    }
+
+    [Fact]
+    public void Rejects_AnAdd_ThatNamesADevice()
+    {
+        // A client sending a device id with an add believes it is doing something else.
+        var request = Request("carditrack://oauth/callback");
+        request.DeviceId = Guid.NewGuid();
+
+        Assert.False(_sut.Validate(request).IsValid);
+    }
+
+    [Fact]
+    public void Rejects_AnUnknownMode()
+    {
+        var request = Request("carditrack://oauth/callback");
+        request.Mode = "swap";
+
+        var result = _sut.Validate(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(ConnectDeviceRequest.Mode));
+    }
 }

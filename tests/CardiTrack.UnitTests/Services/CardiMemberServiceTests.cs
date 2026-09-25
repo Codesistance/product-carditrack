@@ -58,11 +58,10 @@ public class CardiMemberServiceTests
         });
     }
 
-    private readonly IOAuthGrantRevoker _grantRevoker = Substitute.For<IOAuthGrantRevoker>();
 
     private CardiMemberService CreateSut() => new(
         _unitOfWork, _access, _encryption, new NoOpNotificationGapResolver(), _photoProcessor,
-        _photoStorage, _grantRevoker);
+        _photoStorage);
 
     private static CreateCardiMemberRequest BuildRequest() => new()
     {
@@ -581,7 +580,7 @@ public class CardiMemberServiceTests
 
     private CardiMemberService CreateSutAt(DateTimeOffset utcNow) => new(
         _unitOfWork, _access, _encryption, new NoOpNotificationGapResolver(), _photoProcessor,
-        _photoStorage, _grantRevoker, new FakeTimeProvider(utcNow));
+        _photoStorage, new FakeTimeProvider(utcNow));
 
     private void AnchorToCaregiverZone(CardiMember member, string timeZoneId)
     {
@@ -1417,7 +1416,7 @@ public class CardiMemberServiceTests
     /// cleared, or the grant outlives the membership it was given for.
     /// </summary>
     [Fact]
-    public async Task Remove_RevokesEachDeviceGrant_WhileTheTokenIsStillThere()
+    public async Task Remove_QueuesEachDeviceGrantForRevocation_WhileTheTokenIsStillThere()
     {
         var member = SeedMember();
         var connection = new DeviceConnection
@@ -1427,22 +1426,55 @@ public class CardiMemberServiceTests
             DeviceType = DeviceType.Fitbit,
             IsActive = true,
             RefreshToken = "enc(refresh)",
+            HealthUserId = "ACCOUNT_A",
         };
         _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(member.Id).Returns([connection]);
 
-        string? refreshTokenAtRevocation = null;
-        _grantRevoker.TryRevokeAsync(connection, Arg.Any<CancellationToken>())
-            .Returns(_ =>
-            {
-                refreshTokenAtRevocation = connection.RefreshToken;
-                return true;
-            });
+        await CreateSut().RemoveAsync(_userId, member.Id);
+
+        await _unitOfWork.PendingGrantRevocations.Received(1).AddAsync(Arg.Is<PendingGrantRevocation>(r =>
+            r.DeviceConnectionId == connection.Id
+            && r.Token == "enc(refresh)"
+            && r.HealthUserId == "ACCOUNT_A"
+            && r.CardiMemberId == member.Id));
+        Assert.Null(connection.RefreshToken);
+    }
+
+    /// <summary>
+    /// Copilot review round 10 on #1290: removal reads the member's devices under the same device
+    /// lock a connect takes to store a grant, so a connection cannot commit after the read and
+    /// leave its grant unqueued for a removed member.
+    /// </summary>
+    [Fact]
+    public async Task Remove_ReadsTheMembersDevicesUnderTheDeviceLock_AndCommitsThem()
+    {
+        var member = SeedMember();
+        var devices = _unitOfWork.DeviceConnections;
 
         await CreateSut().RemoveAsync(_userId, member.Id);
 
-        await _grantRevoker.Received(1).TryRevokeAsync(connection, Arg.Any<CancellationToken>());
-        Assert.Equal("enc(refresh)", refreshTokenAtRevocation);
-        Assert.Null(connection.RefreshToken);
+        Received.InOrder(() =>
+        {
+            _unitOfWork.BeginTransactionAsync();
+            devices.LockMemberDevicesAsync(member.Id, Arg.Any<CancellationToken>());
+            devices.GetByCardiMemberIdAsync(member.Id);
+            _unitOfWork.SaveChangesAsync();
+            _unitOfWork.CommitTransactionAsync();
+        });
+    }
+
+    [Fact]
+    public async Task Remove_WhenTheSaveFails_RollsBackAndDeletesNoPhoto()
+    {
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/old.jpg";
+        _unitOfWork.SaveChangesAsync().Returns(Task.FromException<int>(new InvalidOperationException("db down")));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateSut().RemoveAsync(_userId, member.Id));
+
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        await _photoStorage.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
     }
 
     [Fact]

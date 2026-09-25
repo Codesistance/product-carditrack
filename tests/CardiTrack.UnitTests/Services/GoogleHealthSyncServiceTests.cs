@@ -105,6 +105,21 @@ public class DeviceSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncCardiMemberAsync_PullsNothing_ForAConnectionSuspendedSinceItWasSelected()
+    {
+        // The worker's batch was read before the caregiver's suspension committed.
+        _deviceConnections.IsSuspendedAsync(_fitbitConnection.Id).Returns(true);
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+        await CreateSut().AuditSyncAsync(_fitbitConnection);
+
+        await _tokenRefresh.DidNotReceiveWithAnyArgs().RefreshIfExpiredAsync(default!, default!);
+        await _deviceApi.DidNotReceiveWithAnyArgs().GetHealthSnapshotAsync(default!, default);
+    }
+
+    [Fact]
     public async Task SyncCardiMemberAsync_MapsSnapshotToActivityLog_Correctly()
     {
         SetupSuccessfulTokenRefresh();

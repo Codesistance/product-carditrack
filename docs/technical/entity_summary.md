@@ -87,6 +87,12 @@ This document provides an overview of the CardiTrack domain entities. The number
 - Not soft-deletable: a finished request is history. Carries no health data — dates, counts and status only
 - No FK constraints - uses DeviceConnectionId and CardiMemberId (Guid)
 
+#### 5a-bis. **PendingGrantRevocation**
+- A provider grant queued to be ended: written in the same transaction that discards a connection's tokens. That covers a removed or replaced device, a removed member's devices, or a grant refused after the code exchange. `GrantRevocationWorker` drains it
+- Contains: CardiMemberId, DeviceConnectionId (a fresh id for a grant that was never stored), DeviceType (stored as a name), HealthUserId (for the shared-grant check), Token (the encrypted refresh token, else access token — the only remaining copy), Attempts, NextAttemptAt
+- Deleted once the grant is confirmed ended, found shared with a live connection, or given up on after 8 attempts. Member erasure ends a member's rows itself and deletes them
+- Carries no health data. No FK constraints — uses CardiMemberId and DeviceConnectionId (Guid)
+
 #### 5b. **DeviceConnectionInvite**
 - A caregiver's invitation to the wearer to authorize their own wearable from their own device, instead of having to hold the caregiver's phone — the row the anonymous `/connect` pages are authorized by
 - Contains: CardiMemberId, CreatedByUserId, DeviceType, Channel (`DeviceInviteChannel` — Link or QrCode, stored as a name), TokenHash (`char(64)`, lower-case hex SHA-256), Status (`DeviceInviteStatus`, stored as a name), ExpiresAt, OpenedAt, ResolvedAt, DeviceConnectionId (the connection the grant produced)

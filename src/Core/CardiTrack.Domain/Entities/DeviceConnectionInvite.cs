@@ -88,4 +88,12 @@ public class DeviceConnectionInvite : BaseEntity
     /// later without inferring it from timestamps.
     /// </summary>
     public Guid? DeviceConnectionId { get; set; }
+
+    /// <summary>
+    /// The connection this invitation's device is to replace (M1-15 "Change Device"), or null for
+    /// an invitation that adds a device alongside the member's others. The replaced connection is
+    /// retired in the same transaction that stores the new one, so a wearer who never finishes
+    /// leaves the old device exactly as it was.
+    /// </summary>
+    public Guid? ReplacesDeviceConnectionId { get; set; }
 }

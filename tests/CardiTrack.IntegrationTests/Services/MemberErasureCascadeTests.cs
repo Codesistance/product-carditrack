@@ -278,6 +278,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "MemberAiHolds",
             "GenerationLeases",
             "DeviceHistoryRepulls",
+            "PendingGrantRevocations",
             "ExportConsents",
             "Reports",
             "DeviceConnections",
@@ -347,7 +348,264 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         await EraseAsync(memberId);
 
         await _grantRevoker.Received(1).TryRevokeAsync(
-            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId), Arg.Any<CancellationToken>());
+            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId && c.RefreshToken != SeededQueuedToken),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The token of the grant the standard seed queues for revocation.</summary>
+    private const string SeededQueuedToken = "enc(seeded_queued_refresh)";
+
+    /// <summary>
+    /// Copilot review round 9 on #1290: revoking a Google refresh token ends the grant for the whole
+    /// account, so a grant another member's live connection reads through is kept — that member is
+    /// not being erased.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_KeepsAGrantAnotherMembersLiveConnectionReadsThrough()
+    {
+        var (organizationId, userId, memberId) = await SeedMemberWithDataAsync();
+        var otherMemberId = await SeedSecondMemberAsync(organizationId, userId);
+        const string sharedAccount = "hu-shared-account";
+        using (var seed = _services.CreateScope())
+        {
+            var db = seed.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            foreach (var connection in db.DeviceConnections.Where(c => c.CardiMemberId == memberId))
+                connection.HealthUserId = sharedAccount;
+            foreach (var queued in db.PendingGrantRevocations.Where(r => r.CardiMemberId == memberId))
+                queued.HealthUserId = sharedAccount;
+            db.DeviceConnections.Add(new DeviceConnection
+            {
+                CardiMemberId = otherMemberId,
+                DeviceType = DeviceType.Fitbit,
+                DeviceName = "Other member's Fitbit",
+                ConnectionStatus = ConnectionStatus.Connected,
+                IsActive = true,
+                RefreshToken = "enc(other_refresh)",
+                HealthUserId = sharedAccount,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var report = await EraseAsync(memberId);
+
+        await _grantRevoker.DidNotReceive().TryRevokeAsync(
+            Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>());
+        Assert.Empty(report.UnrevokedGrants);
+    }
+
+    /// <summary>
+    /// Copilot review round 9 on #1290: erasure takes the member's device lock, so a device change
+    /// that holds it — a connect about to store a new connection — is waited for rather than raced.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_WaitsForADeviceChangeHoldingTheMembersDeviceLock()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+
+        using var holder = _services.CreateScope();
+        var holderDb = holder.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        await using var held = await holderDb.Database.BeginTransactionAsync();
+        await DeviceMemberLock.AcquireAsync(holderDb.Database, memberId);
+
+        var erasure = EraseAsync(memberId);
+        var raced = await Task.WhenAny(erasure, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.NotSame(erasure, raced);
+
+        await held.CommitAsync();
+        await erasure.WaitAsync(TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>
+    /// Copilot review round 13 on #1290: the provider calls are made before erasure takes its
+    /// locks, so a slow provider never holds them. A grant stored by a device change that held the
+    /// lock meanwhile is still found under the lock and revoked there — and a grant already revoked
+    /// is not revoked twice.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_RevokesBeforeTakingItsLocks_AndCatchesAGrantStoredMeanwhile()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        using var holder = _services.CreateScope();
+        var holderDb = holder.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        await using var held = await holderDb.Database.BeginTransactionAsync();
+        await DeviceMemberLock.AcquireAsync(holderDb.Database, memberId);
+
+        var erasure = EraseAsync(memberId);
+        var raced = await Task.WhenAny(erasure, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.NotSame(erasure, raced);
+
+        // Revoked while erasure still waits for the lock: the provider was called outside it.
+        await _grantRevoker.Received().TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId && c.RefreshToken == SeededQueuedToken),
+            Arg.Any<CancellationToken>());
+
+        // What a connect holding the lock stores before erasure gets it.
+        holderDb.DeviceConnections.Add(new DeviceConnection
+        {
+            CardiMemberId = memberId,
+            DeviceType = DeviceType.Fitbit,
+            DeviceName = "Connected during erasure",
+            ConnectionStatus = ConnectionStatus.Connected,
+            IsActive = true,
+            RefreshToken = "enc(late_refresh)",
+        });
+        await holderDb.SaveChangesAsync();
+        await held.CommitAsync();
+
+        await erasure.WaitAsync(TimeSpan.FromSeconds(30));
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.RefreshToken == "enc(late_refresh)"), Arg.Any<CancellationToken>());
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.RefreshToken == SeededQueuedToken), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Copilot review round 14 on #1290: a grant kept as shared before erasure took its locks is
+    /// decided again under them. The other member's device removed while erasure waited leaves the
+    /// grant theirs alone, and it is revoked rather than deleted with its last local copy.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_RevokesAGrantThatStoppedBeingSharedWhileItWaited()
+    {
+        var (organizationId, userId, memberId) = await SeedMemberWithDataAsync();
+        var otherMemberId = await SeedSecondMemberAsync(organizationId, userId);
+        const string sharedAccount = "hu-shared-then-not";
+        var otherConnectionId = Guid.NewGuid();
+        using (var seed = _services.CreateScope())
+        {
+            var db = seed.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            foreach (var connection in db.DeviceConnections.Where(c => c.CardiMemberId == memberId))
+                connection.HealthUserId = sharedAccount;
+            db.DeviceConnections.Add(new DeviceConnection
+            {
+                Id = otherConnectionId,
+                CardiMemberId = otherMemberId,
+                DeviceType = DeviceType.Fitbit,
+                DeviceName = "Other member's Fitbit",
+                ConnectionStatus = ConnectionStatus.Connected,
+                IsActive = true,
+                RefreshToken = "enc(other_refresh)",
+                HealthUserId = sharedAccount,
+            });
+            await db.SaveChangesAsync();
+        }
+        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        using var holder = _services.CreateScope();
+        var holderDb = holder.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        await using var held = await holderDb.Database.BeginTransactionAsync();
+        await DeviceMemberLock.AcquireAsync(holderDb.Database, memberId);
+
+        var erasure = EraseAsync(memberId);
+        var raced = await Task.WhenAny(erasure, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.NotSame(erasure, raced);
+        await _grantRevoker.DidNotReceive().TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId && c.RefreshToken != SeededQueuedToken),
+            Arg.Any<CancellationToken>());
+
+        // The other member's device is removed while erasure waits.
+        await holderDb.DeviceConnections
+            .Where(c => c.Id == otherConnectionId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(c => c.IsActive, false)
+                .SetProperty(c => c.ConnectionStatus, ConnectionStatus.Disconnected));
+        await held.CommitAsync();
+
+        await erasure.WaitAsync(TimeSpan.FromSeconds(30));
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId && c.RefreshToken != SeededQueuedToken),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Copilot review round 11 on #1290: erasure takes the device lock before the member row, the
+    /// order a removal takes them in — device lock, then an update of the member row. The other
+    /// way round, the removal's update would wait on erasure's row lock while erasure waited on the
+    /// removal's device lock, and Postgres would abort one of them as a deadlock.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_DoesNotDeadlockAgainstARemovalHoldingTheDeviceLock()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+
+        using var holder = _services.CreateScope();
+        var holderDb = holder.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        await using var held = await holderDb.Database.BeginTransactionAsync();
+        await DeviceMemberLock.AcquireAsync(holderDb.Database, memberId);
+
+        var erasure = EraseAsync(memberId);
+        var raced = await Task.WhenAny(erasure, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.NotSame(erasure, raced);
+
+        // What the removal does next under the device lock. Erasure holds no row lock while it
+        // waits, so this neither blocks nor is chosen as a deadlock victim.
+        await holderDb.Database
+            .ExecuteSqlInterpolatedAsync(
+                $"""UPDATE "CardiMembers" SET "IsActive" = false WHERE "Id" = {memberId}""")
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        await held.CommitAsync();
+
+        await erasure.WaitAsync(TimeSpan.FromSeconds(30));
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.CardiMembers.CountAsync(m => m.Id == memberId));
+    }
+
+    /// <summary>
+    /// Copilot review round 11 on #1290: a provider timeout while revoking is an unconfirmed
+    /// revocation, named in the report like any other — not an exception that aborts the erasure
+    /// and leaves the member's data behind.
+    /// </summary>
+    [Fact]
+    public async Task AProviderTimeoutWhileRevoking_IsNamedInTheReport_AndTheErasureStillFinishes()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>())
+            .Returns<Task<bool>>(_ => throw new TaskCanceledException("The provider timed out."));
+
+        var report = await EraseAsync(memberId);
+
+        Assert.NotEmpty(report.UnrevokedGrants);
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.CardiMembers.CountAsync(m => m.Id == memberId));
+        Assert.Equal(0, await db.DeviceConnections.CountAsync(c => c.CardiMemberId == memberId));
+    }
+
+    /// <summary>
+    /// A grant already queued for the Worker — a device removed moments before the erasure — holds
+    /// the only remaining copy of its token, and the queue is deleted with the member. So it is
+    /// ended here like the live ones, not left for a Worker pass that would find the row gone.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_EndsItsQueuedGrants_AndDeletesTheQueue()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+        var queuedConnectionId = Guid.NewGuid();
+        using (var seed = _services.CreateScope())
+        {
+            var db = seed.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            db.PendingGrantRevocations.Add(new PendingGrantRevocation
+            {
+                CardiMemberId = memberId,
+                DeviceConnectionId = queuedConnectionId,
+                DeviceType = DeviceType.Fitbit,
+                Token = "enc(queued_refresh)",
+                NextAttemptAt = DateTime.UtcNow.AddMinutes(5),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await EraseAsync(memberId);
+
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.Id == queuedConnectionId && c.RefreshToken == "enc(queued_refresh)"),
+            Arg.Any<CancellationToken>());
+        using var scope = _services.CreateScope();
+        var check = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await check.PendingGrantRevocations.CountAsync(r => r.CardiMemberId == memberId));
     }
 
     /// <summary>
@@ -361,8 +619,9 @@ public class MemberErasureCascadeTests : IAsyncLifetime
     public async Task AGrantThatCouldNotBeRevoked_IsNamedInTheReport()
     {
         var (_, _, memberId) = await SeedMemberWithDataAsync();
+        // The live connection's grant fails; the seeded queued one is ended.
         _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>())
-            .Returns(false);
+            .Returns(ci => ci.Arg<DeviceConnection>().RefreshToken == SeededQueuedToken);
 
         var report = await EraseAsync(memberId);
 
@@ -652,6 +911,14 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             RequestedByUserId = user.Id,
             FromDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
             ToDate = DateOnly.FromDateTime(DateTime.UtcNow),
+        });
+        db.PendingGrantRevocations.Add(new PendingGrantRevocation
+        {
+            CardiMemberId = member.Id,
+            DeviceConnectionId = Guid.NewGuid(),
+            DeviceType = DeviceType.Fitbit,
+            Token = SeededQueuedToken,
+            NextAttemptAt = DateTime.UtcNow.AddMinutes(5),
         });
         db.MetricAlarmStates.Add(new MetricAlarmState
         {

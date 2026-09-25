@@ -89,6 +89,7 @@ builder.Services.AddScoped<IMetricAlarmStateRepository, MetricAlarmStateReposito
 // compile and only shows up when the tool is run.
 builder.Services.AddScoped<IMemberInsightRepository, MemberInsightRepository>();
 builder.Services.AddScoped<IGenerationLeaseRepository, GenerationLeaseRepository>();
+builder.Services.AddScoped<IPendingGrantRevocationRepository, PendingGrantRevocationRepository>();
 builder.Services.AddPushRepositories();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
