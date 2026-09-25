@@ -20,7 +20,7 @@ The in-app inbox and its actions. All responses use the standard `ApiResponse<T>
 | Endpoint | Notes |
 |----------|-------|
 | `GET /api/v1/notifications` | The caller's inbox, priority-ranked. Query params `state`, `category`, `cardiMemberId`, `owned`, `limit` (default 50, **clamped** into 1–200 rather than rejected), `offset` (floored at 0). Unrecognised `state`/`category` values are still rejected with **400** rather than silently ignored |
-| `GET /api/v1/notifications/summary` | Unseen count, open count, safety banners and the two dashboard card slots in one call — what the app reads on launch |
+| `GET /api/v1/notifications/summary` | Unseen count, open count, safety banners, the two dashboard card slots and each watched member's setup checklist (`memberSetup`, see [below](#member-setup-checklist)) in one call — what the app reads on launch |
 | `POST /api/v1/notifications/{id}/seen` | Records first sighting; idempotent, and only the first counts. Drives the comply funnel's denominator |
 | `POST /api/v1/notifications/{id}/snooze` | Body `{ "duration": "7.00:00:00" }`, optional. A *valid* duration past the rule's maximum is **clamped** rather than rejected, so a client asking for a month on a safety rule gets 72 hours and a success; an **unparseable or non-positive** duration is a **400** |
 | `POST /api/v1/notifications/{id}/dismiss` | Body `{ "acknowledgedConsequence": bool }`. Writes a mute and resolves the row. Safety-class rules **require** the acknowledgement and return **400** without it |
@@ -65,6 +65,52 @@ Two things about this payload are deliberate:
 `isOwner` is false for relatives who can see an item somebody else is responsible for: visible so the family knows it is outstanding, never actionable, so one missing emergency contact does not nag five people.
 
 **Rule example — `DEVICE_BATTERY_LOW`:** the Safety-class battery rule shows what the full treatment looks like. It gets the Safety envelope — immediate push, critical APNs flag, quiet-hours override, 30-minute TTL, escalation — and fires in **three tiers**: Warning at **≤ 30%**, Urgent at **≤ 20%** (or a `Low` band with no percentage), Critical at **≤ 10%** or an `Empty` band. It is gated on battery data **fresh within 12 hours** (tightened from 24 h), and it is suppressed when a broken-grant notification outranks it: a device that cannot sync at all is the bigger problem, and the battery warning would be noise beside it. Copy differs per tier (`warning` / `urgent` / `urgent_unknown` / `critical` / `critical_empty`).
+
+### Member setup checklist
+
+`summary.memberSetup` backs the dashboard's "Complete the picture" progress ring — *"Pop's profile 3 of 5 · Next: emergency contact"*. One entry per member the caller watches, ordered by first name. The field is additive: every other summary field is unchanged, and a client that ignores it sees the same summary as before.
+
+```json
+"memberSetup": [
+  {
+    "cardiMemberId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "cardiMemberFirstName": "Pop",
+    "isOwner": true,
+    "done": 3,
+    "total": 5,
+    "steps": [
+      { "key": "emergency-contact", "title": "Emergency contact", "done": false,
+        "actionDeepLink": "carditrack://cardimembers/3fa85f64-.../edit#emergencyContact" },
+      { "key": "sleep-access", "title": "Sleep access", "done": true,
+        "actionDeepLink": "carditrack://cardimembers/3fa85f64-.../devices/9b2f5f64-..." },
+      { "key": "irregular-rhythm", "title": "Irregular rhythm notifications", "done": true,
+        "actionDeepLink": "carditrack://cardimembers/3fa85f64-.../devices/9b2f5f64-..." },
+      { "key": "time-zone", "title": "Time zone", "done": true,
+        "actionDeepLink": "carditrack://settings/profile#timezone" },
+      { "key": "medical-information", "title": "Medical information", "done": false,
+        "actionDeepLink": "carditrack://cardimembers/3fa85f64-.../edit#medicalNotes" }
+    ]
+  }
+]
+```
+
+| Step `key` | Rule(s) | Applies when | Done when |
+|---|---|---|---|
+| `emergency-contact` | `EMERGENCY_CONTACT_MISSING` | Always | An emergency contact number is saved |
+| `sleep-access` | `SLEEP_SCOPE_MISSING` | The member has a **connected** device | Any connected device grants sleep |
+| `irregular-rhythm` | `IRN_NOT_ENROLLED` | A connected device grants the IRN scope **and** has reported whether rhythm checks are on | A scoped device reports enrolled |
+| `time-zone` | `TIMEZONE_DEFAULT` | Always — it is the caller's own clock, so the same answer on every member | The caller's time zone is not the `UTC` default |
+| `medical-information` | `MEDICAL_NOTES_EMPTY` + `MEDICAL_NOTES_STALE` | Always | Notes are on file **and** were confirmed (or, never confirmed, the member joined) within the last 183 days |
+
+Rules of the list:
+
+- **Steps come from the nudge rules, not a copy of them.** Each rule's `CheckSetup` is the predicate its own nudge is built on, so the ring can never read done while that nudge is asking. `steps` is in the nudges' priority order (High before Low; ties in the order above), and `actionDeepLink` is the nudge's own link — present on done steps too, so a finished step still opens the screen that holds it. The next step is the first with `done: false`.
+- **Done is the member's data, not the inbox.** A snoozed nudge is still a gap, so its step stays open. The nudges' *timing* gates — a day's grace on a new member's emergency contact, the baseline the medical-notes nudges wait for, the 48-hour new-account grace, a paused member, an open red alert — decide when a caregiver is *asked*, not whether the thing is done, so none of them ticks a step. (Reading done off the stored rows would have the ring jump to complete whenever a red alert or a pause held the nudges back.)
+- **Not applicable is left out, not counted as done.** A member with no connected device has no sleep or rhythm step, and `total` shrinks to match. A device that has not yet reported its rhythm-check setting is "unknown", which is neither.
+- **The caller's mutes take steps off their total.** A rule the caller has muted — by rule or by category, for this member or everywhere, and not expired — drops out. For medical information the two rules drop out independently: muting "add a health background" does not mute "is it still right?".
+- **Members:** exactly those the caller's nudges are evaluated for — an active link with health-data access to an active member. Complete (`done == total`) and empty (`total == 0`) checklists are included; the client hides them.
+- **`isOwner`** means what it does on a notification. A relative (`false`) sees the same progress — it is a fact about the member — but somebody else is the one being asked, so the client shows the ring without offering the next step as a call to action. The owner is the member's primary caregiver, else the earliest-assigned active caregiver with health-data access.
+- **Copy:** `key` is stable and is what client copy should key off; `title` is a short English fallback label.
 
 ### Related — implemented alongside
 
@@ -201,4 +247,4 @@ What the iOS notification service extension (or Android's data-message handler) 
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [User Stories 3.2, 5.1](../../ui/mobile/user_stories.md)
 
-**Last Updated:** September 22, 2026
+**Last Updated:** September 25, 2026

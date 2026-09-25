@@ -38,7 +38,7 @@ namespace CardiTrack.Application.Services.Notifications.Rules;
 /// deep link goes to the device the caregiver would have to act on.
 /// </para>
 /// </remarks>
-public sealed class IrnNotEnrolledRule : INudgeRule
+public sealed class IrnNotEnrolledRule : ISetupStepRule
 {
     public const string Code = "IRN_NOT_ENROLLED";
 
@@ -59,8 +59,31 @@ public sealed class IrnNotEnrolledRule : INudgeRule
 
     public NudgeVerdict Evaluate(NudgeContext context)
     {
-        if (context.Member is null)
+        var (check, target) = Assess(context);
+        if (!check.IsNotDone)
             return NudgeVerdict.NoGap;
+
+        return NudgeVerdict.Gap(
+            deepLink: check.ActionDeepLink,
+            discriminator: target.ToString("N"));
+    }
+
+    /// <summary>
+    /// Applies only where a connected device can tell us whether rhythm checks are on: it grants
+    /// the IRN scope <em>and</em> its profile read landed. Done when one says enrolled, not done
+    /// when one positively says not. A member whose devices can only answer "unknown" has no step
+    /// — it can be neither ticked off nor honestly left open.
+    /// </summary>
+    public SetupCheck CheckSetup(NudgeContext context) => Assess(context).Check;
+
+    /// <summary>
+    /// The one predicate both answers come from, with the connection it is about: the one to act
+    /// on when none is enrolled, or the one that covers the member when one is.
+    /// </summary>
+    private static (SetupCheck Check, Guid Target) Assess(NudgeContext context)
+    {
+        if (context.Member is null)
+            return (SetupCheck.NotApplicable, Guid.Empty);
 
         // Scope-gated, not just null-gated. IrnEnrolled/IrnOnboarded are written once from a
         // profile read and never cleared — not on reconnect, not when a scope is narrowed or
@@ -72,29 +95,28 @@ public sealed class IrnNotEnrolledRule : INudgeRule
         var live = context.Connections
             .Where(c => c.Status == ConnectionStatus.Connected
                         && DeviceScopes.GrantsIrn(c.Scopes))
+            .OrderBy(c => c.Id)
             .ToList();
 
         if (live.Count == 0)
-            return NudgeVerdict.NoGap;
+            return (SetupCheck.NotApplicable, Guid.Empty);
 
         // A connection whose profile we could read and which says the wearer is enrolled covers
         // the member — a second watch that is not enrolled adds nothing to screen with.
-        if (live.Any(c => c.IrnEnrolled == true))
-            return NudgeVerdict.NoGap;
+        var enrolled = live.FirstOrDefault(c => c.IrnEnrolled == true);
+        if (enrolled is not null)
+            return (SetupCheck.Of(true, DeepLinkFor(context.Member.Id, enrolled.Id)), enrolled.Id);
 
         // Only a connection that positively reported "not enrolled" is a gap. Nulls — a scoped
         // connection whose profile read has not landed yet or failed — are unknown, and an
         // unknown must not be presented as a finding.
-        var target = live
-            .Where(c => c.IrnEnrolled == false)
-            .OrderBy(c => c.Id)
-            .FirstOrDefault();
-
+        var target = live.FirstOrDefault(c => c.IrnEnrolled == false);
         if (target is null)
-            return NudgeVerdict.NoGap;
+            return (SetupCheck.NotApplicable, Guid.Empty);
 
-        return NudgeVerdict.Gap(
-            deepLink: $"carditrack://cardimembers/{context.Member.Id}/devices/{target.Id}",
-            discriminator: target.Id.ToString("N"));
+        return (SetupCheck.Of(false, DeepLinkFor(context.Member.Id, target.Id)), target.Id);
     }
+
+    private static string DeepLinkFor(Guid memberId, Guid connectionId) =>
+        $"carditrack://cardimembers/{memberId}/devices/{connectionId}";
 }

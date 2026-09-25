@@ -21,15 +21,18 @@ public class NotificationService : INotificationService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly INotificationGapResolver _gapResolver;
+    private readonly INotificationSnapshotQueries _snapshots;
     private readonly TimeProvider _timeProvider;
 
     public NotificationService(
         IUnitOfWork unitOfWork,
         INotificationGapResolver gapResolver,
+        INotificationSnapshotQueries snapshots,
         TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _gapResolver = gapResolver;
+        _snapshots = snapshots;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -62,8 +65,9 @@ public class NotificationService : INotificationService
     public async Task<NotificationSummaryResponse> GetSummaryAsync(
         Guid requestingUserId, CancellationToken ct = default)
     {
+        var now = UtcNow;
         var visible = await _unitOfWork.Notifications.GetTopForDashboardAsync(
-            requestingUserId, limit: 20, UtcNow, ct);
+            requestingUserId, limit: 20, now, ct);
 
         var projected = await ProjectAsync(visible, ct);
 
@@ -77,6 +81,69 @@ public class NotificationService : INotificationService
                 .. projected
                     .Where(n => n.Category != NotificationCategory.Safety)
                     .Take(DashboardCardLimit)
+            ],
+            MemberSetup = await GetMemberSetupAsync(requestingUserId, now, ct)
+        };
+    }
+
+    /// <summary>
+    /// The setup checklist for every member the caller has a context for — the same set of members
+    /// the nudge engine evaluates for them (an active link with health-data access to an active
+    /// member), so the checklist can never cover somebody the inbox would not.
+    /// </summary>
+    /// <remarks>
+    /// Built from the same snapshot the reconciler reads, through the rules' own predicates — see
+    /// <see cref="MemberSetupChecklist"/> for why this is not read off the stored rows. A relative
+    /// gets the same facts as the owner (they are facts about the member) with
+    /// <see cref="MemberSetupProgress.IsOwner"/> false; only mutes differ, because mutes are each
+    /// caller's own.
+    /// </remarks>
+    private async Task<List<MemberSetupProgress>> GetMemberSetupAsync(
+        Guid requestingUserId, DateTime now, CancellationToken ct)
+    {
+        var contexts = await _snapshots.BuildContextsForUserAsync(requestingUserId, now, ct);
+
+        var memberContexts = contexts
+            .Where(c => c.Member is not null)
+            .DistinctBy(c => c.Member!.Id)
+            .ToList();
+
+        if (memberContexts.Count == 0)
+            return [];
+
+        var names = await ResolveNamesAsync(memberContexts.Select(c => (Guid?)c.Member!.Id));
+
+        return
+        [
+            .. memberContexts
+                .Select(c => (Context: c, Member: Lookup(names, c.Member!.Id)))
+                .Where(x => x.Member is not null)
+                .Select(x => ToSetupProgress(x.Context, x.Member!))
+                .OrderBy(p => p.CardiMemberFirstName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(p => p.CardiMemberId)
+        ];
+    }
+
+    private static MemberSetupProgress ToSetupProgress(NudgeContext context, CardiMember member)
+    {
+        var steps = MemberSetupChecklist.Evaluate(context);
+
+        return new MemberSetupProgress
+        {
+            CardiMemberId = member.Id,
+            CardiMemberFirstName = member.FirstName,
+            IsOwner = context.IsOwner,
+            Done = steps.Count(s => s.Done),
+            Total = steps.Count,
+            Steps =
+            [
+                .. steps.Select(s => new MemberSetupStep
+                {
+                    Key = s.Step.Key,
+                    Title = s.Step.Title,
+                    Done = s.Done,
+                    ActionDeepLink = s.ActionDeepLink
+                })
             ]
         };
     }

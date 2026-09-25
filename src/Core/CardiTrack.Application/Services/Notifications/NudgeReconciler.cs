@@ -143,8 +143,7 @@ public static class NudgeReconciler
 
         // Muted rules produce no row at all, rather than a hidden one. An inbox that accumulates
         // invisible history the user can never see or clear is worse than no record.
-        var memberId = context.Member?.Id;
-        if (context.Mutes.Any(m => m.Silences(rule.RuleCode, spec.Category, memberId, context.UtcNow)))
+        if (IsMuted(context, rule))
             return true;
 
         if (context.IsMemberPaused && !spec.AppliesWhenPaused)
@@ -161,6 +160,17 @@ public static class NudgeReconciler
             return true;
 
         return false;
+    }
+
+    /// <summary>
+    /// Whether the context's user has silenced this rule for the context's scope — by rule or by
+    /// category, member-scoped or everywhere, and not yet expired. The one mute test both the
+    /// reconciler and the setup checklist apply, so "don't ask again" means the same in each.
+    /// </summary>
+    public static bool IsMuted(NudgeContext context, INudgeRule rule)
+    {
+        var memberId = context.Member?.Id;
+        return context.Mutes.Any(m => m.Silences(rule.RuleCode, rule.Spec.Category, memberId, context.UtcNow));
     }
 
     private static Notification Build(

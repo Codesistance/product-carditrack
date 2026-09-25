@@ -43,7 +43,8 @@ public class NotificationOwnershipTests
         var unitOfWork = Substitute.For<IUnitOfWork>();
         unitOfWork.Notifications.GetByIdAsync(NotificationId).Returns(row);
 
-        return new NotificationService(unitOfWork, new NoOpNotificationGapResolver());
+        return new NotificationService(
+            unitOfWork, new NoOpNotificationGapResolver(), Substitute.For<INotificationSnapshotQueries>());
     }
 
     [Fact]

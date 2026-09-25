@@ -162,7 +162,7 @@ The full implemented surface is 69 endpoints across 13 controllers:
 | `GET /api/v1/reports/{reportId}` | Poll report status | [reports.md](reports.md) |
 | `GET /api/v1/reports/{reportId}/download` | Download completed report | [reports.md](reports.md) |
 | `GET /api/v1/notifications` | The caller's in-app inbox, priority-ranked | [notifications.md](notifications.md) |
-| `GET /api/v1/notifications/summary` | Unseen/open counts, safety banners, dashboard card slots | [notifications.md](notifications.md) |
+| `GET /api/v1/notifications/summary` | Unseen/open counts, safety banners, dashboard card slots, per-member setup checklist | [notifications.md](notifications.md) |
 | `POST /api/v1/notifications/{id}/seen` | Record first sighting (idempotent) | [notifications.md](notifications.md) |
 | `POST /api/v1/notifications/{id}/snooze` | Snooze a notification (clamped to the rule's max) | [notifications.md](notifications.md) |
 | `POST /api/v1/notifications/{id}/dismiss` | Mute the rule and resolve the row | [notifications.md](notifications.md) |
