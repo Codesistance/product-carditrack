@@ -43,7 +43,7 @@ public static class AlertAnswerCopy
         if (alert.Status == "resolved" && alert.ResolvedByUserId is not null)
         {
             var closer = FirstName(alert.ResolvedByName) ?? "a caregiver";
-            return $"Closed by {closer}";
+            return $"Resolved by {closer}";
         }
 
         if (alert.AcknowledgedAt is not { } at)
@@ -84,13 +84,13 @@ public static class AlertAnswerCopy
         };
     }
 
-    /// <summary>"Tom acknowledged" / "Jane closed this".</summary>
+    /// <summary>"Tom acknowledged" / "Jane resolved this".</summary>
     public static string RowTitle(AlertResponseEntry response)
     {
         ArgumentNullException.ThrowIfNull(response);
         var who = FirstName(response.UserName) ?? "Someone";
         return string.Equals(response.Kind, "close", StringComparison.OrdinalIgnoreCase)
-            ? $"{who} closed this"
+            ? $"{who} resolved this"
             : $"{who} acknowledged";
     }
 

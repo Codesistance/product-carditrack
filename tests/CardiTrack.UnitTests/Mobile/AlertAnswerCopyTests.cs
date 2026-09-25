@@ -54,7 +54,7 @@ public class AlertAnswerCopyTests
             Responses = [Response("close", "Jane Doe", "Spoke to them — they're fine", null, 1)],
         };
 
-        Assert.Equal("Jane closed this · 1 minute ago", AlertAnswerCopy.HandledLine(alert));
+        Assert.Equal("Jane resolved this · 1 minute ago", AlertAnswerCopy.HandledLine(alert));
         Assert.True(AlertAnswerCopy.IsClosed(alert));
     }
 
@@ -77,7 +77,7 @@ public class AlertAnswerCopyTests
 
         var line = AlertAnswerCopy.HandledLine(alert);
 
-        Assert.StartsWith("Jane closed this · 1 minute ago", line);
+        Assert.StartsWith("Jane resolved this · 1 minute ago", line);
         Assert.EndsWith("It had already settled on its own.", line);
     }
 
@@ -101,7 +101,7 @@ public class AlertAnswerCopyTests
     {
         var row = Response("close", "Tom Doe", "Dealt with another way", "Neighbour popped in", 3);
 
-        Assert.Equal("Tom closed this", AlertAnswerCopy.RowTitle(row));
+        Assert.Equal("Tom resolved this", AlertAnswerCopy.RowTitle(row));
         Assert.Equal("Dealt with another way\nNeighbour popped in", AlertAnswerCopy.RowDetail(row));
     }
 

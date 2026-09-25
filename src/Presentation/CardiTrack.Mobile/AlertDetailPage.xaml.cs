@@ -148,26 +148,11 @@ public partial class AlertDetailPage : ContentPage
         ChatBot.MemberId = alert.CardiMemberId;
         ChatBot.MemberFirstName = firstName;
 
-        // NOTICE, not INFO, for yellow. The badge word and the banner fill are both read off
-        // severity, so a yellow alert used to put the mildest word in the vocabulary on an amber
-        // banner and read as a contradiction — and "INFO" was doing duty for green as well, which
-        // flattened "nothing to report" and "something is different" into one word. The colour is
-        // deliberately unchanged: see AlertListCard, which colours by our own severity scale
-        // rather than by Figma's blue INFO chip so a badge can never disagree with the rail
-        // beside it. This diverges from M1-10's CRITICAL/URGENT/INFO wording on purpose.
-        var (badge, bannerKey) = alert.Severity switch
-        {
-            "red" => ("CRITICAL", "StatusRed"),
-            "orange" => ("URGENT", "StatusOrange"),
-            "yellow" => ("NOTICE", "StatusYellow"),
-            // Green still reaches this screen two ways — the AI assessor grades its mildest
-            // findings green (AssessmentSeverityParser), and alerts raised before the sleep rule's
-            // benign branch was retired are still on file — so it keeps its own colour rather than
-            // the unknown-severity grey the fallback hands out. Same word and same ink as
-            // AlertListCard, so a card and the screen it opens agree.
-            "green" => ("INFO", "StatusGreen"),
-            _ => ("INFO", "StatusUnknown"),
-        };
+        // The badge word and the banner fill are both read off severity — see AlertSeverityLook for
+        // why yellow says NOTICE and green keeps its own colour. The colour is our own severity
+        // scale rather than Figma's blue INFO chip, as on AlertListCard, so a badge can never
+        // disagree with the rail beside it.
+        var (badge, bannerKey) = AlertSeverityLook.For(alert.Severity);
 
         SeverityBanner.BackgroundColor = (Color)resources[bannerKey];
         MemberSeverityRail.BackgroundColor = (Color)resources[bannerKey];

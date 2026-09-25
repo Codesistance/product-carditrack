@@ -117,7 +117,7 @@
     <Color x:Key="CountBadgeFavourable">#15644F</Color>
 
     <!-- The strip across the top of an alert banner once the alert has been dealt with. Green
-         when the episode is over ("This settled on its own", "Jane closed this"): StatusGreen's
+         when the episode is over ("This settled on its own", "Jane resolved this"): StatusGreen's
          family, darkened until white 12px text on it clears 4.5:1 (about 5.3:1) — the strip is a
          sentence, not a swatch. The app's dark blue while somebody has only acknowledged it
          ("Tom acknowledged"): someone is on it, which is not the same news as it being over. -->

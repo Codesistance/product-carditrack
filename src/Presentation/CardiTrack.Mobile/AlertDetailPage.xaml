@@ -510,7 +510,7 @@
                                     Padding="6,0"
                                     Clicked="OnAcknowledgeClicked"/>
                             <Button x:Name="CloseButton"
-                                    Text="Close"
+                                    Text="Resolve"
                                     Style="{StaticResource ActionButtonBlue}"
                                     ImageSource="icon_btn_resolve.svg"
                                     Clicked="OnCloseClicked"/>
