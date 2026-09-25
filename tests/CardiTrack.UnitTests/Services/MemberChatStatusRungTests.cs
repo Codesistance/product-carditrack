@@ -137,7 +137,7 @@ public class MemberChatStatusRungTests
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how is his heart rate");
 
         Assert.StartsWith(
-            "The most recent resting heart rate I have for Moses is 70 bpm, today so far; yesterday it was 68 bpm.",
+            "Moses's latest resting heart rate is 70 bpm, from today so far — yesterday it was 68 bpm.",
             reply.Reply, StringComparison.Ordinal);
         Assert.True(
             reply.Reply.IndexOf("70 bpm", StringComparison.Ordinal)
@@ -174,7 +174,7 @@ public class MemberChatStatusRungTests
             SessionId = session.Id,
             Role = ChatTurnRole.Assistant,
             Content = PromptContextFactory.Encryption.Encrypt(
-                "The most recent sleep I have for Moses is 5h, last night. Moses's heart rate is up today."),
+                "Moses's latest sleep is 5h, from last night. Moses's heart rate is up today."),
             CreatedAtUtc = DateTime.UtcNow.AddMinutes(-2),
         });
         _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
@@ -183,7 +183,7 @@ public class MemberChatStatusRungTests
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "has he moved much?");
 
-        Assert.Equal("The most recent step count I have for Moses is 3,000 steps, today so far.", reply.Reply);
+        Assert.Equal("Moses's latest step count is 3,000 steps, from today so far.", reply.Reply);
     }
 
     /// <summary>
@@ -257,7 +257,7 @@ public class MemberChatStatusRungTests
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "his specific measurements");
 
-        Assert.StartsWith("The most recent readings I have for Moses are today so far:", reply.Reply, StringComparison.Ordinal);
+        Assert.StartsWith("Here's the latest for Moses, from today so far:", reply.Reply, StringComparison.Ordinal);
         Assert.Contains("1,200 steps", reply.Reply, StringComparison.Ordinal);
         Assert.Contains("a resting heart rate of 70 bpm", reply.Reply, StringComparison.Ordinal);
         Assert.Contains("of sleep the night before", reply.Reply, StringComparison.Ordinal);
@@ -289,9 +289,9 @@ public class MemberChatStatusRungTests
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "has he moved much?");
 
         Assert.StartsWith(
-            "The most recent step count I have for Moses is 2,050 steps, today so far.",
+            "Moses's latest step count is 2,050 steps, from today so far.",
             reply.Reply, StringComparison.Ordinal);
-        Assert.DoesNotContain("The most recent readings I have", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("Here's the latest", reply.Reply, StringComparison.Ordinal);
         Assert.DoesNotContain("sleep the night before", reply.Reply, StringComparison.Ordinal);
     }
 
@@ -310,7 +310,7 @@ public class MemberChatStatusRungTests
             "Dad", StatusMetric.RestingHeartRate, allReadings: false, line, readings, today);
 
         Assert.DoesNotContain("Steps are lower", aboutSteps, StringComparison.Ordinal);
-        Assert.EndsWith("70 bpm, today so far. Steps are lower today than yesterday.", aboutHeart, StringComparison.Ordinal);
+        Assert.EndsWith("70 bpm, from today so far. Steps are lower today than yesterday.", aboutHeart, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -332,7 +332,7 @@ public class MemberChatStatusRungTests
         var aboutSleep = MemberChatReplies.StatusReply(
             "Dad", StatusMetric.Sleep, allReadings: false, line, readings, today);
 
-        Assert.Equal("The most recent sleep I have for Dad is 3h 14m, last night.", aboutSleep);
+        Assert.Equal("Dad's latest sleep is 3h 14m, from last night.", aboutSleep);
     }
 
     /// <summary>
@@ -354,7 +354,7 @@ public class MemberChatStatusRungTests
 
         Assert.DoesNotContain("heart rate is up", aboutSteps, StringComparison.Ordinal);
         Assert.DoesNotContain("heart rate is up", aboutTheDay, StringComparison.Ordinal);
-        Assert.StartsWith("The most recent readings I have for Dad", aboutTheDay, StringComparison.Ordinal);
+        Assert.StartsWith("Here's the latest for Dad", aboutTheDay, StringComparison.Ordinal);
     }
 
     /// <summary>Sleep belongs to the morning it ended on, so today's row is last night.</summary>
@@ -368,8 +368,8 @@ public class MemberChatStatusRungTests
                 new ActivityLog { Date = today, SleepMinutes = 370 },
             ], today);
 
-        Assert.StartsWith("The most recent sleep I have for Dad is ", reply, StringComparison.Ordinal);
-        Assert.Contains(", last night; the night before last it was ", reply, StringComparison.Ordinal);
+        Assert.StartsWith("Dad's latest sleep is ", reply, StringComparison.Ordinal);
+        Assert.Contains(", from last night — the night before last it was ", reply, StringComparison.Ordinal);
     }
 
     /// <summary>A named reading the watch has not recorded is said to be unrecorded, by name.</summary>
@@ -412,7 +412,7 @@ public class MemberChatStatusRungTests
         var reply = MemberChatReplies.StatusLineReply(
             "Dad", line, [new ActivityLog { Date = today, Steps = 812 }], today);
 
-        Assert.StartsWith("Steps are very low today. The most recent readings", reply, StringComparison.Ordinal);
+        Assert.StartsWith("Steps are very low today. Here's the latest", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("today The", reply, StringComparison.Ordinal);
         // One stop, not two, when the caption already ends in one.
         var punctuated = MemberChatReplies.StatusLineReply(
@@ -473,7 +473,7 @@ public class MemberChatStatusRungTests
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "How are they doing today?");
 
         Assert.StartsWith("Winding down for the night.", reply.Reply, StringComparison.Ordinal);
-        Assert.Contains("don't have any recent readings for Moses", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("Nothing recent has come through for Moses", reply.Reply, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -551,7 +551,7 @@ public class MemberChatStatusRungTests
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "Is he asleep right now?");
 
-        Assert.StartsWith("I can't see what Moses is doing right now", reply.Reply, StringComparison.Ordinal);
+        Assert.StartsWith("I can't see what Moses is doing right this minute", reply.Reply, StringComparison.Ordinal);
         // A fresh status line must not pre-empt it — "settling down for the night" read as an
         // answer to "is he asleep now" is exactly the false claim this branch exists to prevent.
         Assert.DoesNotContain("Winding down", reply.Reply, StringComparison.Ordinal);
@@ -612,7 +612,7 @@ public class MemberChatStatusRungTests
 
         // The sentence, not the headline: glued in front of it the dashboard's title read as a
         // title, a dash and a capital mid-sentence (2026-09-24).
-        Assert.StartsWith("Steps are very low today. The most recent readings", reply, StringComparison.Ordinal);
+        Assert.StartsWith("Steps are very low today. Here's the latest", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("Quieter than usual", reply, StringComparison.Ordinal);
         Assert.Contains("today so far: 812 steps and a resting heart rate of 68 bpm", reply, StringComparison.Ordinal);
     }
@@ -627,7 +627,7 @@ public class MemberChatStatusRungTests
 
         var reply = MemberChatReplies.StatusLineReply("Dad", line, [], today);
 
-        Assert.StartsWith("Steps are very low today. I don't have any recent readings", reply, StringComparison.Ordinal);
+        Assert.StartsWith("Steps are very low today. Nothing recent has come through", reply, StringComparison.Ordinal);
     }
 
     /// <summary>Nothing recorded is said plainly, and never inferred from silence.</summary>
@@ -636,7 +636,7 @@ public class MemberChatStatusRungTests
     {
         var reply = MemberChatReplies.LatestReadingsReply("Dad", [], new DateOnly(2026, 9, 4));
 
-        Assert.Contains("don't have any recent readings for Dad", reply, StringComparison.Ordinal);
+        Assert.Contains("Nothing recent has come through for Dad", reply, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -648,6 +648,6 @@ public class MemberChatStatusRungTests
     {
         var reply = MemberChatReplies.LatestReadingsReply(null, [], new DateOnly(2026, 9, 4));
 
-        Assert.Contains("readings for them", reply, StringComparison.Ordinal);
+        Assert.Contains("come through for them", reply, StringComparison.Ordinal);
     }
 }

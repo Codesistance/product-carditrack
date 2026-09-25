@@ -366,6 +366,8 @@ public class MemberChatRoutedDispatchTests
         Assert.Equal(
             ["understanding", "planning", "reading", "writing", "rereading", "checking"],
             steps.Keys);
+        // The second look grows the total rather than rewinding the count.
+        Assert.Equal([(1, null), (2, 5), (3, 5), (4, 5), (5, 6), (6, 6)], steps.Numbers);
 
         // Two clinical reads: the first was given the hero to disagree with — tier, line and what
         // the tier rests on, on the Private slot, where the line's resolved name may travel — and
@@ -772,7 +774,7 @@ public class MemberChatRoutedDispatchTests
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, message);
 
         Assert.Equal(
-            "I didn't catch a question there — ask me about Moses's sleep, activity, heart rate or alerts.",
+            "I didn't quite catch a question there. Ask me how Moses's sleep, activity or heart rate have been, what's behind an alert, or to pull up the journal — and I can switch alerts on or off or set an alarm for you too.",
             reply.Reply);
         await _rewriteAi.DidNotReceiveWithAnyArgs()
             .GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(default!, default);
@@ -987,11 +989,29 @@ public class MemberChatRoutedDispatchTests
 
     // ---- Progress steps (the streaming endpoint's step events) --------------------------------
 
-    private sealed class StepRecorder : IProgress<MemberChatStep>
+    private class StepRecorder : IProgress<MemberChatStep>
     {
         public List<string> Keys { get; } = [];
-        public void Report(MemberChatStep value) => Keys.Add(value.Step);
+        public List<(int? Index, int? Total)> Numbers { get; } = [];
+
+        public void Report(MemberChatStep value)
+        {
+            Keys.Add(value.Step);
+            Numbers.Add((value.Index, value.Total));
+        }
     }
+
+    /// <summary>The streaming endpoint's sink: steps, and the waiting lines as well.</summary>
+    private sealed class StreamRecorder : StepRecorder, IMemberChatProgress
+    {
+        public List<IReadOnlyList<string>> WaitingLines { get; } = [];
+        public void ReportWaitingLines(IReadOnlyList<string> lines) => WaitingLines.Add(lines);
+    }
+
+    private void WaitingLinesAre(params string[] lines) =>
+        _rewriteAi.GenerateStructuredAsync<MemberChatService.WaitingSentencesAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new MemberChatService.WaitingSentencesAiResponse { Sentences = lines });
 
     /// <summary>A reading rung reports each stage as it starts, in the order it runs them.</summary>
     [Fact]
@@ -1004,6 +1024,140 @@ public class MemberChatRoutedDispatchTests
         await CreateSut().SendMessageAsync(_userId, _memberId, "how did he sleep this week?", steps);
 
         Assert.Equal(["understanding", "planning", "reading", "writing", "checking"], steps.Keys);
+    }
+
+    /// <summary>
+    /// Numbered as they go out: the first step has no total, because the route that decides it
+    /// has not run yet; from planning on, a reading path is five steps.
+    /// </summary>
+    [Fact]
+    public async Task AnAnalysisSend_NumbersItsSteps_OutOfFive_OnceTheRouteIsKnown()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        var steps = new StepRecorder();
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "how did he sleep this week?", steps);
+
+        Assert.Equal([(1, null), (2, 5), (3, 5), (4, 5), (5, 5)], steps.Numbers);
+    }
+
+    /// <summary>A path that reaches the answer check without planning is done when it gets there.</summary>
+    [Fact]
+    public async Task AStatusSend_IsTwoSteps()
+    {
+        RouterAnswers(MemberChatWorkflow.Status);
+        var steps = new StepRecorder();
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "how is he today?", steps);
+
+        Assert.Equal(["understanding", "checking"], steps.Keys);
+        Assert.Equal([(1, null), (2, 2)], steps.Numbers);
+    }
+
+    /// <summary>
+    /// On a reading path, the streaming sink gets lines written for this question — the name
+    /// sent as the placeholder and resolved on the way back, exactly as the old endpoint did.
+    /// </summary>
+    [Fact]
+    public async Task AReadingPath_StreamsWaitingLines_WrittenForTheQuestion()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        string? prompt = null;
+        _rewriteAi.GenerateStructuredAsync<MemberChatService.WaitingSentencesAiResponse>(
+                Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>())
+            .Returns(new MemberChatService.WaitingSentencesAiResponse
+            {
+                Sentences = ["Looking at CardiTrackCardiMember's sleep this week…", "Comparing each night…"],
+            });
+        var sink = new StreamRecorder();
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "how did Moses sleep this week?", sink);
+
+        var lines = Assert.Single(sink.WaitingLines);
+        Assert.Equal(["Looking at Moses's sleep this week…", "Comparing each night…"], lines);
+        Assert.NotNull(prompt);
+        Assert.DoesNotContain("Moses", prompt);
+        Assert.Contains(NamePlaceholder.Token, prompt);
+    }
+
+    /// <summary>A quick path pays for no waiting lines: nothing would be on screen long enough to read them.</summary>
+    [Fact]
+    public async Task ASteer_GeneratesNoWaitingLines()
+    {
+        RouterAnswers(MemberChatWorkflow.SteerCasual);
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "Hello! Ask me about CardiTrackCardiMember." },
+                new AiUsage()));
+        WaitingLinesAre("Checking…");
+        var sink = new StreamRecorder();
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "hello!", sink);
+
+        Assert.Empty(sink.WaitingLines);
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredAsync<MemberChatService.WaitingSentencesAiResponse>(default!, default);
+    }
+
+    /// <summary>A sink that cannot carry the lines — the JSON endpoint's — is not charged for them.</summary>
+    [Fact]
+    public async Task APlainProgressSink_GeneratesNoWaitingLines()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        WaitingLinesAre("Checking…");
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "how did he sleep this week?", new StepRecorder());
+
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredAsync<MemberChatService.WaitingSentencesAiResponse>(default!, default);
+    }
+
+    /// <summary>Waiting copy is decoration: a generation that fails costs the send nothing, and
+    /// sends no canned lines in its place — the step on screen already says what is happening.</summary>
+    [Fact]
+    public async Task AFailedWaitingLineGeneration_StillAnswers_AndReportsNoLines()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        _rewriteAi.GenerateStructuredAsync<MemberChatService.WaitingSentencesAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task<MemberChatService.WaitingSentencesAiResponse>>(_ => throw new HttpRequestException("slot down"));
+        var sink = new StreamRecorder();
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how did he sleep this week?", sink);
+
+        Assert.StartsWith("The week looks steady.", reply.Reply, StringComparison.Ordinal);
+        Assert.Empty(sink.WaitingLines);
+    }
+
+    /// <summary>
+    /// Lines still being written when the answer is ready are cancelled, not left running past the
+    /// send: nothing is reported after it, and the call saw its token cancelled.
+    /// </summary>
+    [Fact]
+    public async Task WaitingLinesStillBeingWritten_AreCancelledWhenTheAnswerIsReady()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        CancellationToken seen = default;
+        _rewriteAi.GenerateStructuredAsync<MemberChatService.WaitingSentencesAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                seen = call.Arg<CancellationToken>();
+                await Task.Delay(Timeout.Infinite, seen);
+                return new MemberChatService.WaitingSentencesAiResponse { Sentences = ["Too late"] };
+            });
+        var sink = new StreamRecorder();
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "how did he sleep this week?", sink);
+
+        Assert.True(seen.IsCancellationRequested);
+        Assert.Empty(sink.WaitingLines);
     }
 
     /// <summary>

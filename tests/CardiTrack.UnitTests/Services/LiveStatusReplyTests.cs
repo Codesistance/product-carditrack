@@ -27,8 +27,8 @@ public class LiveStatusReplyTests
     {
         var reply = MemberChatReplies.LiveStatusReply("Dad", [Log(Today, steps: 4200)], Today);
 
-        Assert.StartsWith("I can't see what Dad is doing right now", reply, StringComparison.Ordinal);
-        Assert.Contains("nothing live here to check", reply, StringComparison.Ordinal);
+        Assert.StartsWith("I can't see what Dad is doing right this minute", reply, StringComparison.Ordinal);
+        Assert.Contains("nothing live for me to check", reply, StringComparison.Ordinal);
         Assert.True(
             reply.IndexOf("can't see", StringComparison.Ordinal) < reply.IndexOf("4,200", StringComparison.Ordinal),
             "the limit has to be stated before the figure, or the figure reads as the answer.");
@@ -81,7 +81,7 @@ public class LiveStatusReplyTests
     {
         var reply = MemberChatReplies.LiveStatusReply("Dad", [Log(new DateOnly(2026, 8, 17), steps: 2200)], Today);
 
-        Assert.Contains("is Aug 17:", reply, StringComparison.Ordinal);
+        Assert.Contains("is from Aug 17:", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("aug 17", reply, StringComparison.Ordinal);
     }
 
@@ -92,8 +92,8 @@ public class LiveStatusReplyTests
         var today = MemberChatReplies.LiveStatusReply("Dad", [Log(Today, steps: 100)], Today);
         var yesterday = MemberChatReplies.LiveStatusReply("Dad", [Log(Today.AddDays(-1), steps: 100)], Today);
 
-        Assert.Contains("is today so far:", today, StringComparison.Ordinal);
-        Assert.Contains("is yesterday:", yesterday, StringComparison.Ordinal);
+        Assert.Contains("is from today so far:", today, StringComparison.Ordinal);
+        Assert.Contains("is from yesterday:", yesterday, StringComparison.Ordinal);
     }
 
     /// <summary>The most recent row wins, whatever order the repository returned them in.</summary>
@@ -129,7 +129,7 @@ public class LiveStatusReplyTests
     {
         var reply = MemberChatReplies.LiveStatusReply("Dad", [], Today);
 
-        Assert.Contains("don't have any recent readings", reply, StringComparison.Ordinal);
+        Assert.Contains("Nothing recent has come through yet", reply, StringComparison.Ordinal);
     }
 
     /// <summary>Sleep reads in hours here as everywhere else — see <c>SleepFigureTests</c>.</summary>
@@ -155,7 +155,7 @@ public class LiveStatusReplyTests
     {
         var reply = MemberChatReplies.LiveStatusReply(name, [Log(Today, steps: 100)], Today);
 
-        Assert.StartsWith("I can't see what they're doing right now", reply, StringComparison.Ordinal);
+        Assert.StartsWith("I can't see what they're doing right this minute", reply, StringComparison.Ordinal);
     }
 
     [Fact]

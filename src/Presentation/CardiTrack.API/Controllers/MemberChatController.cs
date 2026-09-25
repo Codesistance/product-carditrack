@@ -90,10 +90,14 @@ public class MemberChatController : BaseApiController
 
     /// <summary>
     /// <see cref="SendMessage"/> as a stream of server-sent events: a <c>step</c> event as each
-    /// stage of the pipeline starts, then one <c>answer</c> carrying the saved reply (the same
-    /// <see cref="MemberChatMessageResponse"/> the JSON endpoint returns), then <c>done</c>. A
-    /// failure after the stream has started ends it with one <c>error</c> event carrying the
-    /// status and message the JSON endpoint would have answered with.
+    /// stage of the pipeline starts, numbered (<see cref="MemberChatStep.Index"/> of
+    /// <see cref="MemberChatStep.Total"/>), then one <c>answer</c> carrying the saved reply (the
+    /// same <see cref="MemberChatMessageResponse"/> the JSON endpoint returns), then <c>done</c>.
+    /// On a path that reads the readings, one <c>waiting</c> event
+    /// (<see cref="MemberChatWaitingResponse"/>) may arrive between the steps: lines written for
+    /// this question, for the app to rotate while the long clinical read runs. A failure after the
+    /// stream has started ends it with one <c>error</c> event carrying the status and message the
+    /// JSON endpoint would have answered with.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -135,19 +139,21 @@ public class MemberChatController : BaseApiController
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
         budget.CancelAfter(_sendBudget);
 
-        var steps = Channel.CreateUnbounded<MemberChatStep>(
-            new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
-        var progress = new ChannelProgress(steps.Writer);
+        // Two writers: the pipeline's steps and, on a long path, the waiting lines generated
+        // alongside it — so not SingleWriter.
+        var pending = Channel.CreateUnbounded<StreamEvent>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+        var progress = new ChannelProgress(pending.Writer);
 
-        var send = SendThenCompleteAsync(cardiMemberId, request.Message, progress, steps.Writer, budget.Token);
+        var send = SendThenCompleteAsync(cardiMemberId, request.Message, progress, pending.Writer, budget.Token);
         var events = new ServerSentEventWriter(Response, _json);
 
         try
         {
-            while (await WaitForStepAsync(steps.Reader, ct))
+            while (await WaitForEventAsync(pending.Reader, ct))
             {
-                while (steps.Reader.TryRead(out var step))
-                    await events.WriteAsync("step", step, ct);
+                while (pending.Reader.TryRead(out var next))
+                    await events.WriteAsync(next.Name, next.Payload, ct);
             }
         }
         catch
@@ -197,11 +203,11 @@ public class MemberChatController : BaseApiController
         await events.WriteAsync("done", new { }, ct);
         return new EmptyResult();
 
-        // Waits for the next step, writing a heartbeat for every interval that passes without
+        // Waits for the next event, writing a heartbeat for every interval that passes without
         // one — but only once the stream has started: before the first step there is nothing to
         // keep alive, and a heartbeat would commit the 200 a pre-check failure still needs to
         // be able to replace.
-        async Task<bool> WaitForStepAsync(ChannelReader<MemberChatStep> reader, CancellationToken token)
+        async Task<bool> WaitForEventAsync(ChannelReader<StreamEvent> reader, CancellationToken token)
         {
             // One wait for the whole call, however many heartbeats pass: a single-reader channel
             // holds one waiter, and a fresh wait per heartbeat would stack them.
@@ -224,7 +230,7 @@ public class MemberChatController : BaseApiController
 
     private async Task<MemberChatMessageResponse> SendThenCompleteAsync(
         Guid cardiMemberId, string message, IProgress<MemberChatStep> progress,
-        ChannelWriter<MemberChatStep> writer, CancellationToken ct)
+        ChannelWriter<StreamEvent> writer, CancellationToken ct)
     {
         try
         {
@@ -310,11 +316,20 @@ public class MemberChatController : BaseApiController
         public required string Message { get; init; }
     }
 
+    /// <summary>One event waiting to be written: its SSE name and its payload.</summary>
+    private sealed record StreamEvent(string Name, object Payload);
+
     /// <summary>Reports straight into the channel: never blocks the pipeline, and a report after
-    /// the send has settled is dropped rather than thrown.</summary>
-    private sealed class ChannelProgress(ChannelWriter<MemberChatStep> writer) : IProgress<MemberChatStep>
+    /// the send has settled is dropped rather than thrown. Steps go out as <c>step</c> events;
+    /// the waiting lines as one <c>waiting</c> event, shaped like the old waiting-sentences
+    /// endpoint's data so a client reads them the same way. App builds that predate it skip an
+    /// event name they do not know.</summary>
+    private sealed class ChannelProgress(ChannelWriter<StreamEvent> writer) : IMemberChatProgress
     {
-        public void Report(MemberChatStep value) => writer.TryWrite(value);
+        public void Report(MemberChatStep value) => writer.TryWrite(new StreamEvent("step", value));
+
+        public void ReportWaitingLines(IReadOnlyList<string> lines) =>
+            writer.TryWrite(new StreamEvent("waiting", new MemberChatWaitingResponse { Sentences = lines }));
     }
 
     /// <summary>

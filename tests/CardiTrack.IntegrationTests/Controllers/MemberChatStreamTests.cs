@@ -94,6 +94,34 @@ public class MemberChatStreamTests
         Assert.Contains("\"reply\":\"The week looks steady.\"", text, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The sink the controller hands the service carries the waiting lines too, and they go out
+    /// as their own event — between the steps they were reported between, and shaped like the old
+    /// waiting-sentences endpoint's data — so an app build that predates them skips the event.
+    /// </summary>
+    [Fact]
+    public async Task WaitingLines_GoOutAsTheirOwnEvent_BetweenTheSteps()
+    {
+        SendDoes((progress, _) =>
+        {
+            progress.Report(MemberChatStep.Planning.At(2, 5));
+            ((IMemberChatProgress)progress).ReportWaitingLines(["Checking his sleep this week"]);
+            progress.Report(MemberChatStep.Reading.At(3, 5));
+            return Task.FromResult(Answer);
+        });
+        var sut = CreateSut();
+
+        await Stream(sut);
+
+        var text = Written;
+        var planning = text.IndexOf("\"step\":\"planning\"", StringComparison.Ordinal);
+        var waiting = text.IndexOf(
+            "event: waiting\ndata: {\"sentences\":[\"Checking his sleep this week\"]}\n\n", StringComparison.Ordinal);
+        var reading = text.IndexOf("\"step\":\"reading\"", StringComparison.Ordinal);
+        Assert.True(planning >= 0 && planning < waiting && waiting < reading, text);
+        Assert.Contains("\"index\":3,\"total\":5", text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ASendAnsweredWithoutAModel_StreamsJustTheAnswer()
     {

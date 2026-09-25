@@ -28,6 +28,13 @@ public interface IMemberChatService
     /// the first report. Paths answered without a model — a journal yes or no, a message with no
     /// question, a settings confirmation — report nothing. Reports are synchronous and must not
     /// block: the pipeline does not wait for a slow reader.
+    /// <para>
+    /// Each step arrives numbered (<see cref="MemberChatStep.Index"/>, and
+    /// <see cref="MemberChatStep.Total"/> once the route is known). When
+    /// <paramref name="progress"/> is an <see cref="IMemberChatProgress"/> and the route reads the
+    /// readings — the long paths — question-specific waiting lines are generated alongside the
+    /// pipeline and reported through it if they are ready before the answer.
+    /// </para>
     /// </summary>
     Task<MemberChatMessageResponse> SendMessageAsync(
         Guid userId, Guid cardiMemberId, string message, IProgress<MemberChatStep>? progress,

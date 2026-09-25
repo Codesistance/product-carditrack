@@ -126,16 +126,16 @@ public class ReadingDayAttributionTests
         var reply = MemberChatReplies.WithDayAttribution(
             "Dad had a stable day with 4,475 steps.", new DateOnly(2026, 9, 3), new DateOnly(2026, 9, 3), Today);
 
-        Assert.Contains("Those figures are for yesterday.", reply, StringComparison.Ordinal);
+        Assert.Contains("That's going by yesterday's readings.", reply, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ASpanSaysItCoversRatherThanIsFor()
+    public void ASpanEndingTodaySaysTodayIsNotOver()
     {
         var reply = MemberChatReplies.WithDayAttribution(
             "His steps have held up.", new DateOnly(2026, 8, 29), Today, Today);
 
-        Assert.Contains("Those figures cover Aug 29 to today so far.", reply, StringComparison.Ordinal);
+        Assert.Contains("That's going by the readings from Aug 29 up to today, which isn't over yet.", reply, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -151,7 +151,7 @@ public class ReadingDayAttributionTests
             original, new DateOnly(2026, 9, 3), new DateOnly(2026, 9, 3), Today);
 
         Assert.Equal(original, reply);
-        Assert.DoesNotContain("Those figures", reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("That's going by", reply, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -167,7 +167,7 @@ public class ReadingDayAttributionTests
             "Dad has had a stable day today with 4,475 steps.",
             new DateOnly(2026, 9, 3), new DateOnly(2026, 9, 3), Today);
 
-        Assert.Contains("Those figures are for yesterday.", reply, StringComparison.Ordinal);
+        Assert.Contains("That's going by yesterday's readings.", reply, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -180,7 +180,7 @@ public class ReadingDayAttributionTests
         var reply = MemberChatReplies.WithDayAttribution(
             "He's on 4,905 steps.", Today, Today, Today);
 
-        Assert.Contains("Those figures are for today so far.", reply, StringComparison.Ordinal);
+        Assert.Contains("That's going by today so far, so the numbers may still change.", reply, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -197,7 +197,7 @@ public class ReadingDayAttributionTests
     {
         var reply = MemberChatReplies.WithDayAttribution(original, Today, Today, Today);
 
-        Assert.Contains("Those figures are for today so far.", reply, StringComparison.Ordinal);
+        Assert.Contains("That's going by today so far, so the numbers may still change.", reply, StringComparison.Ordinal);
     }
 
     /// <summary>But a reply that spelled it out in full is left alone, as any other dated one is.</summary>
