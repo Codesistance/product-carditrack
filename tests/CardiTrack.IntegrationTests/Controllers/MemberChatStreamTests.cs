@@ -142,6 +142,28 @@ public class MemberChatStreamTests
         Assert.Contains("late morning", text[updated..], StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ADraftWhoseChartsChanged_IsUpdated_EvenWithTheSameWords()
+    {
+        // A retry re-plans its data: the words can match while the charts do not.
+        var saved = new MemberChatMessageResponse
+        {
+            SessionId = Answer.SessionId,
+            Reply = Answer.Reply,
+            Charts = [new ChartSeries("Steps", [new ChartPoint(new DateOnly(2026, 9, 20), 4200)])],
+            GeneratedAt = Answer.GeneratedAt,
+        };
+        SendDoes((progress, _) =>
+        {
+            progress.Draft(Answer);
+            return Task.FromResult(saved);
+        });
+
+        await Stream(CreateSut());
+
+        Assert.Contains("event: answer.updated\n", Written, StringComparison.Ordinal);
+    }
+
     private static int CountOf(string text, string value) =>
         (text.Length - text.Replace(value, string.Empty, StringComparison.Ordinal).Length) / value.Length;
 

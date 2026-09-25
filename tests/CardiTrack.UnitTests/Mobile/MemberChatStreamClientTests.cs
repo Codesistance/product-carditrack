@@ -203,21 +203,20 @@ public class MemberChatStreamClientTests
     }
 
     [Fact]
-    public async Task AnAnswerWithoutDone_IsStillTheAnswer()
+    public async Task AnAnswerWithoutDone_IsNotTakenAsSaved()
     {
-        // The reply is saved server-side before the answer event goes out; a connection that
-        // drops after it has lost nothing the caregiver needs.
+        // An answer may be a draft the send never saved; only `done` confirms it.
         var (client, http) = CreateSut();
         http.Enqueue(_ => Stream(AnswerEvent));
 
-        var answer = await client.StreamMemberChatMessageAsync(
-            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null);
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null));
 
-        Assert.Equal("Steady night.", answer.Reply);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ex.StatusCode);
     }
 
     [Fact]
-    public async Task AConnectionThatDropsAfterTheAnswer_StillReturnsIt()
+    public async Task AConnectionThatDropsAfterADraft_IsANetworkError()
     {
         var (client, http) = CreateSut();
         http.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.OK)
@@ -225,10 +224,10 @@ public class MemberChatStreamClientTests
             Content = new StreamContent(new BreaksAfter(Encoding.UTF8.GetBytes(AnswerEvent.Replace("\r\n", "\n")))),
         });
 
-        var answer = await client.StreamMemberChatMessageAsync(
-            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null);
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null));
 
-        Assert.Equal("Steady night.", answer.Reply);
+        Assert.IsType<IOException>(ex.InnerException);
     }
 
     [Fact]

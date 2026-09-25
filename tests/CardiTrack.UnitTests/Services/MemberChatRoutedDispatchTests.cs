@@ -104,7 +104,7 @@ public class MemberChatRoutedDispatchTests
             .Returns(new AiGenerationResult<string>("The week looks steady.", new AiUsage()));
     }
 
-    private MemberChatService CreateSut() =>
+    private MemberChatService CreateSut(int sendBudgetSeconds = 1020) =>
         new(_medicalAi, _rewriteAi, _planner, _router,
             Substitute.For<IAlertChangePlanner>(), Substitute.For<IAlertPreferenceService>(),
             Substitute.For<IMetricAlarmService>(), _unitOfWork, _access,
@@ -112,7 +112,9 @@ public class MemberChatRoutedDispatchTests
             PromptContextFactory.JournalActions(_rewriteAi, _unitOfWork, _access),
             new PassThroughWriteGuard(),
             NullLogger<MemberChatService>.Instance,
-            _checker);
+            _checker,
+            Microsoft.Extensions.Options.Options.Create(
+                new CardiTrack.Infrastructure.Settings.MemberChatOptions { SendBudgetSeconds = sendBudgetSeconds }));
 
     [Fact]
     public async Task TheRouterSelectsTheWorkflow_AndTheRouteIsBilled()
@@ -1075,6 +1077,54 @@ public class MemberChatRoutedDispatchTests
 
         Assert.StartsWith("The week looks steady.", reply.Reply, StringComparison.Ordinal);
         Assert.Equal(AnswerRemedy.RetryFailed, StoredAssessment(assistant!).Remedy);
+    }
+
+    /// <summary>
+    /// The retry has its own deadline inside the send budget. Reaching it (a cancellation the
+    /// caller did not ask for) is a failed retry, so the first reply is still saved — and the
+    /// calls the retry had already made are billed.
+    /// </summary>
+    [Fact]
+    public async Task ARetryCutOffByItsDeadline_LeavesTheFirstReplySaved_AndBillsWhatItSpent()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        TheCheckSays(AnswerGapCause.NotAddressed);
+        var rewrites = 0;
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => ++rewrites == 1
+                ? Task.FromResult(new AiGenerationResult<string>("The week looks steady.", new AiUsage()))
+                : throw new OperationCanceledException("retry deadline"));
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "when was he active?", new StepRecorder());
+
+        Assert.StartsWith("The week looks steady.", reply.Reply, StringComparison.Ordinal);
+        Assert.Equal(AnswerRemedy.RetryFailed, StoredAssessment(assistant!).Remedy);
+        // The retry's plan and clinical read ran before its rewrite was cut off: both billed.
+        await _usages.Received(2).AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.QueryPlan));
+        await _usages.Received(2).AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.ClinicalAnalysis));
+        await _usages.Received(1).AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.Rewrite));
+    }
+
+    /// <summary>With too little of the send budget left for a clinical read, no retry starts.</summary>
+    [Fact]
+    public async Task ARetryWithTooLittleBudgetLeft_IsSkipped()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        TheCheckSays(AnswerGapCause.NotAddressed);
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+        var steps = new StepRecorder();
+
+        await CreateSut(sendBudgetSeconds: 150).SendMessageAsync(_userId, _memberId, "when was he active?", steps);
+
+        Assert.DoesNotContain("retrying", steps.Keys);
+        Assert.Equal(AnswerRemedy.RetrySkipped, StoredAssessment(assistant!).Remedy);
     }
 
     /// <summary>The check's account of the gap rides with the question, trimmed so it cannot

@@ -216,7 +216,7 @@ public class MemberChatController : BaseApiController
         // otherwise the draft was the answer, and the saved turn carries the same text.
         if (shownDraft is null)
             await events.WriteAsync("answer", result, ct);
-        else if (shownDraft.Reply != result.Reply)
+        else if (DiffersFromDraft(shownDraft, result))
             await events.WriteAsync("answer.updated", result, ct);
         await events.WriteAsync("done", new { }, ct);
         return new EmptyResult();
@@ -259,6 +259,16 @@ public class MemberChatController : BaseApiController
             writer.TryComplete();
         }
     }
+
+    /// <summary>
+    /// Whether the saved reply is not what the draft showed — anything the app renders, not only
+    /// the prose: a retry re-plans its data, so its charts can change under the same words.
+    /// </summary>
+    private bool DiffersFromDraft(MemberChatMessageResponse draft, MemberChatMessageResponse saved) =>
+        draft.Reply != saved.Reply
+        || draft.ChangedAlertSettings != saved.ChangedAlertSettings
+        || draft.ChangedJournal != saved.ChangedJournal
+        || JsonSerializer.Serialize(draft.Charts, _json) != JsonSerializer.Serialize(saved.Charts, _json);
 
     /// <summary>A send that applied an alert-settings change, or changed a CardiJournal book, is a
     /// write to the member's record, and the audit trail files it as that rather than as one more

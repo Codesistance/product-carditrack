@@ -416,6 +416,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
         MemberChatMessageResponse? answer = null;
         var streamStarted = false;
+        var confirmed = false;
         try
         {
             using var response = await _http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, whole.Token);
@@ -451,19 +452,15 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
                     case "error":
                         throw StreamError(path, sse.Data);
                     case "done":
+                        // The turn is saved. Until this arrives an answer may be a draft the send
+                        // has not saved — and may never save, if it fails after.
+                        confirmed = true;
                         break;
                 }
 
                 if (sse.Name == "done")
                     break;
             }
-        }
-        catch (Exception ex) when (answer is not null && ex is not ApiException
-                                   && (IsTransport(ex) || ex is IOException) && !ct.IsCancellationRequested)
-        {
-            // The answer had already arrived and the turn is saved server-side: a connection that
-            // drops (or a budget that runs out) before `done` costs the caregiver nothing.
-            _logger.LogWarning(ex, "API POST {Path} stream broke after its answer; keeping the answer", path);
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && whole.IsCancellationRequested)
         {
@@ -484,9 +481,10 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
                 await EvictAsync(MemberChatKeys(cardiMemberId));
         }
 
-        // An answer that arrived before the connection dropped is still the answer: done is only
-        // the terminator, and the reply is already saved server-side.
-        if (answer is null)
+        // Only a confirmed answer is returned. One that arrived without `done` may be a draft the
+        // send never saved; the cache is already evicted, so the refresh this asks for shows
+        // whatever the server kept.
+        if (answer is null || !confirmed)
         {
             _logger.LogError("API POST {Path} stream ended without an answer", path);
             throw new ApiException(HttpStatusCode.ServiceUnavailable,

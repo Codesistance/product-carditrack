@@ -36,15 +36,26 @@ public static partial class MemberChatReplies
     /// references block when there is one, so the citations stay last where the app renders them.
     /// Unchanged when the sentence is already there.
     /// </summary>
-    public static string WithStatedAbsence(string reply)
+    /// <param name="maxLength">
+    /// The turn's length cap. The sentence is the one part of the reply the caregiver must see, so
+    /// room for it is made in the prose — trimmed with an ellipsis — rather than left to the cap
+    /// applied after, which would cut the sentence itself off the end.
+    /// </param>
+    public static string WithStatedAbsence(string reply, int maxLength = int.MaxValue)
     {
         if (reply.Contains(StatedAbsenceSentence, StringComparison.Ordinal))
             return reply;
 
-        var references = reply.LastIndexOf("\n\nReference", StringComparison.Ordinal);
-        return references < 0
-            ? $"{reply}\n\n{StatedAbsenceSentence}"
-            : $"{reply[..references]}\n\n{StatedAbsenceSentence}{reply[references..]}";
+        var split = reply.LastIndexOf("\n\nReference", StringComparison.Ordinal);
+        var body = split < 0 ? reply : reply[..split];
+        var references = split < 0 ? string.Empty : reply[split..];
+        var sentence = $"\n\n{StatedAbsenceSentence}";
+
+        var room = maxLength - sentence.Length - references.Length;
+        if (body.Length > room)
+            body = $"{body[..Math.Max(0, room - 1)]}…";
+
+        return $"{body}{sentence}{references}";
     }
 
     /// <summary>

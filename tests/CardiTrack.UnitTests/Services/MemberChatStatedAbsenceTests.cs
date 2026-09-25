@@ -34,4 +34,17 @@ public class MemberChatStatedAbsenceTests
 
         Assert.Equal(once, MemberChatReplies.WithStatedAbsence(once));
     }
+
+    [Fact]
+    public void ALongReply_MakesRoomForTheSentence_InsteadOfLosingIt()
+    {
+        const int cap = 300;
+        var reply = MemberChatReplies.WithStatedAbsence(
+            new string('a', 290) + "\n\nReferences: NHS sleep guidance.", cap);
+
+        Assert.True(reply.Length <= cap, $"{reply.Length} > {cap}");
+        Assert.Contains(MemberChatReplies.StatedAbsenceSentence, reply, StringComparison.Ordinal);
+        Assert.EndsWith("\n\nReferences: NHS sleep guidance.", reply, StringComparison.Ordinal);
+        Assert.Contains("…\n\n", reply, StringComparison.Ordinal);
+    }
 }
