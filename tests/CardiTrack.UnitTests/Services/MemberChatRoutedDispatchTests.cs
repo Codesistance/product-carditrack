@@ -1491,6 +1491,68 @@ public class MemberChatRoutedDispatchTests
         Assert.Equal("analysis", span.GetTagItem(MemberChatTelemetry.WorkflowTag));
     }
 
+    /// <summary>
+    /// The could-not-answer line names the guard that chose it. Every call in the trace behind
+    /// the 2026-09-25 "I couldn't put a proper answer together" succeeded, and six checks write
+    /// that sentence; the tag is what tells them apart.
+    /// </summary>
+    [Fact]
+    public async Task AWithheldReply_IsTaggedWithTheGuardThatWithheldIt()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(
+                "This looks like tachycardia sitting behind the rise.", new AiUsage()));
+
+        using var span = StartRequestSpan();
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how's his heart rate?");
+
+        Assert.Equal(MemberChatService.CouldNotAnswerReply, reply.Reply);
+        Assert.Equal(MemberChatTelemetry.WithheldNamesCondition, span.GetTagItem(MemberChatTelemetry.ReplyWithheldTag));
+        Assert.Null(span.GetTagItem(MemberChatTelemetry.RetryWithheldTag));
+    }
+
+    [Fact]
+    public async Task AnInferenceVerdictSettledTwice_IsTaggedAsSuch()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        TheHeroIsYellow("Steps are very low today.");
+        InferenceAnswers(
+            analysis: "Settled. No alerts; readings at baseline.",
+            rewrite: "Everything looks settled — nothing there needs your attention.");
+
+        using var span = StartRequestSpan();
+        await CreateSut().SendMessageAsync(_userId, _memberId, "anything to follow up on?");
+
+        Assert.Equal(MemberChatTelemetry.WithheldSettledTwice, span.GetTagItem(MemberChatTelemetry.ReplyWithheldTag));
+    }
+
+    /// <summary>
+    /// A retry the guards withhold leaves the first reply standing, so it is tagged apart: the
+    /// reply the caregiver read was not withheld, and must not be counted as if it were.
+    /// </summary>
+    [Fact]
+    public async Task AWithheldRetry_IsTaggedApart_FromTheReplyThatStands()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        TheCheckSays(AnswerGapCause.NotAddressed);
+        var rewrites = 0;
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new AiGenerationResult<string>(
+                ++rewrites == 1 ? "The week looks steady." : "This looks like tachycardia sitting behind the rise.",
+                new AiUsage()));
+
+        using var span = StartRequestSpan();
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "when was he active?", new StepRecorder());
+
+        Assert.StartsWith("The week looks steady.", reply.Reply, StringComparison.Ordinal);
+        Assert.Null(span.GetTagItem(MemberChatTelemetry.ReplyWithheldTag));
+        Assert.Equal(MemberChatTelemetry.WithheldNamesCondition, span.GetTagItem(MemberChatTelemetry.RetryWithheldTag));
+        Assert.Equal("retry_failed", span.GetTagItem(MemberChatTelemetry.AnswerRemedyTag));
+    }
+
     [Fact]
     public async Task ANonQuestion_IsTaggedAsAnsweredInCode()
     {

@@ -92,13 +92,17 @@ the shared string in `TelemetryNames` (CardiTrack.Shared).
   sends, read from the `carditrack.chat.sends` metric below rather than from spans. Replies the answer check reads also carry
   `chat.answer_check` (`full`, `partial`, `no`, or `failed` when the check did not return) and,
   for a miss, `chat.answer_gap` (`not_addressed`, `not_in_data`), and what the send did about
-  it, `chat.answer_remedy` (`stated_absence`, `retried`, `retry_failed`, `retry_skipped`). All
+  it, `chat.answer_remedy` (`stated_absence`, `retried`, `retry_failed`, `retry_skipped`). A reply a
+  guard replaced with the could-not-answer line carries `chat.reply_withheld` naming the guard
+  (`reading_not_in_read`, `sleep_figure`, `unsupported_sex`, `unresolved_voice`,
+  `names_condition`, `settled_twice`), with a Warning log line saying the same; a withheld
+  retry, after which the first reply stands, is tagged `chat.retry_withheld` instead. All
   are fixed labels; the check's own reasoning is stored encrypted on the turn and never tagged
   or logged.
   **Read rates from the metric, not the spans.** Chat spans are indexed by diversity sampling,
   so the tags above sit only on a sample. The span-based metric `carditrack.chat.sends` counts
   every send before sampling, grouped by `env`, route, `chat.workflow`, `chat.answer_check`,
-  `chat.answer_gap` and `chat.answer_remedy` (spec, queries and how to apply it:
+  `chat.answer_gap`, `chat.answer_remedy`, `chat.reply_withheld` and `chat.retry_withheld` (spec, queries and how to apply it:
   [infrastructure/datadog/README.md](../../infrastructure/datadog/README.md#span-based-metrics)).
   Use spans to inspect a single send; use the metric for any rate.
 - **Log line** — one Information completion log per call (model, elapsed ms, token
