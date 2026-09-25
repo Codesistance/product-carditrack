@@ -302,8 +302,9 @@ public partial class DeviceManagementPage : ContentPage
     /// A device the provider itself locked out (Fitbit rejected the refresh, or the wearer
     /// revoked consent) — Refresh Connection would only repeat that failure, so this sends the
     /// caregiver straight into M1-06 for the device's own brand, skipping M1-05's picker. The
-    /// OAuth callback resolves by CardiMember + brand, so completing it revives this same
-    /// connection rather than creating a second one.
+    /// request names this connection as the one being reconnected, so completing it revives this
+    /// same connection (asking Google for consent again, which is what yields a new refresh
+    /// token) rather than creating a second one.
     /// </summary>
     private async void OnReconnectRequested(object? sender, Guid deviceId)
     {
@@ -332,7 +333,8 @@ public partial class DeviceManagementPage : ContentPage
                 return;
 
             var result = await WizardLauncher.RunModalAsync(
-                Navigation, member, showBaselineIntro: false, reconnectDevice: connectable);
+                Navigation, member, showBaselineIntro: false, reconnectDevice: connectable,
+                reconnectDeviceId: deviceId);
 
             if (result.ExitedToDashboard)
                 return;

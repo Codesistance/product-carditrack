@@ -44,7 +44,7 @@
                     HeightRequest="68"
                     VerticalOptions="Start"
                     StrokeThickness="0"
-                    BackgroundColor="{StaticResource TabPillBackground}"
+                    Background="{StaticResource TabPillBrush}"
                     InputTransparent="True">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="5"/>

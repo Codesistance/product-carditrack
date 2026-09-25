@@ -32,6 +32,17 @@ public partial class DashboardPage : ContentPage
 
     /// <summary>The members other than the one loaded first, from the last member-list read.</summary>
     private IReadOnlyList<Guid> _otherMemberOrder = [];
+
+    /// <summary>
+    /// Everyone the dashboard expects to show — from the saved member list on a landing, then the
+    /// live one. A member here whose card has nothing to draw yet holds a placeholder in the stack,
+    /// so the screen is laid out for the whole family from the first frame instead of growing a
+    /// card at a time.
+    /// </summary>
+    private IReadOnlyList<Guid> _expectedMembers = [];
+
+    /// <summary>The placeholder standing in for each expected member not yet drawn.</summary>
+    private readonly Dictionary<Guid, View> _placeholders = [];
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
 
     /// <summary>
@@ -490,6 +501,17 @@ public partial class DashboardPage : ContentPage
             // goes up first and the live one replaces it under the overlay. A resume, a tick or a
             // pull already has a dashboard up and replaces it in place.
             var id = memberId.Value;
+
+            // On a landing, everyone the phone saved goes up with the first member rather than
+            // after them: a family of three used to open as a one-member dashboard — full-size
+            // buttons, no pins — and rearrange itself once the others arrived.
+            if (_lastData is null)
+                await ShowSavedMembersAsync(id);
+
+            // The others' live reads start now, beside the first member's, not after it: each
+            // card is filled as its own answer lands, and one slow read holds up no other.
+            var others = LoadOtherMembersAsync(id);
+
             var outcome = await SnapshotRefresh.RunAsync(
                 _api, _gate, ticket,
                 peek: _lastData is null ? ct => _api.PeekDashboardAsync(id, ct) : null,
@@ -528,9 +550,8 @@ public partial class DashboardPage : ContentPage
             _lastOutcome = outcome;
             ApplyStaleBanner(_lastData!, outcome);
 
-            // Everyone else the family watches, after the primary member is on screen — never
-            // before it, and never holding it up. Awaited so a pull's spinner covers them too.
-            await LoadOtherMembersAsync(id, liveOnly: !outcome.IsFresh);
+            // Awaited here so a pull's spinner covers everyone, not just the first member.
+            await others;
 
             if (!outcome.IsFresh)
             {
@@ -653,7 +674,15 @@ public partial class DashboardPage : ContentPage
             pinned);
         var ordered = order.Select(id => _cards[id]).ToList();
 
-        var several = ordered.Count > 1;
+        // Members expected but not drawn yet hold their place after the ones that are, so the
+        // stack is laid out (compact, with pins) for the whole family from the start.
+        var waiting = _expectedMembers
+            .Where(id => !_cards.TryGetValue(id, out var c) || c.Data is null)
+            .ToList();
+        foreach (var done in _placeholders.Keys.Except(waiting).ToList())
+            _placeholders.Remove(done);
+
+        var several = ordered.Count + waiting.Count > 1;
         foreach (var card in ordered)
             card.SetStacking(several, pinned.Contains(card.Data!.CardiMemberId));
 
@@ -665,11 +694,59 @@ public partial class DashboardPage : ContentPage
         ChatBot.MemberId = only?.CardiMemberId ?? Guid.Empty;
         ChatBot.MemberFirstName = only?.DisplayFirstName();
 
-        if (MemberCards.Children.SequenceEqual(ordered))
+        var stack = ordered.Cast<View>().Concat(waiting.Select(PlaceholderFor)).ToList();
+        if (MemberCards.Children.SequenceEqual(stack))
             return;
         MemberCards.Clear();
-        foreach (var card in ordered)
-            MemberCards.Add(card);
+        foreach (var view in stack)
+            MemberCards.Add(view);
+    }
+
+    /// <summary>
+    /// A card-sized shimmer standing in for a member whose dashboard has not arrived, shaped like
+    /// the stacked card it will become (hero, status line, actions row) so nothing jumps when it
+    /// is replaced.
+    /// </summary>
+    private View PlaceholderFor(Guid memberId)
+    {
+        if (_placeholders.TryGetValue(memberId, out var existing))
+            return existing;
+
+        var hero = new Grid
+        {
+            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Star)],
+            ColumnSpacing = 12,
+        };
+        hero.Add(new SkeletonView { WidthRequest = 76, HeightRequest = 76 }, 0, 0);
+        hero.Add(new VerticalStackLayout
+        {
+            Spacing = 8,
+            VerticalOptions = LayoutOptions.Center,
+            Children =
+            {
+                new SkeletonView { HeightRequest = 20, WidthRequest = 120, HorizontalOptions = LayoutOptions.Start },
+                new SkeletonView { HeightRequest = 14, WidthRequest = 160, HorizontalOptions = LayoutOptions.Start },
+            },
+        }, 1, 0);
+
+        var placeholder = new Border
+        {
+            Style = (Style)Microsoft.Maui.Controls.Application.Current!.Resources["ElevatedCard"],
+            Padding = new Thickness(16, 15, 16, 16),
+            Content = new VerticalStackLayout
+            {
+                Spacing = 12,
+                Children =
+                {
+                    hero,
+                    new SkeletonView { HeightRequest = 36 },
+                    new SkeletonView { HeightRequest = 40 },
+                },
+            },
+        };
+        SemanticProperties.SetDescription(placeholder, "Loading a member");
+        _placeholders[memberId] = placeholder;
+        return placeholder;
     }
 
     /// <summary>
@@ -701,66 +778,117 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// Every member other than the primary one: their saved dashboard first when their card is
-    /// empty, then the live one. Loaded side by side — one slow member must not hold up the next.
+    /// On a landing, before the first member's own read: the saved member list sets how many
+    /// cards the screen is laid out for, and each other member's saved dashboard fills theirs.
+    /// Local reads only, so this costs the first frame nothing it would notice.
     /// </summary>
-    /// <param name="liveOnly">
-    /// True when the primary member's own load could not reach the server: the others are shown
-    /// from what the phone saved, and nothing live is asked for.
-    /// </param>
-    private async Task LoadOtherMembersAsync(Guid primaryId, bool liveOnly)
+    private async Task ShowSavedMembersAsync(Guid primaryId)
     {
-        List<CardiMemberResponse> members;
         try
         {
-            members = await _api.GetCardiMembersAsync();
+            if (await _api.PeekCardiMembersAsync() is not { Count: > 0 } saved)
+                return;
+
+            _expectedMembers = saved.Select(m => m.Id).ToList();
+            foreach (var member in saved.Where(m => m.Id != primaryId))
+            {
+                var card = CardFor(member.Id);
+                if (card.Data is null && await _api.PeekDashboardAsync(member.Id) is { } dashboard)
+                    card.Apply(dashboard, _popups);
+            }
+
+            ArrangeCards();
         }
-        catch (ApiException)
+        catch (Exception ex)
         {
-            // The list is what says who else there is. Without it the cards already on screen
-            // stay as they are; the primary member's is the one that matters most and is up.
-            return;
+            // Nothing saved to lay the family out from: the live reads still fill it in.
+            ScreenRefresh.LogFailure(ex, this, "while showing saved members");
         }
-
-        var others = members
-            .Where(m => m.Id != primaryId)
-            .OrderBy(m => m.DisplayFirstName(), StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
-        _otherMemberOrder = others.Select(m => m.Id).ToList();
-
-        // A member who has left the family (removed, or access taken away) leaves the screen.
-        foreach (var gone in _cards.Keys.Where(id => id != primaryId && !_otherMemberOrder.Contains(id)).ToList())
-            _cards.Remove(gone);
-
-        await Task.WhenAll(others.Select(m => LoadOtherMemberAsync(m.Id, liveOnly)));
-        ArrangeCards();
-        ApplyAlerts();
     }
 
-    private async Task LoadOtherMemberAsync(Guid memberId, bool liveOnly)
+    /// <summary>
+    /// Every member other than the primary one: their saved dashboard first when their card is
+    /// empty, then the live one. Loaded side by side, one slow member never holding up the next,
+    /// and alongside the primary member's own read, so each card is filled as its answer lands.
+    /// </summary>
+    /// <remarks>
+    /// Never faults: it runs beside the primary member's load and is awaited after it, and a
+    /// failure here must not take down a dashboard the first member already filled.
+    /// </remarks>
+    private async Task LoadOtherMembersAsync(Guid primaryId)
+    {
+        try
+        {
+            List<CardiMemberResponse> members;
+            try
+            {
+                members = await _api.GetCardiMembersAsync();
+            }
+            catch (ApiException)
+            {
+                // The list is what says who else there is. Without it the cards already on screen
+                // stay as they are, but a placeholder for somebody the saved list promised has
+                // nothing coming to fill it, so those go.
+                _expectedMembers = _cards.Where(c => c.Value.Data is not null).Select(c => c.Key).ToList();
+                ArrangeCards();
+                return;
+            }
+
+            _expectedMembers = members.Select(m => m.Id).ToList();
+            var others = members
+                .Where(m => m.Id != primaryId)
+                .OrderBy(m => m.DisplayFirstName(), StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            _otherMemberOrder = others.Select(m => m.Id).ToList();
+
+            // A member who has left the family (removed, or access taken away) leaves the screen.
+            foreach (var gone in _cards.Keys.Where(id => id != primaryId && !_otherMemberOrder.Contains(id)).ToList())
+                _cards.Remove(gone);
+            ArrangeCards();
+
+            await Task.WhenAll(others.Select(m => LoadOtherMemberAsync(m.Id)));
+
+            // Anyone still without a card to draw (unreachable, with nothing saved) is left out
+            // rather than left as a placeholder that nothing is coming to fill.
+            _expectedMembers = _expectedMembers
+                .Where(id => id == primaryId || (_cards.TryGetValue(id, out var c) && c.Data is not null))
+                .ToList();
+            ArrangeCards();
+            ApplyAlerts();
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, this, "while loading the other members");
+        }
+    }
+
+    private async Task LoadOtherMemberAsync(Guid memberId)
     {
         var card = CardFor(memberId);
         try
         {
             if (card.Data is null && await _api.PeekDashboardAsync(memberId) is { } saved)
+            {
                 card.Apply(saved, _popups);
-
-            if (liveOnly)
-                return;
+                ArrangeCards();
+            }
 
             var live = await _api.GetDashboardAsync(memberId);
             card.Apply(live, _popups);
+            ArrangeCards();
             _ = LoadCurrentStatusAsync(card, live);
         }
         catch (ApiException ex) when (ex.IsNotFound)
         {
             // Gone between the list and the read: their saved dashboard must not stand in for them.
             _cards.Remove(memberId);
+            _expectedMembers = _expectedMembers.Where(id => id != memberId).ToList();
+            ArrangeCards();
         }
         catch (ApiException)
         {
             // Unreachable: a card already showing saved data keeps it, and one with nothing to
-            // show is left out by ArrangeCards rather than drawn empty.
+            // show is left out once the others are in (see LoadOtherMembersAsync).
         }
         catch (Exception ex)
         {
