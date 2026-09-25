@@ -68,6 +68,50 @@ public partial class MemberDashboardCard : ContentView
     {
         Hero.SetPinning(several, pinned);
         QuickActions.Compact = several;
+
+        // The compact row takes only the right-hand column, which leaves the left of the line to
+        // the Metrics link; the full tiles span the whole line as before.
+        Grid.SetColumn(QuickActions, several ? 1 : 0);
+        Grid.SetColumnSpan(QuickActions, several ? 1 : 2);
+
+        _stacked = several;
+        ShowMetricsControls();
+    }
+
+    private bool _stacked;
+
+    /// <summary>
+    /// Key Metrics as its own accordion row for a lone member, or — stacked — opened from the
+    /// Metrics link on the actions line, the accordion then showing only while it is open so a
+    /// closed one costs the card no row and no gap.
+    /// </summary>
+    private void ShowMetricsControls()
+    {
+        var hasMetrics = Data?.Metrics is not null;
+        MetricsAccordion.ShowHeader = !_stacked;
+        MetricsLink.IsVisible = _stacked && hasMetrics;
+        MetricsAccordion.IsVisible = hasMetrics && (!_stacked || MetricsAccordion.IsExpanded);
+        MetricsChevron.Rotation = MetricsAccordion.IsExpanded ? 180 : 0;
+    }
+
+    private async void OnMetricsLinkTapped(object? sender, TappedEventArgs e)
+    {
+        if (!MetricsAccordion.IsExpanded)
+        {
+            // Shown first, so the accordion has a width to measure its body against as it opens.
+            MetricsAccordion.IsVisible = true;
+            await Task.Yield();
+            MetricsAccordion.Toggle();
+            MetricsChevron.Rotation = 180;
+            return;
+        }
+
+        MetricsAccordion.Toggle();
+        MetricsChevron.Rotation = 0;
+        // Hidden once the close has run, so the collapsed accordion leaves no gap behind it.
+        await Task.Delay(220);
+        if (!MetricsAccordion.IsExpanded && _stacked)
+            MetricsAccordion.IsVisible = false;
     }
 
     public void Apply(DashboardResponse data, IPopupService popups)
@@ -167,11 +211,10 @@ public partial class MemberDashboardCard : ContentView
     {
         if (data.Metrics is not { } metrics)
         {
-            MetricsAccordion.IsVisible = false;
+            ShowMetricsControls();
             return;
         }
 
-        MetricsAccordion.IsVisible = true;
         StepsCard.ApplySteps(metrics.Steps);
         HeartRateCard.ApplyHeartRate(metrics.RestingHeartRate);
         SleepCard.ApplySleep(metrics.Sleep);
@@ -191,6 +234,7 @@ public partial class MemberDashboardCard : ContentView
             BreathingRateCard.ApplyBreathingRate(metrics.BreathingRate);
 
         LayoutMetricCards();
+        ShowMetricsControls();
     }
 
     /// <summary>

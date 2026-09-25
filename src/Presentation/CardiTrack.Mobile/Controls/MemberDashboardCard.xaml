@@ -42,8 +42,32 @@
                            FontSize="14"/>
                 </VerticalStackLayout>
 
-                <!-- SOS / Call / Message / Details. -->
-                <controls:QuickActionRow x:Name="QuickActions"/>
+                <!-- SOS / Call / Message / Details, and — while several members stack — the Key
+                     Metrics link on the same line, in the space the compact icons leave at the
+                     left. The accordion's own header row goes, and this opens it instead. -->
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <HorizontalStackLayout x:Name="MetricsLink"
+                                           Spacing="6"
+                                           VerticalOptions="Center"
+                                           IsVisible="False"
+                                           SemanticProperties.Description="Key metrics"
+                                           SemanticProperties.Hint="Shows or hides the key metrics">
+                        <HorizontalStackLayout.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnMetricsLinkTapped"/>
+                        </HorizontalStackLayout.GestureRecognizers>
+                        <Image Source="icon_action_details.svg" WidthRequest="18" HeightRequest="18" VerticalOptions="Center"/>
+                        <Label Text="Metrics"
+                               FontFamily="QuicksandSemiBold"
+                               FontSize="14"
+                               TextColor="{StaticResource Primary}"
+                               VerticalOptions="Center"/>
+                        <Image x:Name="MetricsChevron"
+                               Source="icon_chevron_down.svg"
+                               WidthRequest="16" HeightRequest="16"
+                               VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                    <controls:QuickActionRow x:Name="QuickActions" Grid.ColumnSpan="2"/>
+                </Grid>
 
                 <!-- Poor-sleep nudge: points at the real Sleep alert the statistical pass raised.
                      Dismissing it is a local convenience, not an acknowledgement. -->
