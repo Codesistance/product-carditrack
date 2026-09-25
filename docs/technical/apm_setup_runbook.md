@@ -87,8 +87,9 @@ the shared string in `TelemetryNames` (CardiTrack.Shared).
   answer, before the dispatch rules act on it) and `chat.workflow` (what actually answered),
   all catalogue labels or fixed constants (`MemberChatTelemetry`). Together with the
   per-call `carditrack.ai.reply_schema` a trace reads end to end: which calls ran and what
-  they decided. `@chat.workflow:clarify` over all sends is the clarify rate the routing design
-  turns on ([member_chat_routing.md](./member_chat_routing.md) §8). Replies the answer check reads also carry
+  they decided. The clarify rate the routing design turns on
+  ([member_chat_routing.md](./member_chat_routing.md) §8) is `chat.workflow:clarify` over all
+  sends, read from the `carditrack.chat.sends` metric below rather than from spans. Replies the answer check reads also carry
   `chat.answer_check` (`full`, `partial`, `no`, or `failed` when the check did not return) and,
   for a miss, `chat.answer_gap` (`not_addressed`, `not_in_data`), and what the send did about
   it, `chat.answer_remedy` (`stated_absence`, `retried`, `retry_failed`, `retry_skipped`). All
