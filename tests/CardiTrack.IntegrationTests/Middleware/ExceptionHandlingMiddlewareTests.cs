@@ -10,9 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace CardiTrack.IntegrationTests.Middleware;
 
 /// <summary>
-/// What a caller is told when a request fails past its controller. Adding a CardiMember past the
-/// plan's limit reached here uncaught and came back as "Something went wrong on our end" — a
-/// refusal the service had written a reason for, reported as an outage.
+/// What a caller is told when a request fails past its controller.
 /// </summary>
 public class ExceptionHandlingMiddlewareTests
 {
@@ -25,7 +23,7 @@ public class ExceptionHandlingMiddlewareTests
 
         var context = new DefaultHttpContext
         {
-            Request = { Method = "POST", Path = "/api/v1/onboarding/cardimember" },
+            Request = { Method = "POST", Path = "/api/v1/caregiver-invites/token/accept" },
             Response = { Body = new MemoryStream() },
         };
 
@@ -36,21 +34,25 @@ public class ExceptionHandlingMiddlewareTests
         return (context.Response.StatusCode, body.RootElement.GetProperty("message").GetString()!);
     }
 
+    /// <summary>
+    /// A family rule's message is written for somebody already inside the family, so it is echoed
+    /// only by the controllers that know their caller is. Left to fall through here, where the
+    /// caller may be an invitee not yet inside — the plan's limit and the family's headcount are
+    /// not theirs to read. Mapping it globally was tried and would have told them.
+    /// </summary>
     [Fact]
-    public async Task AFamilyRuleRefusalSaysWhy_WithTheStatusTheControllersUse()
+    public async Task AFamilyRuleThatNoControllerCaught_DoesNotLeakTheFamilysPlan()
     {
-        const string reason = "This family's plan covers 3 CardiMembers, and you're already watching 3.";
+        var (status, message) = await RunAsync(new FamilyRuleException(
+            FamilyRuleException.MemberLimitReached,
+            "This family's plan covers 5 people, and 5 are already in it."));
 
-        var (status, message) = await RunAsync(
-            new FamilyRuleException(FamilyRuleException.CardiMemberLimitReached, reason));
-
-        // 422, as FamiliesController and FamilyJoinController return for the same exception.
-        Assert.Equal((int)HttpStatusCode.UnprocessableEntity, status);
-        Assert.Equal(reason, message);
+        Assert.Equal((int)HttpStatusCode.InternalServerError, status);
+        Assert.DoesNotContain("plan covers", message);
     }
 
     [Fact]
-    public async Task AnUnmappedFaultStillHidesItsMessage()
+    public async Task AnUnmappedFaultHidesItsMessage()
     {
         var (status, message) = await RunAsync(new InvalidOperationException("connection string leaked here"));
 
