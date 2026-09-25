@@ -251,6 +251,10 @@ was created; it does not backfill. The tags themselves are described in
 # Sends by workflow
 sum:carditrack.chat.sends{env:dev} by {chat.workflow}.as_count()
 
+# Clarify rate (member_chat_routing.md §8)
+sum:carditrack.chat.sends{env:dev AND chat.workflow:clarify}.as_count()
+  / sum:carditrack.chat.sends{env:dev}.as_count()
+
 # Share of checked replies that fell short (partial or no)
 sum:carditrack.chat.sends{env:dev AND chat.answer_check IN (partial,no)}.as_count()
   / sum:carditrack.chat.sends{env:dev AND chat.answer_check IN (full,partial,no)}.as_count()
