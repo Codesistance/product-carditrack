@@ -329,9 +329,21 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     /// watcher clause is the negation of
     /// <c>IUserCardiMemberRepository.IsLeftUnwatchedByPendingDeletionAsync</c>.
     /// </summary>
+    public async Task<bool> AnyOtherActiveWithHealthUserIdAsync(Guid excludingId, string healthUserId)
+    {
+        return await _dbSet
+            .AnyAsync(dc => dc.Id != excludingId
+                            && dc.HealthUserId == healthUserId
+                            && dc.IsActive
+                            && dc.ConnectionStatus != ConnectionStatus.Disconnected);
+    }
+
     private IQueryable<DeviceConnection> WhereMemberAllowsCollection(
         IQueryable<DeviceConnection> connections, DateTime now) =>
         connections
+            // A suspended connection is out of every collection path the same way a paused member
+            // is — this is the one gate they all go through.
+            .Where(dc => dc.SuspendedAt == null)
             .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
             .Where(x => x.cm.IsActive
                         && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now)

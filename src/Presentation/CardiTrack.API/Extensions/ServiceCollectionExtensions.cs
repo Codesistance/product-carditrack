@@ -148,6 +148,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Clients.IOAuthGrantRevoker, OAuthGrantRevoker>();
         services.AddScoped<IOAuthCodeExchangeService, OAuthCodeExchangeService>();
+        services.AddScoped<IDeviceAccountIdentityResolver, DeviceAccountIdentityResolver>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAuth0ManagementService, Auth0ManagementClient>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceConnectionService,
             CardiTrack.Infrastructure.Services.DeviceConnectionService>();

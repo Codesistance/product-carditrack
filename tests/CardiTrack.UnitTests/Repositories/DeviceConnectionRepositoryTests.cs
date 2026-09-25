@@ -360,6 +360,77 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.DoesNotContain(result, c => c.Id == connection.Id);
     }
 
+    // A suspended device keeps its tokens, so nothing about the grant stops a pull — only the
+    // suspension itself, which every collection path reads through the same gate.
+    [Fact]
+    public async Task GetDueForSyncAsync_ExcludesConnection_WhenSuspended()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var suspended = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, lastSyncDate: null, suspendedAt: DateTime.UtcNow.AddHours(-1));
+        var collecting = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id, lastSyncDate: null);
+
+        var result = await repo.GetDueForSyncAsync();
+
+        Assert.DoesNotContain(result, c => c.Id == suspended.Id);
+        Assert.Contains(result, c => c.Id == collecting.Id);
+    }
+
+    [Fact]
+    public async Task GetSyncableByHealthUserIdAsync_ExcludesSuspendedConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var account = $"hu-{Guid.NewGuid():N}";
+        await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, suspendedAt: DateTime.UtcNow, healthUserId: account);
+
+        Assert.Empty(await repo.GetSyncableByHealthUserIdAsync(account));
+    }
+
+    // ── AnyOtherActiveWithHealthUserIdAsync ──────────────────────────────────────
+
+    [Fact]
+    public async Task AnyOtherActiveWithHealthUserIdAsync_IsTrue_ForAnotherMembersLiveConnectionOnTheAccount()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var first = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var second = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var account = $"hu-{Guid.NewGuid():N}";
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(scope, first.Id, healthUserId: account);
+        // Suspended still counts: it keeps its tokens, and would lose them with the grant.
+        await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, second.Id, healthUserId: account, suspendedAt: DateTime.UtcNow);
+
+        Assert.True(await repo.AnyOtherActiveWithHealthUserIdAsync(connection.Id, account));
+    }
+
+    [Fact]
+    public async Task AnyOtherActiveWithHealthUserIdAsync_IgnoresItselfAndRemovedConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var account = $"hu-{Guid.NewGuid():N}";
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id, healthUserId: account);
+        await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.Disconnected, isActive: false, healthUserId: account);
+
+        Assert.False(await repo.AnyOtherActiveWithHealthUserIdAsync(connection.Id, account));
+    }
+
     // ── UpdateTokenAsync ─────────────────────────────────────────────────────────
 
     [Fact]

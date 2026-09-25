@@ -120,7 +120,10 @@ public class InactivityDetectionService : IInactivityDetectionService
     private async Task<bool> ProbedIntoLifeAsync(
         Guid memberId, DateTime utcNow, InactivityDetectionRules rules, CancellationToken ct)
     {
-        var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(memberId)).ToList();
+        // A suspended device is not collecting, so it is not one to probe for signs of life.
+        var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(memberId))
+            .Where(c => c.SuspendedAt is null)
+            .ToList();
         if (connections.Count == 0)
             return false;
 

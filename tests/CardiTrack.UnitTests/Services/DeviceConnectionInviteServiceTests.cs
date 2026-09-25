@@ -99,7 +99,7 @@ public class DeviceConnectionInviteServiceTests
 
         _connections.InitiateWearerConnectionAsync(
                 Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DeviceType>(),
-                Arg.Any<CancellationToken>())
+                Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
             .Returns("https://accounts.google.com/o/oauth2/v2/auth?state=abc");
 
         // The state the bounce comes back with names the invitation it was minted for. The default
@@ -348,6 +348,37 @@ public class DeviceConnectionInviteServiceTests
     }
 
     [Fact]
+    public async Task Create_ToReplaceADevice_ChecksTheCaregiverMayReplaceIt_AndCarriesItToTheGrant()
+    {
+        var sut = CreateSut();
+        var replacedId = Guid.NewGuid();
+        var request = Request();
+        request.ReplacesDeviceId = replacedId;
+
+        var created = await sut.CreateAsync(_userId, _memberId, request, BaseUrl);
+        await sut.StartAsync(TokenFrom(created));
+
+        await _connections.Received(1).EnsureCanReplaceAsync(_userId, _memberId, replacedId, Arg.Any<CancellationToken>());
+        Assert.Equal(replacedId, created.ReplacesDeviceId);
+        await _connections.Received(1).InitiateWearerConnectionAsync(
+            created.InviteId, _userId, _memberId, DeviceType.Fitbit, replacedId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Create_ToReplaceADevice_StoresNothing_WhenTheCaregiverMayNotReplaceIt()
+    {
+        // Refused before a link goes out, not after the wearer has already given consent.
+        _connections.EnsureCanReplaceAsync(_userId, _memberId, Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new KeyNotFoundException("CardiMember not found"));
+        var request = Request();
+        request.ReplacesDeviceId = Guid.NewGuid();
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => CreateSut().CreateAsync(_userId, _memberId, request, BaseUrl));
+
+        Assert.Empty(_stored);
+    }
+
+    [Fact]
     public async Task Start_MarksOpened_AndReturnsTheProviderUrl()
     {
         var sut = CreateSut();
@@ -391,7 +422,7 @@ public class DeviceConnectionInviteServiceTests
 
         Assert.Null(await sut.StartAsync(token));
         await _connections.DidNotReceiveWithAnyArgs()
-            .InitiateWearerConnectionAsync(default, default, default, default, default);
+            .InitiateWearerConnectionAsync(default, default, default, default, default, default);
     }
 
     [Fact]

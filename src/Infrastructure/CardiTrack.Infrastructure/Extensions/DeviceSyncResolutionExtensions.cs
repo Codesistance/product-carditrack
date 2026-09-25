@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -20,6 +21,19 @@ public static class DeviceSyncResolutionExtensions
         var configs = services.GetRequiredService<IOptions<List<DeviceProviderSettings>>>().Value;
         return configs.ApiFor(deviceType) is { } api
             ? services.GetKeyedService<IDeviceSyncService>(api)
+            : null;
+    }
+
+    /// <summary>
+    /// The provider API client serving <paramref name="deviceType"/>, resolved the same way as
+    /// <see cref="GetDeviceSyncService"/>. Null when nothing is registered for it.
+    /// </summary>
+    public static IDeviceApiClient? GetDeviceApiClient(
+        this IServiceProvider services, DeviceType deviceType)
+    {
+        var configs = services.GetRequiredService<IOptions<List<DeviceProviderSettings>>>().Value;
+        return configs.ApiFor(deviceType) is { } api
+            ? services.GetKeyedService<IDeviceApiClient>(api)
             : null;
     }
 }

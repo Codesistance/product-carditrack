@@ -102,6 +102,7 @@ public class DevicesController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<DeviceResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<DeviceResponse>>> SetPrimary(
         Guid cardiMemberId, Guid deviceId, CancellationToken ct)
     {
@@ -114,6 +115,74 @@ public class DevicesController : BaseApiController
         {
             var device = await _deviceConnections.SetPrimaryAsync(UserContext.UserId, cardiMemberId, deviceId, ct);
             return Success(device, $"{device.DisplayName} is now the primary device.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (DeviceConnectionException ex)
+        {
+            return Error(ex.Message, StatusFor(ex));
+        }
+    }
+
+    /// <summary>
+    /// M1-15 "Suspend": the device stops collecting — no syncs, webhook pulls or device nudges —
+    /// while keeping its tokens and history, until it is resumed. Refused (409
+    /// <c>LAST_ACTIVE_DEVICE</c>) for the member's only collecting device; Pause Monitoring is the
+    /// bounded way to stop that. Primary caregiver only. Idempotent.
+    /// </summary>
+    [HttpPost("cardimembers/{cardiMemberId:guid}/devices/{deviceId:guid}/suspend")]
+    [ProducesResponseType(typeof(ApiResponse<DeviceResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ApiResponse<DeviceResponse>>> Suspend(
+        Guid cardiMemberId, Guid deviceId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var device = await _deviceConnections.SuspendAsync(UserContext.UserId, cardiMemberId, deviceId, ct);
+            Logger.LogInformation(
+                "Device {DeviceId} suspended on CardiMember {CardiMemberId} by user {UserId}",
+                deviceId, cardiMemberId, UserContext.UserId);
+            return Success(device, $"{device.DisplayName} is suspended.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (DeviceConnectionException ex)
+        {
+            return Error(ex.Message, StatusFor(ex));
+        }
+    }
+
+    /// <summary>M1-15 "Resume": a suspended device collects again. Primary caregiver only. Idempotent.</summary>
+    [HttpPost("cardimembers/{cardiMemberId:guid}/devices/{deviceId:guid}/resume")]
+    [ProducesResponseType(typeof(ApiResponse<DeviceResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<DeviceResponse>>> Resume(
+        Guid cardiMemberId, Guid deviceId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var device = await _deviceConnections.ResumeAsync(UserContext.UserId, cardiMemberId, deviceId, ct);
+            Logger.LogInformation(
+                "Device {DeviceId} resumed on CardiMember {CardiMemberId} by user {UserId}",
+                deviceId, cardiMemberId, UserContext.UserId);
+            return Success(device, $"{device.DisplayName} is collecting again.");
         }
         catch (KeyNotFoundException ex)
         {
@@ -241,10 +310,7 @@ public class DevicesController : BaseApiController
         catch (DeviceConnectionException ex)
         {
             Logger.LogWarning(ex, "Device refresh failed with code {Code}", ex.Code);
-            var status = ex.Code == DeviceConnectionException.OAuthExchangeFailed
-                ? StatusCodes.Status502BadGateway
-                : StatusCodes.Status400BadRequest;
-            return Error(ex.Message, status);
+            return Error(ex.Message, StatusFor(ex));
         }
     }
 
@@ -280,7 +346,7 @@ public class DevicesController : BaseApiController
         }
         catch (DeviceConnectionException ex)
         {
-            return Error(ex.Message, StatusCodes.Status400BadRequest);
+            return Error(ex.Message, StatusFor(ex));
         }
     }
 
@@ -386,6 +452,8 @@ public class DevicesController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<DeviceResponse>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<ApiResponse<DeviceResponse>>> CompleteConnection(
         string provider, [FromBody] OAuthCallbackRequest request, CancellationToken ct)
@@ -405,7 +473,12 @@ public class DevicesController : BaseApiController
         {
             var result = await _deviceConnections.CompleteConnectionAsync(
                 UserContext.UserId, provider, request, ct);
-            return Created(result, "Your device is connected and ready to go!");
+            var message = result.AlreadyConnected
+                ? "That account was already connected — we've refreshed it."
+                : result.ReplacedDeviceId is not null
+                    ? "Your new device is connected and has replaced the old one."
+                    : "Your device is connected and ready to go!";
+            return Created(result, message);
         }
         catch (KeyNotFoundException ex)
         {
@@ -414,10 +487,16 @@ public class DevicesController : BaseApiController
         catch (DeviceConnectionException ex)
         {
             Logger.LogWarning(ex, "Device OAuth completion failed with code {Code}", ex.Code);
-            var status = ex.Code == DeviceConnectionException.OAuthExchangeFailed
-                ? StatusCodes.Status502BadGateway
-                : StatusCodes.Status400BadRequest;
-            return Error(ex.Message, status);
+            return Error(ex.Message, StatusFor(ex));
         }
     }
+
+    /// <summary>
+    /// One mapping for every device action: a provider failure is 502, a clash with the member's
+    /// current devices 409, anything else a bad request.
+    /// </summary>
+    private static int StatusFor(DeviceConnectionException ex) =>
+        ex.Code == DeviceConnectionException.OAuthExchangeFailed ? StatusCodes.Status502BadGateway
+        : ex.IsConflict ? StatusCodes.Status409Conflict
+        : StatusCodes.Status400BadRequest;
 }

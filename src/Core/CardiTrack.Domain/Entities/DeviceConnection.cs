@@ -76,6 +76,23 @@ public class DeviceConnection : BaseEntity, ISoftDeletable
     public string? HealthUserId { get; set; }
 
     /// <summary>
+    /// When a caregiver suspended this connection (M1-15 "Suspend"), or null while it collects.
+    /// A suspended connection keeps its tokens and its history but is skipped by every collection
+    /// path — scheduled and manual syncs, webhook-triggered pulls, auth recovery and the device
+    /// nudges — until it is resumed.
+    /// </summary>
+    /// <remarks>
+    /// A column beside <see cref="ConnectionStatus"/> rather than another value of it: the sync
+    /// and auth-recovery paths write that status as they learn about the grant, and a suspension
+    /// stored there would be overwritten by the first of them — or would hide that the grant had
+    /// meanwhile expired, which the caregiver still needs to see when they resume.
+    /// </remarks>
+    public DateTime? SuspendedAt { get; set; }
+
+    /// <summary>The caregiver who suspended the connection; null whenever <see cref="SuspendedAt"/> is.</summary>
+    public Guid? SuspendedByUserId { get; set; }
+
+    /// <summary>
     /// Earliest day the history backfill has fetched (or confirmed empty) for this connection;
     /// null until the first backfill chunk runs. The backfill walks this marker backwards from
     /// the routine sync window towards the provider's configured horizon, a chunk per pull, so

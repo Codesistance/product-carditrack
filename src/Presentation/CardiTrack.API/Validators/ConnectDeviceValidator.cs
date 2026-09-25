@@ -26,7 +26,28 @@ public class ConnectDeviceValidator : AbstractValidator<ConnectDeviceRequest>
             .NotEmpty().WithMessage("Redirect URI is required")
             .Must(IsAppDeepLink)
             .WithMessage($"Redirect URI must be a {ConnectDeviceRequest.AppRedirectScheme}:// URI without a fragment");
+
+        RuleFor(x => x.Mode)
+            .Must(m => m is null || Modes.Contains(m, StringComparer.OrdinalIgnoreCase))
+            .WithMessage("Mode must be one of: add, reconnect, replace");
+
+        // Reconnect and replace act on one named connection; add acts on none, and a device id
+        // sent with it would be a client that believed it was doing something else.
+        RuleFor(x => x.DeviceId)
+            .NotNull()
+            .When(x => !IsAdd(x.Mode))
+            .WithMessage("Device id is required to reconnect or replace a device");
+        RuleFor(x => x.DeviceId)
+            .Null()
+            .When(x => IsAdd(x.Mode))
+            .WithMessage("Device id must not be sent when adding a device");
     }
+
+    private static readonly string[] Modes =
+        [ConnectDeviceRequest.ModeAdd, ConnectDeviceRequest.ModeReconnect, ConnectDeviceRequest.ModeReplace];
+
+    private static bool IsAdd(string? mode) =>
+        mode is null || string.Equals(mode, ConnectDeviceRequest.ModeAdd, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsAppDeepLink(string? uri) =>
         Uri.TryCreate(uri, UriKind.Absolute, out var parsed)

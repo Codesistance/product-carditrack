@@ -104,4 +104,11 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// </summary>
     Task<IEnumerable<DeviceConnection>> GetSyncableByHealthUserIdAsync(string healthUserId);
 
+    /// <summary>
+    /// Whether any live connection other than <paramref name="excludingId"/> — on any member, and
+    /// suspended ones included, since they keep their tokens — reads through this provider account.
+    /// Such a connection shares the provider grant, so revoking the grant would cut it off too.
+    /// </summary>
+    Task<bool> AnyOtherActiveWithHealthUserIdAsync(Guid excludingId, string healthUserId);
+
 }

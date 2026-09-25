@@ -2,15 +2,16 @@
 
 Handles wearable device connections via OAuth, device status management, primary device designation, and token refresh.
 
-**Implementation status:** the core OAuth connection flow (list, connect, bounce redirect, callback) is **implemented**, as are the M1-15 management endpoints — **delete**, **set primary**, and a **refresh** endpoint — plus an on-demand **sync** endpoint (issue #67) and the **wearer-side invitation** flow that lets the wearer authorize from their own device instead of the caregiver's phone. Get-single-device remains **planned — not yet implemented**; note the implemented routes differ from the planned shapes below (`POST .../primary` not `PUT`, `POST .../refresh` not `POST .../reconnect`).
+**Implementation status:** the core OAuth connection flow (list, connect, bounce redirect, callback) is **implemented**, as are the M1-15 management endpoints — **delete**, **set primary**, **refresh**, **suspend** and **resume** — and the connect flow's **add / reconnect / replace** modes (issue #1286: a member can have several devices, including several of one brand), plus an on-demand **sync** endpoint (issue #67) and the **wearer-side invitation** flow that lets the wearer authorize from their own device instead of the caregiver's phone. Get-single-device remains **planned — not yet implemented**; note the implemented routes differ from the planned shapes below (`POST .../primary` not `PUT`, `POST .../refresh` not `POST .../reconnect`).
 
 Key implementation facts (verified against `DeviceConnectionService`):
 
-- **Authorization is two-tier, member-link based** (failure → 404 "CardiMember not found" in both tiers, so an unauthorised caller can't tell a member exists). *Reading and connecting* — list, initiate, callback — need only an **active `UserCardiMember` link**. The *management* actions that change how a member is monitored — **delete, set-primary, refresh** — additionally require **`IsPrimaryCaregiver`**, so a relative invited only to watch over someone cannot cut off their data feed. **Sync** sits in the reading tier: it changes nothing about the connection and shows the caller nothing they could not already see. **Device invitations** (create, read, revoke) sit in the reading tier too, and deliberately: a caregiver who holds a link can already run the whole connection on their own phone, so requiring the stricter tier to do it by invitation would guard nothing while blocking the case the feature exists for. There are no Auth0 **role** checks on any device endpoint.
+- **Authorization is two-tier, member-link based** (failure → 404 "CardiMember not found" in both tiers, so an unauthorised caller can't tell a member exists). *Reading and connecting* — list, initiate, callback — need only an **active `UserCardiMember` link**. The *management* actions that change how a member is monitored — **delete, set-primary, refresh, suspend, resume**, and a connect or invitation in **`replace`** mode (which removes a device) — additionally require **`IsPrimaryCaregiver`**, so a relative invited only to watch over someone cannot cut off their data feed. **Sync** sits in the reading tier: it changes nothing about the connection and shows the caller nothing they could not already see. **Device invitations** (create, read, revoke) sit in the reading tier too, and deliberately: a caregiver who holds a link can already run the whole connection on their own phone, so requiring the stricter tier to do it by invitation would guard nothing while blocking the case the feature exists for. There are no Auth0 **role** checks on any device endpoint.
 - **State tokens are single-use with a 15-minute TTL**, held server-side in the distributed cache keyed to the initiating user, member, and provider. The callback consumes the state even if the code exchange fails — a replayed state always fails.
-- **Google authorize URLs include `access_type=offline`** (config-driven), without which Google issues no refresh token. `prompt=consent` (`FirstConsentAuthorizationParams`) is added **only while the member holds no refresh token** on that provider — Google re-issues one only when consent is shown again, but forcing it on every connect makes a reconnect look like a failure. A token exchange that returns no refresh token **leaves the stored one in place** rather than nulling it — unless the exchange came back with a **different `providerUserId`**, in which case the old account's token is dropped so background syncs can't keep pulling the previous wearer's data (and the next initiation re-prompts for consent).
+- **Google authorize URLs include `access_type=offline`** (config-driven), without which Google issues no refresh token. `FirstConsentAuthorizationParams` (`prompt=consent select_account`) is added to every **add** and **replace**, and to a **reconnect** of a connection that holds no refresh token (or is disconnected). Adding a device may be for an account we have never held a token for, and the account chooser is how the caregiver picks which one — so another device's refresh token says nothing about this grant. Only a reconnect of a connection that still banks a token skips it, because re-showing consent there reads as the connection having failed. A token exchange that returns no refresh token **leaves the stored one in place** rather than nulling it.
+- **The provider account decides "same device or another one".** At completion the server reads the grant's account from the Google Health identity resource (`GET /v4/users/me/identity` → `healthUserId`) and stores it in `DeviceConnection.HealthUserId` immediately rather than on the first sync. Adding an account the member already has connected refreshes that connection instead of storing a second card over one data stream. That includes a `pixel_watch` on the same Google account as a `fitbit`, since both read through one API. The brand never decides it: two Fitbits on two accounts are two devices. See *Where a grant lands* under the callback.
 - **OAuth tokens are AES-encrypted at rest** before being stored on the connection record.
-- **Syncing is notify-then-fetch.** The `CardiTrack.HealthWebhookReceiver` Cloud Run service (`POST /webhooks/google-health`) receives the provider's data-availability notifications and publishes them to Pub/Sub; `NotificationDrainService` maps each notification's health-user id to the matching connections and runs a **targeted sync** through the same `IDeviceSyncService` the Worker uses. Because that stamps `LastSyncDate`, the routine poll's due-time moves out — making the Worker's 10-minute cron (`WearableSyncWorker`) the **fallback**, not a duplicate. The cron sets only how often the worker *looks*; a connection is actually due once its own `SyncFrequencyMinutes` (default 10) has elapsed. Connections belonging to a **removed or monitoring-paused** CardiMember are excluded by `GetDueForSyncAsync`, so a pause genuinely stops collection — see [cardimembers.md](cardimembers.md). Each due connection writes its own raw `DeviceActivityLogs` row, which is then merged into the member's single daily `ActivityLogs` row.
+- **Syncing is notify-then-fetch.** The `CardiTrack.HealthWebhookReceiver` Cloud Run service (`POST /webhooks/google-health`) receives the provider's data-availability notifications and publishes them to Pub/Sub; `NotificationDrainService` maps each notification's health-user id to the matching connections and runs a **targeted sync** through the same `IDeviceSyncService` the Worker uses. Because that stamps `LastSyncDate`, the routine poll's due-time moves out — making the Worker's 10-minute cron (`WearableSyncWorker`) the **fallback**, not a duplicate. The cron sets only how often the worker *looks*; a connection is actually due once its own `SyncFrequencyMinutes` (default 10) has elapsed. Connections belonging to a **removed or monitoring-paused** CardiMember — and **suspended** connections — are excluded by `GetDueForSyncAsync` (and by the webhook lookup, auth recovery and the sync audit, which share its gate), so a pause or suspension genuinely stops collection — see [cardimembers.md](cardimembers.md). Each due connection writes its own raw `DeviceActivityLogs` row, which is then merged into the member's single daily `ActivityLogs` row.
 - The anonymous bounce endpoint **only redirects into the `carditrack://` app scheme** — any other cached redirect target is rejected, preventing open-redirect leakage of `code`+`state`. It now serves **two flows**, and which one a callback belongs to is carried by its state token and nothing else: an **app** state bounces into the deep link as before, a **wearer** state is completed server-side and renders a page. A state minted for one flow cannot be spent through the other's door — the two prove possession differently, and the check is explicit at both ends.
 - **Only the GoogleHealth-backed providers (`fitbit`, `pixel_watch`) are actually connectable** — the GoogleHealth engine is the only one registered in DI. `garmin` and `withings` are the two dedicated integrations still to come; both have config blocks with **placeholder client ids**. **Apple Watch and Samsung Galaxy Watch will never get an engine of their own** (decided 2026-09-05 — see *Devices that arrive via Google Health* below): `samsung_health` still passes request validation but has no config block and fails like any other unconfigured provider. **Oura and Whoop were dropped from the roadmap** the same day; their config blocks and enum members are dead code awaiting cleanup. Every non-Google provider fails a connect attempt with 400 "not configured for connections".
 
@@ -75,6 +76,8 @@ Wrapped in the standard `ApiResponse<T>` envelope; `deviceId` is a raw GUID (no 
 
 `historyRepull` is the connection's latest caregiver-requested history re-pull (see `POST .../devices/{deviceId}/history-repull` below), and is **usually null**: it is present while a request is open (`pending` / `in_progress`), while a `completed` one is still inside the re-pull cooldown — in which case `nextAllowedAt` says when the action is available again — and for **7 days** after a `failed` or `cancelled` one ended, so the caregiver learns the outcome; neither of those blocks re-requesting, so the card offers the action again alongside the notice. The server decides "still worth showing" so the rule can move without a mobile release.
 
+`suspendedAt` is when a caregiver suspended the connection, or null while it collects (see `POST .../suspend`).
+
 `scopes`, `nextSyncAt` and `todayUpdateCount` back the M1-15 device cards. All three are derived, not stored: scopes are parsed from the connection's scope JSON (a malformed value yields `[]` rather than an error), `nextSyncAt` is `lastSyncedAt + syncFrequencyMinutes` and is therefore an estimate rather than a scheduled job time, and `todayUpdateCount` counts today's activity records attributed to that connection.
 
 `batteryLevel` (0–100) and `batteryStatus` (`High` | `Medium` | `Low` | `Empty`) are **both nullable and frequently absent**, and clients must render the tile only when one is present. They come from the Google Health API's `PairedDevice` resource (`GET /v4/users/me/pairedDevices`), captured on each sync and stored on the connection as a last-known value with no history behind it. They are null when:
@@ -88,6 +91,7 @@ Wrapped in the standard `ApiResponse<T>` envelope; `deviceId` is a raw GUID (no 
 | Wire status | Internal status | Description |
 |-------------|-----------------|-------------|
 | `active` | `Connected` **and** `SyncError` | Connected; see quirk below |
+| `suspended` | any, while `SuspendedAt` is set | Suspended by a caregiver (M1-15). Takes precedence over the grant's own state, which returns once it is resumed; `nextSyncAt` is null |
 | `disconnected` | `Disconnected` | OAuth connection removed |
 | `token_expired` | `TokenExpired`, `AuthError` (and any other state) | OAuth token needs re-authorization |
 
@@ -108,12 +112,16 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 ```json
 {
   "provider": "fitbit",
-  "redirectUri": "carditrack://oauth/callback"
+  "redirectUri": "carditrack://oauth/callback",
+  "mode": "replace",
+  "deviceId": "8c1f5f64-5717-4562-b3fc-2c963f66afa6"
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `mode` | string | No | What the grant is for: `add` (default when omitted) adds a device alongside the member's others; `reconnect` re-authorises `deviceId` on the same account; `replace` connects a device in place of `deviceId` (M1-15 "Change Device"). `replace` needs a **primary-caregiver** link. See *Where a grant lands* under the callback. |
+| `deviceId` | GUID | For `reconnect` / `replace` | The member's connection to act on. Must be absent for `add`. **404** if it is not one of this member's connections. A `reconnect` must name the connection's own brand (**400** otherwise) — a different brand is a `replace`. |
 | `provider` | string | Yes | A **server-OAuth** provider: `fitbit`, `pixel_watch`, `garmin`, `withings`. `samsung_health` still passes validation but will never be configured — Galaxy Watch data arrives via Google Health (see below). `apple_health` is not a valid value and never will be. |
 | `redirectUri` | string | Yes | Deep link URI for mobile callback. Must be a `carditrack://` URI **with no fragment** — the bounce forwards into whatever is cached here and appends the callback params to it, so another scheme would be an open redirect and a `#` would swallow the params. Rejected at initiation rather than only at the bounce. (An "absolute URI" check alone is not enough: on Linux `Uri.TryCreate` accepts a bare path like `/oauth/callback` as an absolute `file:` URI.) |
 
@@ -180,7 +188,8 @@ Mints an invitation and returns the one-time URL to hand the wearer.
 ```json
 {
   "provider": "fitbit",
-  "channel": "qr"
+  "channel": "qr",
+  "replacesDeviceId": null
 }
 ```
 
@@ -188,6 +197,7 @@ Mints an invitation and returns the one-time URL to hand the wearer.
 |-------|------|----------|-------------|
 | `provider` | string | Yes | `fitbit`, `pixel_watch`, `garmin`, `samsung_health`, `withings` |
 | `channel` | string | Yes | `link` (24 h) or `qr` (15 min) — sets the lifetime |
+| `replacesDeviceId` | GUID | No | The connection the wearer's device replaces (M1-15 "Change Device"). Null adds a device alongside the others. Checked **at creation**, not when the wearer returns: it needs a **primary-caregiver** link and one of this member's connections (**404** otherwise). The old connection is removed in the same transaction that stores the new one, so a wearer who never finishes leaves it untouched. Echoed back as `replacesDeviceId` on every read. |
 
 ### Response `201 Created`
 
@@ -204,7 +214,8 @@ Mints an invitation and returns the one-time URL to hand the wearer.
     "expiresAt": "2026-09-18T09:15:00Z",
     "openedAt": null,
     "resolvedAt": null,
-    "deviceId": null
+    "deviceId": null,
+    "replacesDeviceId": null
   }
 }
 ```
@@ -386,7 +397,25 @@ Wrapped in `ApiResponse<T>`; full `DeviceResponse` shape (same as the list endpo
 }
 ```
 
-> **Upsert by device type:** if a connection for the same provider already exists on this CardiMember, the callback **updates it in place** (new tokens, status back to `Connected`) rather than creating a duplicate. A brand-new connection is marked `isPrimary` when it is the member's **first** device. This is also how **reconnect** works today — see below.
+Two fields exist for this response only: `alreadyConnected` (true when an `add` turned out to be an account the member already had, so that connection was refreshed) and `replacedDeviceId` (the connection a `replace` removed; null otherwise). The success `message` says which happened.
+
+### Where a grant lands
+
+The state token carries the initiation's `mode` and `deviceId`; the grant's provider account (see *Key implementation facts*) is compared with the member's connections on the same API:
+
+| Mode | Account is… | Result |
+|------|-------------|--------|
+| `add` | one the member already has connected | That connection is refreshed; `alreadyConnected: true` |
+| `add` | new, or could not be read | A **new connection**. Primary only if the member has no primary |
+| `reconnect` | the connection's own, or could not be compared | That connection gets fresh tokens and returns to `active` |
+| `reconnect` | a different one | **409**. Nothing is stored — switching the account under an existing card would show a stranger's data under this member. The app offers "Change device" instead |
+| `replace` | the replaced connection's own | Just a reconnect of it; `replacedDeviceId: null` |
+| `replace` | another of the member's connections' | **409**. Two cards would read one data stream |
+| `replace` | new, or could not be read | A new connection that **takes over the replaced one's primary flag**, and the replaced connection is removed (soft-deleted, tokens discarded) **in the same save**. After the save, its grant is revoked at the provider — but only when the new account is *known* to differ and no other live connection (any member) reads through the old account. Revoking a Google refresh token ends the whole grant, so doing it when unsure could take the new connection down with it |
+
+A state cached before modes existed deserializes as `add`. With the account match, an older app build's reconnect on the same account still lands on the connection it came from.
+
+`pixel_watch` and `fitbit` share one API. The same Google account connected as both is therefore one account (`alreadyConnected`), not two devices.
 
 ### Errors
 
@@ -396,7 +425,8 @@ No machine-readable `code` field is emitted — the `ErrorResponse` carries a hu
 |--------|------|
 | 400 | Invalid or expired state token (single-use, 15-min TTL, must match caller + provider); or unsupported/unconfigured provider |
 | 403 | JWT valid but no local user row |
-| 404 | Caller has no active link to the CardiMember bound to the state |
+| 404 | Caller has no active link to the CardiMember bound to the state; or the `deviceId` a reconnect/replace named is no longer one of its connections; or a `replace` whose caller is no longer a primary caregiver |
+| 409 | A `reconnect` came back on a **different account** (`DIFFERENT_ACCOUNT`), or a `replace` came back on an account **another of the member's devices** already holds (`ACCOUNT_ALREADY_CONNECTED`) |
 | 502 | Provider rejected the authorization code exchange |
 
 > The planned `PROVIDER_PERMISSION_DENIED` (user denied scopes) case is **never produced** — a denial surfaces as a failed exchange (502) or the user simply never returns to the app.
@@ -439,7 +469,37 @@ Get details and current status for a single connected device.
 
 > **Implemented** (M1-15). Note the verb: `POST`, not the `PUT` originally planned. Previously `isPrimary` was set automatically — the member's first connection became primary and could never be changed.
 
-Sets this device as the primary data source, clearing the flag from any previously primary device. Returns the updated device object (same shape as the list endpoint). **404** if the device does not belong to this CardiMember.
+Sets this device as the primary data source, clearing the flag from any previously primary device. Returns the updated device object (same shape as the list endpoint). **404** if the device does not belong to this CardiMember; **409** if it is suspended — resume it first.
+
+---
+
+## POST `/api/v1/cardimembers/{id}/devices/{deviceId}/suspend`
+
+> **Implemented** (M1-15, issue #1286). Requires a **primary-caregiver** link. No request body. Idempotent.
+
+Stops the device collecting while keeping its tokens and its history. It is skipped by:
+- scheduled and manual syncs;
+- webhook-triggered pulls;
+- auth recovery and the sync audit;
+- history re-pulls (a queued one is cancelled as not syncable);
+- the inactivity probe;
+- the device nudges.
+
+Stored as `DeviceConnection.SuspendedAt` / `SuspendedByUserId`, **beside** `ConnectionStatus` rather than as another value of it. The sync and auth-recovery paths write that status as they learn about the grant. A suspension stored there would be overwritten, or would hide that the grant expired while suspended.
+
+**Open-ended**, unlike Pause Monitoring: the member's other devices go on collecting. For the same reason it is **refused with 409 (`LAST_ACTIVE_DEVICE`)** when no *other* device is collecting — that is, unsuspended with its grant `active`. A device waiting on a reconnect does not count. Stopping a member's only data feed is what Pause Monitoring is for, and that is bounded (1 hour to 7 days).
+
+If the suspended device was primary, the flag moves to another collecting device.
+
+Returns the device with `status: "suspended"`.
+
+## POST `/api/v1/cardimembers/{id}/devices/{deviceId}/resume`
+
+> **Implemented** (M1-15, issue #1286). Requires a **primary-caregiver** link. No request body. Idempotent.
+
+Clears the suspension. The sync worker picks the device up on its next pass, since its last sync is long past due. The device takes the primary flag back **only if no other device holds it**: resuming is not a vote to make it primary.
+
+**Known behaviour:** the first pull after resuming runs the normal repair lookback (`SyncLookbackDays`, 3 days on Google Health). Up to that many days recorded on the device while it was suspended are therefore collected.
 
 ---
 
@@ -529,7 +589,7 @@ Authorization is the **view** tier, like the manual sync: a relative invited to 
 
 ## POST `/api/v1/cardimembers/{id}/devices/{deviceId}/reconnect`
 
-> **Planned — not yet implemented.** Reconnection works today by **re-running the normal connect + callback flow**: `POST .../devices` then `POST /api/v1/oauth/callback/{provider}`. The callback upserts by device type, so the existing connection gets fresh tokens and returns to `active` — no dedicated reconnect endpoint is needed for the happy path.
+> **Planned — not yet implemented, and no longer needed for the happy path.** Reconnection re-runs the normal connect + callback flow with **`mode: "reconnect"`** and the connection's `deviceId`: `POST .../devices` then `POST /api/v1/oauth/callback/{provider}`. The existing connection gets fresh tokens and returns to `active`. A grant on a different account is refused (409) rather than switched in place.
 
 Initiate a token refresh for a device with an expired or revoked OAuth token.
 
@@ -561,7 +621,7 @@ Initiate a token refresh for a device with an expired or revoked OAuth token.
 
 > **Implemented** (M1-15). Requires a **primary-caregiver** link, not merely an active one.
 
-Removes a device connection. Soft delete: the connection is deactivated, its status set to `disconnected`, and its **stored OAuth tokens revoked at the provider and then discarded**. Revocation happens first, while the token still exists to revoke with: CardiTrack stops appearing in the wearer's list of apps with access to their health data, and a leaked copy of the refresh token is no longer exchangeable for readings. Best effort by design — a provider outage is logged and the disconnect still completes, because it is the caregiver's decision and it is irreversible here whatever the provider says. If the removed device was the primary, another active connection is promoted, so a member with devices always has a primary.
+Removes a device connection. Soft delete: the connection is deactivated, its status set to `disconnected`, and its **stored OAuth tokens revoked at the provider and then discarded**. Revocation happens first, while the token still exists to revoke with: CardiTrack stops appearing in the wearer's list of apps with access to their health data, and a leaked copy of the refresh token is no longer exchangeable for readings. Best effort by design — a provider outage is logged and the disconnect still completes, because it is the caregiver's decision and it is irreversible here whatever the provider says. **Revocation is skipped when another live connection shares the grant**, meaning any member's connection with the same `HealthUserId`. Revoking a Google refresh token ends the grant for the whole account, so the other connection would be cut off too. The removed connection's tokens are still discarded. If the removed device was the primary, another connection is promoted — a collecting one by preference, never a suspended one — so a member with devices always has a primary.
 
 Historical data synced via this device is retained. A CardiMember **may have zero connected devices** (e.g. before their first connection); the dashboard reports `device.hasActiveConnection: false` in that state.
 

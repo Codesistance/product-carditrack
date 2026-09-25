@@ -107,6 +107,12 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
                 $"'{request.Provider}' is not a supported server-OAuth provider.");
         }
 
+        // Checked now rather than when the wearer comes back: a caregiver who may not remove this
+        // device, or a device that is already gone, should be told before a link goes out, not
+        // leave a wearer to grant consent for a replacement that is then refused.
+        if (request.ReplacesDeviceId is { } replacesDeviceId)
+            await _connections.EnsureCanReplaceAsync(requestingUserId, cardiMemberId, replacesDeviceId, ct);
+
         var channel = ResolveChannel(request.Channel);
         var options = _options.Value;
         var now = _timeProvider.GetUtcNow().UtcDateTime;
@@ -129,6 +135,7 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
             ExpiresAt = now.AddMinutes(channel == DeviceInviteChannel.QrCode
                 ? options.QrLifetimeMinutes
                 : options.LinkLifetimeMinutes),
+            ReplacesDeviceConnectionId = request.ReplacesDeviceId,
         };
 
         await _unitOfWork.DeviceConnectionInvites.AddAsync(invite);
@@ -217,7 +224,8 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
             await AuditAsync(invite, "OpenDeviceInvite", ConnectStartRoute, "POST", StatusCodes200, ct);
 
         return await _connections.InitiateWearerConnectionAsync(
-            invite.Id, invite.CreatedByUserId, invite.CardiMemberId, invite.DeviceType, ct);
+            invite.Id, invite.CreatedByUserId, invite.CardiMemberId, invite.DeviceType,
+            invite.ReplacesDeviceConnectionId, ct);
     }
 
     public async Task<bool> DeclineAsync(string token, CancellationToken ct = default)
@@ -404,6 +412,7 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
         OpenedAt = invite.OpenedAt,
         ResolvedAt = invite.ResolvedAt,
         DeviceId = invite.DeviceConnectionId,
+        ReplacesDeviceId = invite.ReplacesDeviceConnectionId,
     };
 
     private async Task EnsureMemberAccessAsync(Guid requestingUserId, Guid cardiMemberId)

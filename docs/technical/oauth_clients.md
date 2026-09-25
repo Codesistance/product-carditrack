@@ -236,10 +236,14 @@ in-app browser; a response that ends in the browser leaves the user on the
 consent page with the app still waiting. It hands off with an HTML page that
 calls `location.replace()` rather than a `Location:` header, since a redirect
 naming a custom scheme is dropped by browsers and proxies that only forward
-http(s). `prompt=consent` is sent **only while no refresh token is held** for
-that member and provider (`FirstConsentAuthorizationParams`) — Google re-issues
-a refresh token only when consent is shown again, but forcing it on every
-connect makes a reconnect look like a failed one.
+http(s). `prompt=consent select_account` (`FirstConsentAuthorizationParams`)
+is sent on every **add** and **replace**, and on a **reconnect** of a
+connection that holds no refresh token. Google re-issues a refresh token only
+when consent is shown again, and each of a member's devices can be a different
+account. The account chooser is how the caregiver picks which one. Only a
+reconnect of a connection that still banks a token skips it, because there
+re-showing consent looks like a failed connect. See
+[devices.md](../execution/backend/api/devices.md).
 
 1. Google Cloud console (cloud-ops account), project `carditrack-devices-{env}`
    — one per environment, never shared (see the project layout above):

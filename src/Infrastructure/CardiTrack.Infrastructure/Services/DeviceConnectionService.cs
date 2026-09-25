@@ -51,6 +51,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     private readonly INotificationGapResolver _gapResolver;
     private readonly List<DeviceProviderSettings> _providerConfigs;
     private readonly IOAuthGrantRevoker _grantRevoker;
+    private readonly IDeviceAccountIdentityResolver _accountIdentity;
 
     public DeviceConnectionService(
         IUnitOfWork unitOfWork,
@@ -61,9 +62,11 @@ public class DeviceConnectionService : IDeviceConnectionService
         ICardiMemberAccessService access,
         INotificationGapResolver gapResolver,
         IOptions<List<DeviceProviderSettings>> providerConfigs,
-        IOAuthGrantRevoker grantRevoker)
+        IOAuthGrantRevoker grantRevoker,
+        IDeviceAccountIdentityResolver accountIdentity)
     {
         _grantRevoker = grantRevoker;
+        _accountIdentity = accountIdentity;
         _unitOfWork = unitOfWork;
         _encryption = encryption;
         _cache = cache;
@@ -130,12 +133,36 @@ public class DeviceConnectionService : IDeviceConnectionService
         await EnsureMemberAccessAsync(requestingUserId, cardiMemberId);
 
         var (deviceType, config) = ResolveProvider(request.Provider);
+        var intent = ParseIntent(request.Mode);
+
+        // Reconnect and replace act on one named connection, which has to be the member's own and
+        // still there. Replacing removes it, so it takes the same primary-caregiver rule as
+        // removing it does.
+        DeviceConnection? target = null;
+        if (intent != ConnectIntent.Add)
+        {
+            if (intent == ConnectIntent.Replace)
+                await EnsureManageAccessAsync(requestingUserId, cardiMemberId, ct);
+
+            var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
+            target = RequireConnection(connections, request.DeviceId ?? Guid.Empty);
+
+            if (intent == ConnectIntent.Reconnect && target.DeviceType != deviceType)
+            {
+                throw new DeviceConnectionException(
+                    DeviceConnectionException.ProviderMismatch,
+                    $"This device is a {target.DeviceType.GetDisplayName()} — reconnect it as one, "
+                    + "or change it for a different device instead.");
+            }
+        }
 
         var state = PkceGenerator.GenerateStateToken();
         var codeVerifier = PkceGenerator.GenerateCodeVerifier();
         var codeChallenge = PkceGenerator.GenerateCodeChallenge(codeVerifier);
 
-        var payload = new OAuthStatePayload(requestingUserId, cardiMemberId, deviceType, request.RedirectUri);
+        var payload = new OAuthStatePayload(
+            requestingUserId, cardiMemberId, deviceType, request.RedirectUri,
+            Intent: intent, TargetConnectionId: target?.Id);
         await CacheStateAsync(state, payload, ct);
 
         // Providers that only accept https redirects (Google) get the configured bounce URI;
@@ -146,8 +173,8 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         return new OAuthInitiationResponse
         {
-            AuthorizationUrl = await BuildAuthorizationUrlAsync(
-                config, deviceType, cardiMemberId, state, codeChallenge, providerRedirectUri),
+            AuthorizationUrl = BuildAuthorizationUrl(
+                config, state, codeChallenge, providerRedirectUri, NeedsFirstConsent(intent, target)),
             State = state,
             CodeVerifier = codeVerifier
         };
@@ -158,6 +185,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         Guid creatingUserId,
         Guid cardiMemberId,
         DeviceType deviceType,
+        Guid? replacesConnectionId,
         CancellationToken ct = default)
     {
         var config = _providerConfigs.ConfigFor(deviceType);
@@ -182,7 +210,9 @@ public class DeviceConnectionService : IDeviceConnectionService
             RedirectUri: string.Empty,
             Channel: DeviceOAuthChannel.Wearer,
             InviteId: inviteId,
-            CodeVerifier: codeVerifier);
+            CodeVerifier: codeVerifier,
+            Intent: replacesConnectionId is null ? ConnectIntent.Add : ConnectIntent.Replace,
+            TargetConnectionId: replacesConnectionId);
 
         await CacheStateAsync(state, payload, ct);
 
@@ -196,8 +226,17 @@ public class DeviceConnectionService : IDeviceConnectionService
                 $"{deviceType.GetDisplayName()} can't be connected from a link yet.");
         }
 
-        return await BuildAuthorizationUrlAsync(
-            config, deviceType, cardiMemberId, state, codeChallenge, config.RedirectUri);
+        // Always the full consent: the wearer is choosing an account on their own phone, and only a
+        // first grant is certain to come back with a refresh token.
+        return BuildAuthorizationUrl(config, state, codeChallenge, config.RedirectUri, firstConsent: true);
+    }
+
+    public async Task EnsureCanReplaceAsync(
+        Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
+    {
+        await EnsureManageAccessAsync(requestingUserId, cardiMemberId, ct);
+        RequireConnection(
+            (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList(), deviceId);
     }
 
     public async Task<DeviceOAuthCallbackTarget?> ResolveCallbackTargetAsync(
@@ -349,8 +388,9 @@ public class DeviceConnectionService : IDeviceConnectionService
     }
 
     /// <summary>
-    /// The half of completion both channels share: exchange the code, then create or update the
-    /// member's connection for that brand.
+    /// The half of completion both channels share: exchange the code, then store the grant as the
+    /// state's intent says — a device added alongside the others, the named device reconnected, or
+    /// the named device replaced.
     /// </summary>
     /// <remarks>
     /// What differs between the channels is everything <em>before</em> this — who is authorized to
@@ -394,9 +434,16 @@ public class DeviceConnectionService : IDeviceConnectionService
         Func<CancellationToken, Task<bool>>? claim,
         CancellationToken ct)
     {
-        // The connection's identity is the brand picked at initiation.
+        // The brand picked at initiation — what a new connection is displayed as. It does not say
+        // which connection the grant belongs to: two Fitbits are two devices. The intent and the
+        // provider account decide that, below.
         var deviceType = payload.Provider;
         var config = _providerConfigs.ConfigFor(deviceType)!;
+
+        // Replacing removes a device, so the caller's authority to remove it is re-checked now
+        // rather than trusted from initiation — they may have been demoted in between.
+        if (payload.Intent == ConnectIntent.Replace)
+            await EnsureManageAccessAsync(payload.UserId, payload.CardiMemberId, ct);
 
         // Must match the redirect_uri sent in the authorize request.
         var exchangeRedirectUri = string.IsNullOrEmpty(config.RedirectUri)
@@ -420,93 +467,212 @@ public class DeviceConnectionService : IDeviceConnectionService
             ? JsonSerializer.Serialize(config.Scopes)
             : JsonSerializer.Serialize(tokens.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
+        // Which account the grant is for, asked of the provider before any of our own writes, so
+        // the transaction below still spans nothing but the database.
+        var account = new GrantAccount(
+            await _accountIdentity.TryResolveAsync(deviceType, tokens.AccessToken, ct),
+            tokens.ProviderUserId);
+
         // The exchange is done and the transaction opens here, so it spans only our own writes.
         if (claim is not null)
             await _unitOfWork.BeginTransactionAsync();
 
-        var existing = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(payload.CardiMemberId)).ToList();
-        var connection = existing.FirstOrDefault(c => c.DeviceType == deviceType);
-        var isNew = connection is null;
-
-        if (connection is null)
+        DeviceConnection connection;
+        StoredGrant outcome;
+        try
         {
-            connection = new DeviceConnection
+            var existing = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(payload.CardiMemberId)).ToList();
+            outcome = await ResolveGrantTargetAsync(payload, existing, deviceType, account);
+            var now = DateTime.UtcNow;
+
+            connection = outcome.Connection ?? new DeviceConnection
             {
                 CardiMemberId = payload.CardiMemberId,
                 DeviceType = deviceType,
                 DeviceName = await ResolveDisplayNameAsync(deviceType),
-                IsPrimary = existing.Count == 0,
-                ConnectedDate = DateTime.UtcNow,
+                // A replacement stands where the old device stood; anything else is primary only
+                // when the member has no primary to keep.
+                IsPrimary = outcome.Replaced?.IsPrimary ?? !existing.Any(c => c.IsPrimary),
+                ConnectedDate = now,
             };
-        }
 
-        // Reconnecting onto a different provider account invalidates everything we held for
-        // the old one — carrying its refresh token over would leave background syncs pulling
-        // a stranger's health data under this member.
-        var switchedAccount = tokens.ProviderUserId is not null
-            && ReadProviderUserId(connection.Metadata) is { } previous
-            && !string.Equals(previous, tokens.ProviderUserId, StringComparison.Ordinal);
+            // An existing connection only ever gets here holding the same account the grant came
+            // back on, or one that could not be compared: a reconnect known to be on another
+            // account is refused in ResolveGrantTargetAsync, since carrying the old account's
+            // refresh token over would leave background syncs pulling a stranger's health data
+            // under this member.
+            connection.ConnectionStatus = ConnectionStatus.Connected;
+            connection.AccessToken = _encryption.Encrypt(tokens.AccessToken);
+            // Providers that only issue a refresh token on the first grant (Google) send none on a
+            // reconnect — overwriting with null would strand the connection at the next expiry.
+            if (tokens.RefreshToken is not null)
+                connection.RefreshToken = _encryption.Encrypt(tokens.RefreshToken);
+            connection.TokenExpiry = now.AddSeconds(tokens.ExpiresInSeconds);
+            connection.Scopes = scopes;
+            connection.IsActive = true;
+            if (tokens.ProviderUserId is not null)
+            {
+                connection.Metadata = JsonSerializer.Serialize(new { providerUserId = tokens.ProviderUserId });
+            }
 
-        connection.ConnectionStatus = ConnectionStatus.Connected;
-        connection.AccessToken = _encryption.Encrypt(tokens.AccessToken);
-        // Providers that only issue a refresh token on the first grant (Google) send none on a
-        // reconnect — overwriting with null would strand the connection at the next expiry.
-        if (tokens.RefreshToken is not null)
-        {
-            connection.RefreshToken = _encryption.Encrypt(tokens.RefreshToken);
-        }
-        else if (switchedAccount)
-        {
-            // Dropping it also makes the next initiation re-prompt for consent, which is how
-            // a refresh token for the new account gets issued.
-            connection.RefreshToken = null;
-        }
-        connection.TokenExpiry = DateTime.UtcNow.AddSeconds(tokens.ExpiresInSeconds);
-        connection.Scopes = scopes;
-        connection.IsActive = true;
-        if (tokens.ProviderUserId is not null)
-        {
-            connection.Metadata = JsonSerializer.Serialize(new { providerUserId = tokens.ProviderUserId });
-        }
+            // Captured here rather than waiting for the first sync, so the next grant can be told
+            // apart from this one — and webhooks reach a new connection from its first minute.
+            if (account.HealthUserId is not null)
+                connection.HealthUserId = account.HealthUserId;
 
-        if (isNew)
-        {
-            await _unitOfWork.DeviceConnections.AddAsync(connection);
-        }
+            if (outcome.Connection is null)
+                await _unitOfWork.DeviceConnections.AddAsync(connection);
 
-        if (claim is null)
-        {
+            if (outcome.Replaced is { } replaced)
+            {
+                Retire(replaced, now);
+                _unitOfWork.DeviceConnections.Update(replaced);
+            }
+
+            // The claim runs against the open transaction, so the invitation's move to a terminal
+            // state and this connection (and any replacement's removal) either all land or none do.
+            if (claim is not null && !await claim(ct))
+            {
+                throw new DeviceConnectionException(
+                    DeviceConnectionException.InviteNotLive,
+                    "That invitation is no longer available.");
+            }
+
             await _unitOfWork.SaveChangesAsync();
-        }
-        else
-        {
-            try
-            {
-                // The claim runs against the open transaction, so the invitation's move to a
-                // terminal state and this connection either both land or neither does.
-                if (!await claim(ct))
-                {
-                    await _unitOfWork.RollbackTransactionAsync();
-                    throw new DeviceConnectionException(
-                        DeviceConnectionException.InviteNotLive,
-                        "That invitation is no longer available.");
-                }
-
-                await _unitOfWork.SaveChangesAsync();
+            if (claim is not null)
                 await _unitOfWork.CommitTransactionAsync();
-            }
-            catch (Exception ex) when (ex is not DeviceConnectionException)
-            {
-                await _unitOfWork.RollbackTransactionAsync();
-                throw;
-            }
         }
+        catch when (claim is not null)
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
+
+        // After the commit, and from a copy taken before Retire discarded the tokens: the provider
+        // call stays outside the transaction, and the old grant is only ended once the new one is
+        // certainly stored.
+        if (outcome.RevokeAfterStore is { } revoke)
+            await _grantRevoker.TryRevokeAsync(revoke, ct);
 
         // A fresh connection closes the device gaps immediately — the caregiver should not land
         // back on a dashboard still telling them to reconnect.
         await _gapResolver.ResolveForCardiMemberAsync(connection.CardiMemberId, ct);
 
-        return ToDeviceResponse(connection);
+        var response = ToDeviceResponse(connection);
+        response.AlreadyConnected = outcome.AlreadyConnected;
+        response.ReplacedDeviceId = outcome.Replaced?.Id;
+        return response;
+    }
+
+    /// <summary>
+    /// Which of the member's connections a completed grant lands on, per the state's intent.
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item><b>Add</b> stores a new connection — unless the account is one the member already has
+    /// connected, which refreshes that connection instead. One account is one data stream, and
+    /// two cards over it would count every step twice and disagree about nothing.</item>
+    /// <item><b>Reconnect</b> lands on the named connection, and is refused when the account is
+    /// known to differ from the one it holds: that is a change of device, and doing it silently
+    /// would let a second device overwrite the first — history and all.</item>
+    /// <item><b>Replace</b> stores a new connection and retires the named one — or, when the account
+    /// is the named connection's own, simply reconnects it. An account another of the member's
+    /// connections holds is refused.</item>
+    /// </list>
+    /// </remarks>
+    private async Task<StoredGrant> ResolveGrantTargetAsync(
+        OAuthStatePayload payload, List<DeviceConnection> existing, DeviceType deviceType, GrantAccount account)
+    {
+        // A reconnect or replace always names its connection at initiation; one that has gone since
+        // (removed while the wearer was on the consent screen) is not found rather than guessed at.
+        DeviceConnection RequireTarget() => RequireConnection(existing, payload.TargetConnectionId ?? Guid.Empty);
+
+        bool SameAccount(DeviceConnection c) => SameApi(c.DeviceType, deviceType) && account.Matches(c);
+
+        switch (payload.Intent)
+        {
+            case ConnectIntent.Reconnect:
+            {
+                var target = RequireTarget();
+                if (account.DiffersFrom(target))
+                {
+                    throw new DeviceConnectionException(
+                        DeviceConnectionException.DifferentAccount,
+                        "That's a different account from the one this device was connected with. "
+                        + "To connect it instead, change the device.");
+                }
+
+                return new StoredGrant(target, Replaced: null, AlreadyConnected: false, RevokeAfterStore: null);
+            }
+
+            case ConnectIntent.Replace:
+            {
+                var target = RequireTarget();
+                if (SameAccount(target))
+                    return new StoredGrant(target, Replaced: null, AlreadyConnected: false, RevokeAfterStore: null);
+
+                if (existing.Any(c => c.Id != target.Id && SameAccount(c)))
+                {
+                    throw new DeviceConnectionException(
+                        DeviceConnectionException.AccountAlreadyConnected,
+                        "That account is already connected to another of this person's devices.");
+                }
+
+                return new StoredGrant(
+                    Connection: null,
+                    Replaced: target,
+                    AlreadyConnected: false,
+                    RevokeAfterStore: await MayRevokeOnReplaceAsync(target, account) ? TokensOf(target) : null);
+            }
+
+            default:
+            {
+                var sameAccount = existing.FirstOrDefault(SameAccount);
+                return new StoredGrant(sameAccount, Replaced: null, AlreadyConnected: sameAccount is not null, RevokeAfterStore: null);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the replaced connection's grant can be ended at the provider without harming
+    /// anything still in use.
+    /// </summary>
+    /// <remarks>
+    /// Revoking a Google refresh token ends the whole grant for that account and client, so it is
+    /// only safe when the new grant is <em>known</em> to be on another account — otherwise the
+    /// revocation could take the connection just stored down with it — and when no other live
+    /// connection, on any member, reads through the same account. When in doubt the grant is left
+    /// at the provider: the old tokens are still discarded here, so nothing more is read with it.
+    /// </remarks>
+    private async Task<bool> MayRevokeOnReplaceAsync(DeviceConnection replaced, GrantAccount account) =>
+        account.HealthUserId is not null
+        && replaced.HealthUserId is { } replacedAccount
+        && !string.Equals(replacedAccount, account.HealthUserId, StringComparison.Ordinal)
+        && !await _unitOfWork.DeviceConnections.AnyOtherActiveWithHealthUserIdAsync(replaced.Id, replacedAccount);
+
+    /// <summary>A detached copy carrying only what the revoker reads, taken before the tokens are discarded.</summary>
+    private static DeviceConnection TokensOf(DeviceConnection connection) => new()
+    {
+        Id = connection.Id,
+        CardiMemberId = connection.CardiMemberId,
+        DeviceType = connection.DeviceType,
+        AccessToken = connection.AccessToken,
+        RefreshToken = connection.RefreshToken,
+    };
+
+    /// <summary>
+    /// Takes a connection out of service: soft-deleted, no longer primary, its tokens discarded.
+    /// Tokens are useless once disconnected and must not linger in the database.
+    /// </summary>
+    private static void Retire(DeviceConnection connection, DateTime now)
+    {
+        connection.IsActive = false;
+        connection.IsPrimary = false;
+        connection.ConnectionStatus = ConnectionStatus.Disconnected;
+        connection.AccessToken = null;
+        connection.RefreshToken = null;
+        connection.TokenExpiry = null;
+        connection.UpdatedDate = now;
     }
 
     public async Task DisconnectAsync(
@@ -521,28 +687,24 @@ public class DeviceConnectionService : IDeviceConnectionService
         // listed among the apps with access to this person's health data — while the app showed
         // the device as disconnected. Best effort by design: a provider outage must not stop a
         // caregiver disconnecting a device.
+        //
+        // Except where the grant is shared: revoking a Google refresh token ends the grant for the
+        // whole account, so a live connection elsewhere reading through the same account would be
+        // cut off with it. Its tokens are still discarded below, so nothing more is read here.
         var now = DateTime.UtcNow;
-        await _grantRevoker.TryRevokeAsync(connection, ct);
+        if (connection.HealthUserId is not { } account
+            || !await _unitOfWork.DeviceConnections.AnyOtherActiveWithHealthUserIdAsync(connection.Id, account))
+        {
+            await _grantRevoker.TryRevokeAsync(connection, ct);
+        }
 
-        connection.IsActive = false;
-        connection.IsPrimary = false;
-        connection.ConnectionStatus = ConnectionStatus.Disconnected;
-        // Tokens are useless once disconnected and must not linger in the database.
-        connection.AccessToken = null;
-        connection.RefreshToken = null;
-        connection.TokenExpiry = null;
-        connection.UpdatedDate = now;
+        Retire(connection, now);
         _unitOfWork.DeviceConnections.Update(connection);
 
         // Without this the member would be left with devices but no primary, and the sync
         // worker's primary-first ordering would silently pick an arbitrary one.
-        var replacement = connections.FirstOrDefault(c => c.Id != deviceId && c.IsActive);
-        if (replacement is not null && !connections.Any(c => c.Id != deviceId && c.IsActive && c.IsPrimary))
-        {
-            replacement.IsPrimary = true;
-            replacement.UpdatedDate = now;
-            _unitOfWork.DeviceConnections.Update(replacement);
-        }
+        if (!connections.Any(c => c.Id != deviceId && c.IsPrimary))
+            PromotePrimary(connections, excludingId: deviceId, now);
 
         await _unitOfWork.SaveChangesAsync();
 
@@ -557,6 +719,14 @@ public class DeviceConnectionService : IDeviceConnectionService
         await EnsureManageAccessAsync(requestingUserId, cardiMemberId, ct);
         var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
         var connection = RequireConnection(connections, deviceId);
+
+        // The primary is the device whose readings win a merge, and a suspended one has none coming.
+        if (connection.SuspendedAt is not null)
+        {
+            throw new DeviceConnectionException(
+                DeviceConnectionException.DeviceSuspended,
+                "Resume this device before making it the primary one.");
+        }
 
         var now = DateTime.UtcNow;
         foreach (var other in connections.Where(c => c.IsPrimary && c.Id != deviceId))
@@ -613,6 +783,100 @@ public class DeviceConnectionService : IDeviceConnectionService
         await _unitOfWork.SaveChangesAsync();
 
         return ToDeviceResponse(connection, await CountTodaysUpdatesAsync(cardiMemberId, deviceId));
+    }
+
+    public async Task<DeviceResponse> SuspendAsync(
+        Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
+    {
+        await EnsureManageAccessAsync(requestingUserId, cardiMemberId, ct);
+        var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
+        var connection = RequireConnection(connections, deviceId);
+
+        if (connection.SuspendedAt is null)
+        {
+            // Suspending the one device that is still collecting would stop monitoring with no end
+            // date and nobody having decided to. Pause Monitoring is bounded for exactly that
+            // reason, so the caregiver is sent there instead.
+            if (!connections.Any(c => c.Id != deviceId && IsCollecting(c)))
+            {
+                throw new DeviceConnectionException(
+                    DeviceConnectionException.LastActiveDevice,
+                    "This is the only device collecting data right now. To stop monitoring for a "
+                    + "while, pause monitoring instead.");
+            }
+
+            var now = DateTime.UtcNow;
+            connection.SuspendedAt = now;
+            connection.SuspendedByUserId = requestingUserId;
+            connection.UpdatedDate = now;
+            _unitOfWork.DeviceConnections.Update(connection);
+
+            if (connection.IsPrimary)
+            {
+                connection.IsPrimary = false;
+                PromotePrimary(connections, excludingId: deviceId, now);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+
+            // A suspended device is no longer one the device nudges should be asking about.
+            await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
+        }
+
+        return ToDeviceResponse(connection, await CountTodaysUpdatesAsync(cardiMemberId, deviceId));
+    }
+
+    public async Task<DeviceResponse> ResumeAsync(
+        Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
+    {
+        await EnsureManageAccessAsync(requestingUserId, cardiMemberId, ct);
+        var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
+        var connection = RequireConnection(connections, deviceId);
+
+        if (connection.SuspendedAt is not null)
+        {
+            var now = DateTime.UtcNow;
+            connection.SuspendedAt = null;
+            connection.SuspendedByUserId = null;
+            connection.UpdatedDate = now;
+            // Only when nothing else holds the flag: resuming a device is not a vote to make it
+            // primary, and taking it back unasked would undo a choice the caregiver made since.
+            if (!connections.Any(c => c.Id != deviceId && c.IsPrimary))
+                connection.IsPrimary = true;
+            _unitOfWork.DeviceConnections.Update(connection);
+            await _unitOfWork.SaveChangesAsync();
+
+            await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
+        }
+
+        return ToDeviceResponse(connection, await CountTodaysUpdatesAsync(cardiMemberId, deviceId));
+    }
+
+    /// <summary>
+    /// Whether a connection is feeding data in: not suspended, and its grant in a state the sync
+    /// worker pulls from. A connection waiting on a reconnect is not collecting, so it cannot be
+    /// what keeps a member monitored while another is suspended.
+    /// </summary>
+    private static bool IsCollecting(DeviceConnection connection) =>
+        connection.IsActive
+        && connection.SuspendedAt is null
+        && connection.ConnectionStatus is ConnectionStatus.Connected or ConnectionStatus.SyncError;
+
+    /// <summary>
+    /// Hands the primary flag to another of the member's devices — a collecting one by preference,
+    /// else any unsuspended one — so the member is never left with devices but no primary.
+    /// </summary>
+    private void PromotePrimary(List<DeviceConnection> connections, Guid excludingId, DateTime now)
+    {
+        var candidates = connections.Where(c => c.Id != excludingId && c.IsActive).ToList();
+        var next = candidates.FirstOrDefault(IsCollecting)
+            ?? candidates.FirstOrDefault(c => c.SuspendedAt is null);
+        if (next is null)
+            return;
+
+        next.IsPrimary = true;
+        next.UpdatedDate = now;
+        _unitOfWork.DeviceConnections.Update(next);
     }
 
     private static DeviceConnection RequireConnection(List<DeviceConnection> connections, Guid deviceId)
@@ -679,13 +943,12 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// the same consent screen, asking for the same scopes, on the same client, whichever device
     /// they are holding.
     /// </summary>
-    private async Task<string> BuildAuthorizationUrlAsync(
+    private static string BuildAuthorizationUrl(
         DeviceProviderSettings config,
-        DeviceType deviceType,
-        Guid cardiMemberId,
         string state,
         string codeChallenge,
-        string providerRedirectUri)
+        string providerRedirectUri,
+        bool firstConsent)
     {
         var authorizationUrl =
             $"{config.AuthorizationUrl}?response_type=code" +
@@ -701,9 +964,7 @@ public class DeviceConnectionService : IDeviceConnectionService
             authorizationUrl += $"&{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
         }
 
-        // Re-consent params are for the first grant only. Once a refresh token is banked,
-        // re-showing the consent screen buys nothing and reads as the connection having failed.
-        if (!await HasRefreshTokenAsync(cardiMemberId, deviceType))
+        if (firstConsent)
         {
             foreach (var (key, value) in config.FirstConsentAuthorizationParams)
             {
@@ -713,6 +974,31 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         return authorizationUrl;
     }
+
+    /// <summary>
+    /// Whether the authorization should carry the first-consent parameters (Google: show consent
+    /// and the account chooser), which is what makes the provider issue a refresh token.
+    /// </summary>
+    /// <remarks>
+    /// Skipped only for a reconnect of a connection that still banks a refresh token: re-showing
+    /// consent there buys nothing and reads as the connection having failed. Adding or replacing a
+    /// device always asks — the grant may be for an account we have never held a token for, and
+    /// the account chooser is how the caregiver picks which one. A sibling connection's token says
+    /// nothing about this one's any more: each device can be a different account.
+    /// </remarks>
+    private static bool NeedsFirstConsent(ConnectIntent intent, DeviceConnection? target) =>
+        intent != ConnectIntent.Reconnect
+        || target is null
+        || target.ConnectionStatus == ConnectionStatus.Disconnected
+        || string.IsNullOrEmpty(target.RefreshToken);
+
+    private static ConnectIntent ParseIntent(string? mode) => mode?.ToLowerInvariant() switch
+    {
+        null or ConnectDeviceRequest.ModeAdd => ConnectIntent.Add,
+        ConnectDeviceRequest.ModeReconnect => ConnectIntent.Reconnect,
+        ConnectDeviceRequest.ModeReplace => ConnectIntent.Replace,
+        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unknown connect mode."),
+    };
 
     private (DeviceType DeviceType, DeviceProviderSettings Config) ResolveProvider(string provider)
     {
@@ -747,23 +1033,6 @@ public class DeviceConnectionService : IDeviceConnectionService
             ? (string?)token?["providerUserId"]
             : null;
 
-    /// <summary>
-    /// Whether this member already has a live connection through the same API carrying a refresh
-    /// token. API-level on purpose: consent (and Google's refresh-token issuance) is per OAuth
-    /// client, so a Fitbit connection's token answers for a Pixel Watch initiation too — brand
-    /// only decides display, not the grant. A disconnected row doesn't count — its token may
-    /// well have been revoked at the provider, and re-consent is how we get a fresh one.
-    /// </summary>
-    private async Task<bool> HasRefreshTokenAsync(Guid cardiMemberId, DeviceType deviceType)
-    {
-        var connections = await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId);
-        return connections.Any(c =>
-            SameApi(c.DeviceType, deviceType)
-            && c.IsActive
-            && c.ConnectionStatus != ConnectionStatus.Disconnected
-            && !string.IsNullOrEmpty(c.RefreshToken));
-    }
-
     private async Task<string> ResolveDisplayNameAsync(DeviceType deviceType)
     {
         var catalogDevice = await _unitOfWork.Devices.GetByDeviceTypeAsync(deviceType);
@@ -776,8 +1045,11 @@ public class DeviceConnectionService : IDeviceConnectionService
         DeviceId = connection.Id,
         Provider = DeviceProviderNames.ToWireName(connection.DeviceType),
         DisplayName = connection.DeviceName,
-        // A soft-deleted connection reads as disconnected whatever its last status was.
-        Status = !connection.IsActive ? "disconnected" : connection.ConnectionStatus switch
+        // A soft-deleted connection reads as disconnected whatever its last status was, and a
+        // suspended one as suspended — the grant's own state returns once it is resumed.
+        Status = !connection.IsActive ? "disconnected"
+            : connection.SuspendedAt is not null ? "suspended"
+            : connection.ConnectionStatus switch
         {
             ConnectionStatus.Connected => "active",
             ConnectionStatus.SyncError => "active",
@@ -789,7 +1061,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         ConnectedAt = connection.ConnectedDate,
         TokenExpiresAt = connection.TokenExpiry,
         Scopes = ParseScopes(connection.Scopes),
-        NextSyncAt = connection is { IsActive: true, LastSyncDate: { } last }
+        NextSyncAt = connection is { IsActive: true, SuspendedAt: null, LastSyncDate: { } last }
             ? last.AddMinutes(connection.SyncFrequencyMinutes)
             : null,
         TodayUpdateCount = todayUpdateCount,
@@ -804,6 +1076,7 @@ public class DeviceConnectionService : IDeviceConnectionService
             ? connection.BatteryStatus
             : null,
         HistoryRepull = PresentableRepull(connection, latestRepull),
+        SuspendedAt = connection.SuspendedAt,
     };
 
     /// <summary>Scopes are stored as a JSON array; a malformed value must not break the screen.</summary>
@@ -840,5 +1113,54 @@ public class DeviceConnectionService : IDeviceConnectionService
         string RedirectUri,
         DeviceOAuthChannel Channel = DeviceOAuthChannel.App,
         Guid? InviteId = null,
-        string? CodeVerifier = null);
+        string? CodeVerifier = null,
+        ConnectIntent Intent = ConnectIntent.Add,
+        Guid? TargetConnectionId = null);
+
+    /// <summary>What a grant is for, carried in the state from initiation to completion.</summary>
+    /// <remarks>
+    /// <see cref="Add"/> is zero so a state cached before this field existed deserializes as an add,
+    /// which with the account match in <see cref="ResolveGrantTargetAsync"/> still lands a
+    /// same-account reconnect from an older app build on the connection it came from.
+    /// </remarks>
+    private enum ConnectIntent
+    {
+        Add = 0,
+        Reconnect = 1,
+        Replace = 2,
+    }
+
+    /// <summary>Where a completed grant landed, and what else it did.</summary>
+    /// <param name="Connection">The existing connection it updates; null to store a new one.</param>
+    /// <param name="Replaced">The connection to retire in the same save, for a replacement.</param>
+    /// <param name="AlreadyConnected">An add that turned out to be an account already connected.</param>
+    /// <param name="RevokeAfterStore">A token-bearing copy of the replaced connection, when its grant can safely be ended.</param>
+    private sealed record StoredGrant(
+        DeviceConnection? Connection,
+        DeviceConnection? Replaced,
+        bool AlreadyConnected,
+        DeviceConnection? RevokeAfterStore);
+
+    /// <summary>
+    /// The provider account a grant came back on, as far as it is known: the health-user id from the
+    /// identity resource, and the user id some token responses carry. Either may be null.
+    /// </summary>
+    private sealed record GrantAccount(string? HealthUserId, string? ProviderUserId)
+    {
+        /// <summary>Known to be the account <paramref name="connection"/> holds.</summary>
+        public bool Matches(DeviceConnection connection) =>
+            (HealthUserId is not null && string.Equals(connection.HealthUserId, HealthUserId, StringComparison.Ordinal))
+            || (ProviderUserId is not null
+                && string.Equals(ReadProviderUserId(connection.Metadata), ProviderUserId, StringComparison.Ordinal));
+
+        /// <summary>
+        /// Known to be a different account from the one <paramref name="connection"/> holds. Not the
+        /// negation of <see cref="Matches"/>: with nothing to compare, neither is known.
+        /// </summary>
+        public bool DiffersFrom(DeviceConnection connection) =>
+            (HealthUserId is not null && connection.HealthUserId is { } held
+                && !string.Equals(held, HealthUserId, StringComparison.Ordinal))
+            || (ProviderUserId is not null && ReadProviderUserId(connection.Metadata) is { } stored
+                && !string.Equals(stored, ProviderUserId, StringComparison.Ordinal));
+    }
 }

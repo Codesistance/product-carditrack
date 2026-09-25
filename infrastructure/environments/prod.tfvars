@@ -85,8 +85,8 @@ device_pull_params = [
       # restricted-scope justification alongside the three read bundles.
       "https://www.googleapis.com/auth/googlehealth.settings.readonly",
     ]
-    additional_authorization_params    = { access_type = "offline" } # Without it Google issues no refresh token
-    first_consent_authorization_params = { prompt = "consent" }      # First grant only — re-consent is how a refresh token is re-issued
+    additional_authorization_params    = { access_type = "offline" }           # Without it Google issues no refresh token
+    first_consent_authorization_params = { prompt = "consent select_account" } # Adds, replacements and token-less reconnects — re-consent is how a refresh token is issued, the chooser how the account is picked
 
     sync_lookback_days            = 3
     backfill_days                 = 90 # History fetched behind a new connection, a chunk per pull
