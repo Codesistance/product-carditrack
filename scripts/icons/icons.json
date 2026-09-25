@@ -572,7 +572,7 @@
   {
    "file": "icon_metric_sleep.svg",
    "source": "material",
-   "name": "bedtime",
+   "name": "bed",
    "fill": "#7C6FDC",
    "token": "MetricSleepInk",
    "size": 24
@@ -607,14 +607,6 @@
    "name": "link-out",
    "group": "brand",
    "size": 24
-  },
-  {
-   "file": "icon_people.svg",
-   "source": "iconpark",
-   "name": "peoples",
-   "group": "ink",
-   "size": 24,
-   "solid": true
   },
   {
    "file": "icon_pause.svg",
@@ -685,7 +677,7 @@
   {
    "file": "icon_reason_sleep_white.svg",
    "source": "material",
-   "name": "bedtime",
+   "name": "bed",
    "fill": "#FFFFFF",
    "token": "White",
    "size": 24

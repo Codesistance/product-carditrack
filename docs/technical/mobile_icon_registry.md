@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**96 icons**, **34 distinct colours**, **3 referenced nowhere**.
+**95 icons**, **34 distinct colours**, **3 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -29,12 +29,12 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#939DAA` | 14 | MutedText |
 | `#1884DC` | 11 | Primary |
 | `#C42F2F` | 10 | DangerRed |
-| `#727272` | 8 | Body / Body2 ink |
 | `#174E86` | 7 | PrimaryDark |
 | `#36C09B` | 7 | StatusGreen |
-| `#D9DCE1` | 6 | — |
+| `#727272` | 7 | Body / Body2 ink |
 | `#FBE4E4` | 6 | derived: StatusRed at 14% over white |
 | `#1F8A72` | 5 | MetricTemperatureInk / DatasetBodyText |
+| `#D9DCE1` | 5 | — |
 | `#B45309` | 3 | severity orange ink |
 | `#861B1B` | 2 | — |
 | `#A9741A` | 2 | DatasetWarningText |
@@ -76,7 +76,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_tab_alerts.svg` | `#939DAA` | BottomNavBar, StatusHeroCard |
 | `icon_tab_alerts_active.svg` | `#1884DC` `#174E86` `#36C09B` | BottomNavBar |
 | `icon_tab_alerts_unread.svg` | `#F0A92E` | StatusHeroCard |
-| `icon_tab_family.svg` | `#939DAA` | BottomNavBar |
+| `icon_tab_family.svg` | `#939DAA` | BottomNavBar, CardiMemberDetailPage |
 | `icon_tab_family_active.svg` | `#174E86` `#1884DC` `#36C09B` | BottomNavBar |
 | `icon_tab_home.svg` | `#939DAA` | BottomNavBar |
 | `icon_tab_home_active.svg` | `#FFFFFF` `#174E86` `#1884DC` `#36C09B` | BottomNavBar |
@@ -163,7 +163,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `gradient_splash_bg.svg` | `#1A6CB0` `#1884DC` `#174E86` `#36C09B` `#2FA6C4` `#FFFFFF` | SplashPage |
 | `icon_advise.svg` | `#939DAA` | CardiMemberDetailPage, StatusHeroCard |
 | `icon_advise_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | StatusHeroCard |
-| `icon_bell.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, DashboardHeader |
+| `icon_bell.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, DashboardHeader, DashboardPage |
 | `icon_bell_cog.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
@@ -191,7 +191,6 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_notification.svg` | `#FFFFFF` | FcmNotificationChannel, PushRegistrationCoordinator |
 | `icon_open.svg` | `#153D66` | ExportDeliveryPopupPage |
 | `icon_pause.svg` | `#B45309` | CardiMemberDetailPage |
-| `icon_people.svg` | `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_person_remove.svg` | `#FBE4E4` `#C42F2F` | CardiMemberDetailPage, FamilyPage |
 | `icon_plus.svg` | `#153D66` | ConnectionSuccessPage, DeviceManagementPage |
 | `icon_power_red.svg` | `#C42F2F` | SettingsPage |
