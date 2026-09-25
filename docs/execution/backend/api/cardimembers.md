@@ -139,6 +139,40 @@ Its own endpoint because the PUT above cannot express it. That form is a full re
 - This endpoint re-dates them on request, changing nothing else.
 - Both close any open `MEDICAL_NOTES_STALE` gap immediately rather than waiting for the nightly reconcile.
 
+Since the medical-information ledger (below), `medicalNotes` and `medicalNotesReviewedAtUtc` are its **summary**, kept for builds that know only the single note: one line per current entry, labelled by kind (`Allergy: Penicillin`), except `Other` lines, which read as written. `medicalNotesReviewedAtUtc` is the oldest confirmation among the current lines, or `null` when any of them was never confirmed. A PUT whose `medicalNotes` differs from that summary replaces **every** current line with one `Other` line holding what was sent (the replaced lines go to the history as changed); an unchanged echo touches nothing. This confirm endpoint confirms every current line. Clients that know the ledger send **`leaveMedicalNotes: true`** on the PUT (another exception to full replacement): `medicalNotes` is then not read at all, so an echo of a summary somebody changed while the form was open cannot replace every line with the stale text. They edit lines through the endpoints below. Every write to the notes — the PUT, this confirm, and the ledger's own endpoints — takes the member's row lock (`FOR NO KEY UPDATE`) before reading, so concurrent writes wait for each other rather than lose one another's lines, and a write racing member erasure either finds the member gone or finishes before erasure sweeps its rows.
+
+### Medical information ledger — `/api/v1/cardimembers/{id}/medical-entries`
+
+The member's medical information as separate lines, each a `kind` — `Condition` (1), `Allergy` (2), `Medication` (3) or `Other` (4) — and `text` (≤ 500 chars, encrypted at rest), with who added it, when, and when it was last confirmed. Changing or removing a line keeps it in a **history**; erasing deletes it outright. Reading needs **view** access; every change needs **manage** access. Every call returns the whole ledger:
+
+```json
+{
+  "current": [
+    { "id": "…", "kind": 2, "text": "Penicillin", "addedAtUtc": "2026-09-12T10:00:00Z", "addedByName": "Jane",
+      "confirmedAtUtc": "2026-09-12T10:00:00Z", "removedAtUtc": null, "removedByName": null, "wasChanged": false }
+  ],
+  "history": [
+    { "id": "…", "kind": 3, "text": "Aspirin 75mg", "addedAtUtc": "2026-06-01T09:00:00Z", "addedByName": "Jane",
+      "confirmedAtUtc": "2026-06-01T09:00:00Z", "removedAtUtc": "2026-09-12T10:05:00Z", "removedByName": "Jane", "wasChanged": true }
+  ],
+  "reviewedAtUtc": "2026-06-01T09:00:00Z"
+}
+```
+
+| Method | Path | Body | What it does |
+|---|---|---|---|
+| GET | `…/medical-entries` | — | `current` grouped by kind (conditions, allergies, medications, other), oldest first within each; `history` most recently removed first |
+| POST | `…/medical-entries` | `{ kind, text }` | Adds a line, confirmed now by the caller |
+| PUT | `…/medical-entries/{entryId}` | `{ kind, text }` | Changes a current line: the old wording goes to the history with `wasChanged: true` and a new line takes its place. The same words and kind again only confirm the line |
+| POST | `…/medical-entries/{entryId}/remove` | — | Takes a current line off; it stays in the history with `wasChanged: false` |
+| POST | `…/medical-entries/{entryId}/confirm` | — | Records that a current line still holds |
+| DELETE | `…/medical-entries/{entryId}` | — | Erases a line, current or in the history. A real delete, not an archive |
+
+- **400** for a blank line, a line over 500 characters, an unknown `kind`, or a change that would make the summary longer than the 2,000 characters `medicalNotes` is capped at (the older builds' PUT validator would otherwise reject their own profile saves). **403** signed out. **404** for a member or line the caller cannot reach, or a PUT/remove/confirm of a line already in the history.
+- A note written before the ledger is **carried over** the first time anything reads or changes the member's ledger: one `Other` line, dated by `medicalNotesReviewedAtUtc` (or the member's creation date), with no author and that same confirmation date (`null` if the note was never reviewed).
+- Every change closes any open `MEDICAL_NOTES_EMPTY` / `MEDICAL_NOTES_STALE` gap immediately, as the single-note endpoints do.
+- `addedByName` / `removedByName` are `null` for a carried-over line and after that caregiver's account is erased.
+
 ### DELETE `/api/v1/cardimembers/{id}`
 
 Removes a CardiMember. Requires **manage** access. Returns **204**. Soft delete: the member, their caregiver links and their device connections are deactivated and stored OAuth tokens discarded. Health history is retained — but the profile photo is not: its blob is deleted and `PhotoObjectName` cleared, because a full-face image must not outlive the membership.

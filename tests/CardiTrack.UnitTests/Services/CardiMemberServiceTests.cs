@@ -23,6 +23,10 @@ public class CardiMemberServiceTests
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IRealtimeAssessmentRepository _realtimeAssessments = Substitute.For<IRealtimeAssessmentRepository>();
+    private readonly IMedicalEntryRepository _medicalEntries = Substitute.For<IMedicalEntryRepository>();
+
+    /// <summary>The member's medical-information ledger, as the repository would hand it back.</summary>
+    private readonly List<MedicalEntry> _ledger = [];
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
     private readonly IEncryptionService _encryption = Substitute.For<IEncryptionService>();
     private readonly IProfilePhotoProcessor _photoProcessor = Substitute.For<IProfilePhotoProcessor>();
@@ -40,6 +44,13 @@ public class CardiMemberServiceTests
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.RealtimeAssessments.Returns(_realtimeAssessments);
+        _unitOfWork.MedicalEntries.Returns(_medicalEntries);
+        // The member's row lock the notes paths take first; a live member is always there to lock.
+        _members.LockForUpdateAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(true);
+        _medicalEntries.GetByCardiMemberAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => _ledger.ToList());
+        _medicalEntries.When(r => r.AddAsync(Arg.Any<MedicalEntry>()))
+            .Do(c => _ledger.Add(c.Arg<MedicalEntry>()));
         _alerts.GetUnresolvedByCardiMemberAsync(Arg.Any<Guid>()).Returns([]);
         _realtimeAssessments.GetLatestAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns((RealtimeAssessment?)null);
@@ -1011,6 +1022,232 @@ public class CardiMemberServiceTests
             () => CreateSut().ConfirmMedicalNotesAsync(_userId, member.Id));
 
         Assert.Null(member.MedicalNotesReviewedAtUtc);
+    }
+
+    // ── the medical-information ledger, kept in step for builds that know only the note ──
+
+    private MedicalEntry Line(Guid memberId, MedicalEntryKind kind, string text, DateTime? confirmed = null) =>
+        new()
+        {
+            CardiMemberId = memberId,
+            Kind = kind,
+            Text = $"enc({text})",
+            AddedAtUtc = DateTime.UtcNow.AddDays(-60),
+            ConfirmedAtUtc = confirmed ?? DateTime.UtcNow.AddDays(-60),
+        };
+
+    [Fact]
+    public async Task Create_PutsTheNoteOnFileAsTheLedgersFirstLine_ByWhoeverAddedTheMember()
+    {
+        await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, BuildRequest());
+
+        var line = Assert.Single(_ledger);
+        Assert.Equal(MedicalEntryKind.Other, line.Kind);
+        Assert.Equal("enc(Pacemaker fitted 2019)", line.Text);
+        Assert.Equal(_userId, line.AddedByUserId);
+        Assert.NotNull(line.ConfirmedAtUtc);
+    }
+
+    [Fact]
+    public async Task Create_WithoutANote_StartsAnEmptyLedger()
+    {
+        var request = BuildRequest();
+        request.MedicalNotes = "  ";
+
+        await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request);
+
+        Assert.Empty(_ledger);
+    }
+
+    /// <summary>
+    /// An older build edits the notes as one block. What it sent is the one line now; the lines it
+    /// replaced are kept, marked as changed, so the history says what the notes used to say.
+    /// </summary>
+    [Fact]
+    public async Task Update_WithANewNote_ReplacesEveryCurrentLine_AndKeepsThemAsChanged()
+    {
+        var member = SeedMember(encryptedNotes: "enc(Allergy: Penicillin\nMedication: Aspirin)");
+        var allergy = Line(member.Id, MedicalEntryKind.Allergy, "Penicillin");
+        var aspirin = Line(member.Id, MedicalEntryKind.Medication, "Aspirin");
+        _ledger.AddRange([allergy, aspirin]);
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "Penicillin allergy, stopped aspirin",
+        });
+
+        var replacement = Assert.Single(_ledger, e => e.IsCurrent);
+        Assert.Equal(MedicalEntryKind.Other, replacement.Kind);
+        Assert.Equal(_userId, replacement.AddedByUserId);
+        Assert.All([allergy, aspirin], old =>
+        {
+            Assert.NotNull(old.RemovedAtUtc);
+            Assert.Equal(replacement.Id, old.ReplacedByEntryId);
+            Assert.Equal(_userId, old.RemovedByUserId);
+        });
+        Assert.Equal("enc(Penicillin allergy, stopped aspirin)", member.MedicalNotes);
+    }
+
+    /// <summary>
+    /// The echo every unrelated profile save sends. It must neither churn the history nor re-date
+    /// lines nobody looked at.
+    /// </summary>
+    [Fact]
+    public async Task Update_EchoingTheNoteBack_LeavesTheLedgerAlone()
+    {
+        var member = SeedMember(encryptedNotes: "enc(Allergy: Penicillin)");
+        var allergy = Line(member.Id, MedicalEntryKind.Allergy, "Penicillin");
+        var confirmed = allergy.ConfirmedAtUtc;
+        _ledger.Add(allergy);
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "Allergy: Penicillin",
+            EmergencyContactName = "Someone Else",
+        });
+
+        Assert.Single(_ledger);
+        Assert.True(allergy.IsCurrent);
+        Assert.Equal(confirmed, allergy.ConfirmedAtUtc);
+        await _medicalEntries.DidNotReceive().AddAsync(Arg.Any<MedicalEntry>());
+    }
+
+    /// <summary>
+    /// A note written before the ledger existed is carried over before it is replaced, so an older
+    /// build's edit still leaves the words it overwrote in the history.
+    /// </summary>
+    [Fact]
+    public async Task Update_OfANoteNotYetCarriedOver_KeepsTheOldWordingInTheHistory()
+    {
+        var member = SeedMember();
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "Pacemaker fitted 2019. Now also on lisinopril",
+        });
+
+        var old = Assert.Single(_ledger, e => !e.IsCurrent);
+        Assert.Equal("enc(Pacemaker fitted 2019)", old.Text);
+        Assert.Null(old.AddedByUserId);
+        Assert.NotNull(old.ReplacedByEntryId);
+        Assert.Equal("enc(Pacemaker fitted 2019. Now also on lisinopril)", Assert.Single(_ledger, e => e.IsCurrent).Text);
+    }
+
+    [Fact]
+    public async Task Update_ClearingTheNote_TakesEveryLineOff_AsRemovedNotChanged()
+    {
+        var member = SeedMember(encryptedNotes: "enc(Allergy: Penicillin)");
+        var allergy = Line(member.Id, MedicalEntryKind.Allergy, "Penicillin");
+        _ledger.Add(allergy);
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = null,
+        });
+
+        Assert.False(allergy.IsCurrent);
+        Assert.Null(allergy.ReplacedByEntryId);
+        Assert.Null(member.MedicalNotes);
+        Assert.Null(member.MedicalNotesReviewedAtUtc);
+    }
+
+    /// <summary>
+    /// A client that keeps the notes through the ledger says so, and whatever it sends as
+    /// MedicalNotes is not read — an echo of a summary somebody has changed since the form loaded
+    /// would otherwise replace every line with the stale text.
+    /// </summary>
+    [Fact]
+    public async Task Update_LeavingTheNotes_IgnoresAStaleEcho()
+    {
+        var member = SeedMember(encryptedNotes: "enc(Allergy: Penicillin\nMedication: Aspirin)");
+        var allergy = Line(member.Id, MedicalEntryKind.Allergy, "Penicillin");
+        var aspirin = Line(member.Id, MedicalEntryKind.Medication, "Aspirin");
+        _ledger.AddRange([allergy, aspirin]);
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "Allergy: Penicillin",
+            LeaveMedicalNotes = true,
+        });
+
+        Assert.True(allergy.IsCurrent);
+        Assert.True(aspirin.IsCurrent);
+        Assert.Equal("enc(Allergy: Penicillin\nMedication: Aspirin)", member.MedicalNotes);
+        await _medicalEntries.DidNotReceive().AddAsync(Arg.Any<MedicalEntry>());
+    }
+
+    /// <summary>
+    /// The notes are read and written under the member's row lock, taken before the member is
+    /// loaded, so a concurrent ledger write is waited for rather than overwritten.
+    /// </summary>
+    [Fact]
+    public async Task Update_TakesTheMembersLock_InsideATransaction_BeforeLoadingThem()
+    {
+        var member = SeedMember();
+        var order = new List<string>();
+        _unitOfWork.When(u => u.BeginTransactionAsync()).Do(_ => order.Add("begin"));
+        _members.When(r => r.LockForUpdateAsync(member.Id, Arg.Any<CancellationToken>())).Do(_ => order.Add("lock"));
+        _members.When(r => r.GetByIdAsync(member.Id)).Do(_ => order.Add("load"));
+        _unitOfWork.When(u => u.CommitTransactionAsync()).Do(_ => order.Add("commit"));
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "Pacemaker fitted 2019",
+        });
+
+        Assert.Equal(["begin", "lock", "load", "commit"], order.Take(4));
+    }
+
+    [Fact]
+    public async Task Update_OfAMemberErasedMeanwhile_WritesNothing()
+    {
+        var member = SeedMember();
+        _members.LockForUpdateAsync(member.Id, Arg.Any<CancellationToken>()).Returns(false);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => CreateSut().UpdateAsync(
+            _userId, member.Id, new UpdateCardiMemberRequest
+            {
+                Name = "Someone Else",
+                DateOfBirth = member.DateOfBirth,
+                RelationshipType = RelationshipType.Parent,
+            }));
+
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+    }
+
+    [Fact]
+    public async Task ConfirmMedicalNotes_ConfirmsEveryCurrentLine()
+    {
+        var member = SeedMember(encryptedNotes: "enc(Allergy: Penicillin\nMedication: Aspirin)");
+        var allergy = Line(member.Id, MedicalEntryKind.Allergy, "Penicillin", DateTime.UtcNow.AddYears(-1));
+        var aspirin = Line(member.Id, MedicalEntryKind.Medication, "Aspirin", confirmed: null);
+        aspirin.ConfirmedAtUtc = null;
+        _ledger.AddRange([allergy, aspirin]);
+
+        await CreateSut().ConfirmMedicalNotesAsync(_userId, member.Id);
+
+        Assert.All([allergy, aspirin], l => Assert.True(l.ConfirmedAtUtc > DateTime.UtcNow.AddMinutes(-1)));
+        Assert.Equal(allergy.ConfirmedAtUtc, member.MedicalNotesReviewedAtUtc);
+        Assert.Equal("enc(Allergy: Penicillin\nMedication: Aspirin)", member.MedicalNotes);
     }
 
     [Fact]

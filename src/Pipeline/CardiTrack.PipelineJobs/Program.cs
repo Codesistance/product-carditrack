@@ -104,6 +104,7 @@ builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
 builder.Services.AddScoped<IGenerationLeaseRepository, GenerationLeaseRepository>();
 builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
 builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
+builder.Services.AddScoped<IMedicalEntryRepository, MedicalEntryRepository>();
 // Repositories only, not AddPushServices — the pipeline gets a transport (the internal enqueue
 // endpoint, wired below for the assessor), not a copy of the send stack. See
 // PushServiceExtensions.AddPushServices' remarks.

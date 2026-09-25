@@ -94,8 +94,24 @@ public class UpdateCardiMemberRequest
     [Phone(ErrorMessage = "Invalid emergency contact phone")]
     public string? EmergencyContactPhone { get; set; }
 
+    /// <summary>
+    /// The medical information as one block of text, for builds that predate the ledger: a value
+    /// different from the stored summary replaces every current line with it. Ignored when
+    /// <see cref="LeaveMedicalNotes"/> is set.
+    /// </summary>
     [StringLength(2000)]
     public string? MedicalNotes { get; set; }
+
+    /// <summary>
+    /// True from a client that keeps the medical information through the ledger
+    /// (<c>/medical-entries</c>): the notes are left exactly as they are and
+    /// <see cref="MedicalNotes"/> is not read. Another exception to full replacement, like
+    /// <see cref="Gender"/> and the photo, and needed for the same kind of reason — echoing back
+    /// the summary a form loaded would, after somebody changed a line in the meantime, arrive as a
+    /// whole-note edit and replace every line with the stale text. Omitted (false) keeps the older
+    /// builds' behaviour.
+    /// </summary>
+    public bool LeaveMedicalNotes { get; set; }
 
     /// <summary>
     /// New profile photo as base64-encoded JPEG or PNG bytes (a <c>data:image/…;base64,</c>

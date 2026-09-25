@@ -210,6 +210,14 @@ public class AccountErasureService : IAccountErasureService
             rows.Add(("MemberQuestionnaires.AnsweredByUserId (nulled)", await _db.MemberQuestionnaires
                 .Where(q => q.AnsweredByUserId == userId)
                 .ExecuteUpdateAsync(s => s.SetProperty(q => q.AnsweredByUserId, (Guid?)null), rest)));
+            // A member's medical information is the member's, and somebody else may still be
+            // watching them: the lines stay, only who wrote or removed them goes.
+            rows.Add(("MedicalEntries.AddedByUserId (nulled)", await _db.MedicalEntries
+                .Where(e => e.AddedByUserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.AddedByUserId, (Guid?)null), rest)));
+            rows.Add(("MedicalEntries.RemovedByUserId (nulled)", await _db.MedicalEntries
+                .Where(e => e.RemovedByUserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.RemovedByUserId, (Guid?)null), rest)));
 
             // Their transcripts about members other people still watch. Turns and usages cascade
             // from the session, but go explicitly so the counts are real rather than inferred.

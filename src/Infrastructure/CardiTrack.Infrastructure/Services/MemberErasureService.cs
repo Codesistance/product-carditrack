@@ -161,6 +161,9 @@ public class MemberErasureService : IMemberErasureService
             await Step("DeviceActivityLogs", _db.DeviceActivityLogs.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("ActivityLogs", _db.ActivityLogs.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("MemberQuestionnaires", _db.MemberQuestionnaires.Where(x => x.CardiMemberId == cardiMemberId));
+            // Current lines and the history both: the history is the same family's words about
+            // this member, kept for them — not a record that outlives them.
+            await Step("MedicalEntries", _db.MedicalEntries.Where(x => x.CardiMemberId == cardiMemberId));
 
             // Turns and usages cascade from the session by configuration, but they are deleted
             // explicitly first so the counts in the report are real rather than inferred.

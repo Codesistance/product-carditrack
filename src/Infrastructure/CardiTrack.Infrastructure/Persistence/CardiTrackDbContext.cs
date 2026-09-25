@@ -35,6 +35,7 @@ public class CardiTrackDbContext : DbContext
     public DbSet<DigestEntry> DigestEntries => Set<DigestEntry>();
     public DbSet<RealtimeAssessment> RealtimeAssessments => Set<RealtimeAssessment>();
     public DbSet<MemberQuestionnaire> MemberQuestionnaires => Set<MemberQuestionnaire>();
+    public DbSet<MedicalEntry> MedicalEntries => Set<MedicalEntry>();
     public DbSet<EnvironmentalReading> EnvironmentalReadings => Set<EnvironmentalReading>();
 
     /// <summary>
