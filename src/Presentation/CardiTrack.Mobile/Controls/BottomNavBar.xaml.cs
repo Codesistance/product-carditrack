@@ -43,6 +43,9 @@ public partial class BottomNavBar : ContentView
     /// <summary>How much smaller the glyphs of the tabs not selected are drawn.</summary>
     private const double UnselectedIconShrink = 3;
 
+    /// <summary>How far the selected glyph is lifted, so it rises out of the top of the pill.</summary>
+    private const double SelectedIconLift = -7;
+
     private bool _navigating;
 
     /// <summary>The tab this bar is drawing as selected right now — see <see cref="ApplySelection(NavTab, bool)"/>.</summary>
@@ -150,6 +153,7 @@ public partial class BottomNavBar : ContentView
             label.FontSize = isSelected ? 12 : 11;
 
             icon.Scale = isSelected ? SelectedIconScale : 1;
+            icon.TranslationY = isSelected ? SelectedIconLift : 0;
             icon.Source = isSelected ? $"{iconStem}_active.svg" : $"{iconStem}.svg";
             // Figma puts a drop shadow under the selected glyph only. It lives here rather than
             // in the SVG because Resizetizer rasterises these at build time and drops filters.
@@ -260,7 +264,9 @@ public partial class BottomNavBar : ContentView
         var leaving = IconFor(from);
         var arriving = IconFor(tab);
         leaving.Scale = SelectedIconScale;
+        leaving.TranslationY = SelectedIconLift;
         arriving.Scale = 1;
+        arriving.TranslationY = 0;
 
         var start = SelectionPill.TranslationX;
         var end = (int)tab * ColumnWidth;
@@ -272,6 +278,8 @@ public partial class BottomNavBar : ContentView
         await Task.WhenAll(
             slide.Task,
             leaving.ScaleToAsync(1, SlideMs, Easing.CubicOut),
+            leaving.TranslateToAsync(0, 0, SlideMs, Easing.CubicOut),
+            arriving.TranslateToAsync(0, SelectedIconLift, SlideMs, Easing.CubicOut),
             MagnifyAsync(arriving));
     }
 

@@ -205,6 +205,12 @@
     <Color x:Key="TabPillBackground">#B8D5F7</Color>
     <!-- Its fill: light at the top, deeper at the bottom, the app's blue gradient in miniature,
          so the pill has a little depth without a shadow. TabPillBackground is its middle. -->
+    <!-- The bar itself: white fading to a pale blue at the bottom edge, so it settles into the
+         page ground rather than sitting on it, and echoes the pill's gradient. -->
+    <LinearGradientBrush x:Key="TabBarBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FFFFFF" Offset="0"/>
+        <GradientStop Color="#EEF4FB" Offset="1"/>
+    </LinearGradientBrush>
     <LinearGradientBrush x:Key="TabPillBrush" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Color="#D8E9FC" Offset="0"/>
         <GradientStop Color="#A6CBF4" Offset="1"/>
