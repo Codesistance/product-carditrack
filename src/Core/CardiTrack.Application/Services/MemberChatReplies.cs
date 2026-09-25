@@ -246,7 +246,6 @@ public static partial class MemberChatReplies
     public static string MetricReadingReply(
         string? firstName, StatusMetric metric, IReadOnlyList<ActivityLog> recent, DateOnly today)
     {
-        var subject = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
         var whose = string.IsNullOrWhiteSpace(firstName) ? "Their" : $"{firstName}'s";
         var name = MetricName(metric);
 
@@ -257,8 +256,10 @@ public static partial class MemberChatReplies
 
         if (dated.Count == 0)
         {
-            return $"I don't have a recent {name} reading for {subject} yet — it'll show up here once "
-                + "the watch has recorded and synced it.";
+            // "their" mid-sentence, where the reading opener has it capitalised.
+            var owner = string.IsNullOrWhiteSpace(firstName) ? "their" : whose;
+            return $"Nothing recent has come through for {owner} {name} yet — it'll "
+                + "show up here once the watch has recorded and synced it.";
         }
 
         var latest = dated[^1];

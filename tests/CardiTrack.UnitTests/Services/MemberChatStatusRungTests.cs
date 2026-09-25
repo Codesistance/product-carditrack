@@ -379,7 +379,7 @@ public class MemberChatStatusRungTests
         var reply = MemberChatReplies.MetricReadingReply("Dad", StatusMetric.Oxygen,
             [new ActivityLog { Date = new DateOnly(2026, 9, 7), Steps = 1200 }], new DateOnly(2026, 9, 7));
 
-        Assert.StartsWith("I don't have a recent blood oxygen reading for Dad", reply, StringComparison.Ordinal);
+        Assert.StartsWith("Nothing recent has come through for Dad's blood oxygen", reply, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -394,7 +394,7 @@ public class MemberChatStatusRungTests
             [new ActivityLog { Date = new DateOnly(2026, 9, 7), BreathingRate = 16m, OvernightBreathingRate = null }],
             new DateOnly(2026, 9, 7));
 
-        Assert.StartsWith("I don't have a recent overnight breathing rate reading for Dad", reply, StringComparison.Ordinal);
+        Assert.StartsWith("Nothing recent has come through for Dad's overnight breathing rate", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("16", reply, StringComparison.Ordinal);
     }
 
