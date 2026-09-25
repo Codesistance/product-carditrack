@@ -1269,6 +1269,25 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
+    public async Task CompleteConnection_Reconnect_RefusesAnAccountAnotherOfTheMembersDevicesHolds()
+    {
+        // The target's own account was never captured, so only its siblings can tell.
+        var target = SeedConnection(status: ConnectionStatus.TokenExpired);
+        var sibling = SeedAccount("ACCOUNT_B", isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([target, sibling]);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns(access: "b_access");
+
+        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(() =>
+            ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReconnect, target.Id)));
+
+        Assert.Equal(DeviceConnectionException.AccountAlreadyConnected, ex.Code);
+        Assert.Null(target.HealthUserId);
+        Assert.Equal("enc(access)", target.AccessToken);
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+    }
+
+    [Fact]
     public async Task InitiateConnection_Reconnect_RefusesAnotherBrand()
     {
         var existing = SeedConnection();

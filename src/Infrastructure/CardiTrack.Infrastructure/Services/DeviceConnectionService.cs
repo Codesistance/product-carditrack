@@ -624,6 +624,17 @@ public class DeviceConnectionService : IDeviceConnectionService
                         + "To connect it instead, change the device.");
                 }
 
+                // A target whose own account was never captured cannot be told apart from another
+                // account above, so the member's other devices are what catch a grant for an
+                // account one of them already holds — landing it here would be two cards over one
+                // data stream.
+                if (existing.Any(c => c.Id != target.Id && SameAccount(c)))
+                {
+                    throw new DeviceConnectionException(
+                        DeviceConnectionException.AccountAlreadyConnected,
+                        "That account is already connected to another of this person's devices.");
+                }
+
                 return new StoredGrant(target, Replaced: null, AlreadyConnected: false);
             }
 

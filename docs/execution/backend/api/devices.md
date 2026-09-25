@@ -408,6 +408,7 @@ The state token carries the initiation's `mode` and `deviceId`; the grant's prov
 | `add` | one the member already has connected | That connection is refreshed; `alreadyConnected: true` |
 | `add` | new, or could not be read | A **new connection**. Primary only if the member has no primary |
 | `reconnect` | the connection's own, or could not be compared | That connection gets fresh tokens and returns to `active`. If the account could not be read, its stored `HealthUserId` is cleared rather than kept, so the next sync captures the right one. When Google also sends no new refresh token, the stored one is kept **only if the account positively matches**. Otherwise it is dropped: the new access token may be another account's, and the old refresh token would switch the card back at the next expiry. The connection then asks for a reconnect when the access token expires |
+| `reconnect` | one another of the member's connections holds | **409** (`ACCOUNT_ALREADY_CONNECTED`), as for a replacement. It matters when the reconnected device's own account was never captured and so cannot be compared |
 | `reconnect` | a different one | **409**. Nothing is stored — switching the account under an existing card would show a stranger's data under this member. The app offers "Change device" instead |
 | `replace` | the replaced connection's own | Just a reconnect of it; `replacedDeviceId: null` |
 | `replace` | another of the member's connections' | **409**. Two cards would read one data stream |
@@ -439,7 +440,7 @@ No machine-readable `code` field is emitted — the `ErrorResponse` carries a hu
 | 400 | Invalid or expired state token (single-use, 15-min TTL, must match caller + provider); or unsupported/unconfigured provider |
 | 403 | JWT valid but no local user row |
 | 404 | Caller has no active link to the CardiMember bound to the state; or the `deviceId` a reconnect/replace named is no longer one of its connections; or a `replace` whose caller is no longer a primary caregiver |
-| 409 | A `reconnect` came back on a **different account** (`DIFFERENT_ACCOUNT`), or a `replace` came back on an account **another of the member's devices** already holds (`ACCOUNT_ALREADY_CONNECTED`) |
+| 409 | A `reconnect` came back on a **different account** (`DIFFERENT_ACCOUNT`), or a `reconnect` or `replace` came back on an account **another of the member's devices** already holds (`ACCOUNT_ALREADY_CONNECTED`) |
 | 502 | Provider rejected the authorization code exchange |
 
 > The planned `PROVIDER_PERMISSION_DENIED` (user denied scopes) case is **never produced** — a denial surfaces as a failed exchange (502) or the user simply never returns to the app.
