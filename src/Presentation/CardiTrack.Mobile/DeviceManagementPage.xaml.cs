@@ -161,9 +161,13 @@ public partial class DeviceManagementPage : ContentPage
                     _member = load.Member;
                     ChatBot.MemberId = memberId;
                     ChatBot.MemberFirstName = load.Member.DisplayFirstName();
-                    MemberSubtitleLabel.Text = $"{load.Member.DisplayFirstName()} • CardiMember";
+                    // Just the name: every member on this screen is a CardiMember, so saying so
+                    // was a label with nothing to tell apart.
+                    MemberSubtitleLabel.Text = load.Member.Name;
+                    // The no-device card's own sentence (NoDevicePopupPage), so the card reads the
+                    // same here as it does from the dashboard.
                     EmptyDetailLabel.Text =
-                        $"Connect a wearable so CardiTrack can start watching over {load.Member.DisplayFirstName()}.";
+                        $"Connect {load.Member.DisplayFirstName()}'s device so CardiTrack can start watching over them";
                     Render(load.Devices.Devices);
                     SetState(loaded: true);
                 },
@@ -242,17 +246,9 @@ public partial class DeviceManagementPage : ContentPage
     private void OnToggleHelpTapped(object? sender, TappedEventArgs e)
     {
         HelpPanel.IsVisible = !HelpPanel.IsVisible;
-        HelpChevron.Source = HelpPanel.IsVisible ? "icon_chevron.svg" : "icon_chevron_down.svg";
-
-        // The same two states AccordionSection gives its header: a tinted band while closed, a
-        // thin blue outline once open, and neither of them around the body. Padding, radius and
-        // stroke width stay the same either way, so nothing moves.
-        HelpChrome.BackgroundColor = HelpPanel.IsVisible
-            ? Colors.Transparent
-            : MetricStatus.Resource("InputBackground", Colors.Transparent);
-        HelpChrome.Stroke = new SolidColorBrush(HelpPanel.IsVisible
-            ? MetricStatus.Resource("Primary", Colors.Transparent)
-            : Colors.Transparent);
+        // Turned up to close rather than swapped for the right-pointing chevron, which reads as
+        // "goes somewhere" on every other row in the app.
+        HelpChevron.Rotation = HelpPanel.IsVisible ? 180 : 0;
     }
 
     // History first, so arriving from the Notifications inbox returns to the inbox rather than to

@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**106 icons**, **35 distinct colours**, **3 referenced nowhere**.
+**107 icons**, **35 distinct colours**, **3 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -23,9 +23,9 @@ lists every colour rather than only the common ones: a colour used once still pi
 
 | Colour | Icons | Also known as |
 | --- | --- | --- |
-| `#FFFFFF` | 36 | White |
-| `#153D66` | 24 | icons.json brand outer stroke |
-| `#3175B9` | 19 | icons.json brand and activity fill, steel blue |
+| `#FFFFFF` | 37 | White |
+| `#153D66` | 25 | icons.json brand outer stroke |
+| `#3175B9` | 20 | icons.json brand and activity fill, steel blue |
 | `#939DAA` | 14 | MutedText |
 | `#1884DC` | 11 | Primary |
 | `#C42F2F` | 11 | DangerRed |
@@ -169,13 +169,13 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
 | `icon_book_cog.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
-| `icon_btn_close.svg` | `#FFFFFF` | ActionLook, AppPasswordPage, ContactEditPopupPage, MedicalNotesEditPopupPage, QuestionCard |
-| `icon_btn_connect.svg` | `#FFFFFF` | ActionLook, NoDevicePopupPage |
+| `icon_btn_close.svg` | `#FFFFFF` | ActionLook, AlertRespondPage, AppPasswordPage, ContactEditPopupPage, MedicalNotesEditPopupPage, QuestionCard |
+| `icon_btn_connect.svg` | `#FFFFFF` | ActionLook, DeviceManagementPage, NoDevicePopupPage |
 | `icon_btn_delete.svg` | `#FFFFFF` | ActionLook, AlertDetailPage |
 | `icon_btn_edit.svg` | `#FFFFFF` | ActionLook |
 | `icon_btn_later.svg` | `#FFFFFF` | ActionLook, NoDevicePopupPage |
 | `icon_btn_plus.svg` | `#FFFFFF` | ActionLook |
-| `icon_btn_resolve.svg` | `#FFFFFF` | ActionLook, AlertDetailPage |
+| `icon_btn_resolve.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, AlertRespondPage |
 | `icon_btn_save.svg` | `#FFFFFF` | ActionLook, ContactEditPopupPage, MedicalNotesEditPopupPage, QuestionCard |
 | `icon_btn_undo.svg` | `#5A3300` | ActionLook, AlertDetailPage |
 | `icon_calendar.svg` | `#939DAA` | DateField, DeviceCard |
@@ -183,7 +183,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_chatbot.svg` | `#36C09B` `#1884DC` `#174E86` `#9FEBFF` `#B9F1FF` `#123A5F` `#FFFFFF` | ChatBotLauncher, MemberChatPage, PendingBotIndicator |
 | `icon_chatbot_mono.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_check_disc.svg` | `#3175B9` `#153D66` `#FFFFFF` | BaselineLearningPage, FindingsList |
-| `icon_check_white.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, AppPasswordPage, ChoiceSheetPage |
+| `icon_check_white.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, AlertRespondPage, AppPasswordPage, ChoiceSheetPage |
 | `icon_clipboard.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, InviteWaitPage |
 | `icon_clipboard_ink.svg` | `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_device_off.svg` | `#C42F2F` | StatusHeroCard |
@@ -194,6 +194,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_eye_off.svg` | `#939DAA` | CreateAccountPage, SignInPage |
 | `icon_format_csv.svg` | `#3175B9` `#153D66` `#FFFFFF` | ExportFormatPopupPage |
 | `icon_format_pdf.svg` | `#FBE4E4` `#C42F2F` | ExportFormatPopupPage |
+| `icon_help.svg` | `#3175B9` `#153D66` `#FFFFFF` | DeviceManagementPage |
 | `icon_history_white.svg` | `#FFFFFF` | MemberChatPage |
 | `icon_home_white.svg` | `#FFFFFF` | DashboardHeader, WizardHeader |
 | `icon_marker_square.svg` | `#C42F2F` `#861B1B` | FindingsList |

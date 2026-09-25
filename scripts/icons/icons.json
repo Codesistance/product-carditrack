@@ -595,6 +595,13 @@
    "size": 24
   },
   {
+   "file": "icon_help.svg",
+   "source": "iconpark",
+   "name": "help",
+   "group": "brand",
+   "size": 24
+  },
+  {
    "file": "icon_metric_sleep.svg",
    "source": "material",
    "name": "bed",

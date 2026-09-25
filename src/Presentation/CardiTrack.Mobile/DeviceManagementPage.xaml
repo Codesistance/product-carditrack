@@ -104,23 +104,35 @@
                         <controls:SavedDataBanner x:Name="SavedBanner"/>
 
                         <VerticalStackLayout Spacing="2">
-                            <Label Text="Devices List" Style="{StaticResource Heading2}"/>
+                            <Label Text="Devices" Style="{StaticResource Heading2}"/>
                             <Label x:Name="MemberSubtitleLabel" Style="{StaticResource Body2}"/>
                         </VerticalStackLayout>
 
-                        <!-- Empty state -->
-                        <VerticalStackLayout x:Name="EmptyPanel" Spacing="10" IsVisible="False" Padding="0,40,0,0">
-                            <Label Text="No devices connected yet"
-                                   Style="{StaticResource Heading3}"
-                                   HorizontalTextAlignment="Center"/>
-                            <Label x:Name="EmptyDetailLabel"
-                                   Style="{StaticResource Body2}"
-                                   HorizontalTextAlignment="Center"/>
-                            <Button Text="Connect a device"
-                                    Style="{StaticResource AuthGradientButton}"
-                                    HorizontalOptions="Center"
-                                    Clicked="OnAddDeviceClicked"/>
-                        </VerticalStackLayout>
+                        <!-- Empty state: the no-device card (Figma M1-09 D) the dashboard's
+                             no-device button opens, as a card in the page — the same picture, the
+                             same words and the same Connect, so a caregiver meets one thing
+                             wherever they learn nothing is connected. -->
+                        <Border x:Name="EmptyPanel" Style="{StaticResource ElevatedCard}" IsVisible="False">
+                            <VerticalStackLayout Spacing="6">
+                                <Image Source="illustration_no_device.png"
+                                       WidthRequest="72" HeightRequest="72"
+                                       HorizontalOptions="Center"
+                                       SemanticProperties.Description="No device connected"/>
+                                <Label Text="No device connected"
+                                       Style="{StaticResource Heading3}"
+                                       HorizontalTextAlignment="Center"
+                                       Margin="0,4,0,0"/>
+                                <Label x:Name="EmptyDetailLabel"
+                                       Style="{StaticResource Body2}"
+                                       HorizontalTextAlignment="Center"/>
+                                <Button Text="Connect"
+                                        Margin="0,10,0,0"
+                                        Style="{StaticResource ActionButtonBlue}"
+                                        ImageSource="icon_btn_connect.svg"
+                                        HorizontalOptions="Center"
+                                        Clicked="OnAddDeviceClicked"/>
+                            </VerticalStackLayout>
+                        </Border>
 
                         <!-- One card per connection, built in code-behind -->
                         <VerticalStackLayout x:Name="DevicesStack" Spacing="14"/>
@@ -128,35 +140,30 @@
                         <!-- Troubleshooting -->
                         <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="10">
-                                <!-- The same closed-state band AccordionSection wears, since this
-                                     is the same kind of control drawn by hand: tinted and rounded
-                                     while there is something behind it, plain once it is open. -->
-                                <Border x:Name="HelpChrome"
-                                        StrokeThickness="1"
-                                        Stroke="Transparent"
-                                        BackgroundColor="{StaticResource InputBackground}"
-                                        Padding="12,6">
-                                    <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="14"/>
-                                    </Border.StrokeShape>
-                                <Grid ColumnDefinitions="*,Auto" HeightRequest="36">
+                                <!-- One flat row, the card itself the only container: a tinted
+                                     band inside a white card read as a box in a box. The chevron
+                                     turning is what says it opens. -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" MinimumHeightRequest="36"
+                                      SemanticProperties.Hint="Shows or hides help with connecting">
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnToggleHelpTapped"/>
                                     </Grid.GestureRecognizers>
+                                    <Image Source="icon_help.svg"
+                                           WidthRequest="22" HeightRequest="22"
+                                           VerticalOptions="Center"/>
                                     <!-- A notch under the section-title size: this is the header
-                                         of one collapsible card, not a section of the page, and at
-                                         18 it weighed the same as "Devices List" above it. -->
-                                    <Label Text="Having trouble?"
+                                         of one collapsible card, not a section of the page. -->
+                                    <Label Grid.Column="1"
+                                           Text="Having trouble connecting?"
                                            Style="{StaticResource DashboardSectionTitle}"
                                            FontSize="16"
                                            VerticalTextAlignment="Center"/>
                                     <Image x:Name="HelpChevron"
-                                           Grid.Column="1"
+                                           Grid.Column="2"
                                            Source="icon_chevron_down.svg"
                                            WidthRequest="20" HeightRequest="20"
                                            VerticalOptions="Center"/>
                                 </Grid>
-                                </Border>
                                 <!-- The app's one list of short statements (FindingsList), filled
                                      from code-behind. Written as three bulleted labels before,
                                      which is a fourth spelling of a list the onboarding page and
