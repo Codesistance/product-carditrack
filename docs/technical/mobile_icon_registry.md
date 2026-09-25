@@ -113,7 +113,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_metric_breathing.svg` | `#3E8AC7` | AlertDetailPage, MetricCard, TrendMetricCatalogue |
 | `icon_metric_heart.svg` | `#E53E3E` | AlertDetailPage, AlertMiniCard, BaselineLearningPage, ConnectionSuccessPage, DeviceConnectionPage, MetricCard, TrendMetricCatalogue |
 | `icon_metric_sleep.svg` | `#7C6FDC` | AlertDetailPage, AlertMiniCard, DeviceConnectionPage, MetricCard, TrendMetricCatalogue |
-| `icon_metric_spo2.svg` | `#1F8A72` | MetricCard, TrendMetricCatalogue |
+| `icon_metric_spo2.svg` | `#1F8A72` | AlertDetailPage, MetricCard, TrendMetricCatalogue |
 | `icon_metric_steps.svg` | `#3175B9` | AlertDetailPage, AlertMiniCard, ConnectionSuccessPage, DeviceConnectionPage, MetricCard, TrendMetricCatalogue |
 | `icon_metric_temperature.svg` | `#1F8A72` | MetricCard, TrendMetricCatalogue |
 
@@ -122,7 +122,7 @@ icon can be staged ahead of a screen that has not shipped.
 | Icon | Colours | Used by |
 | --- | --- | --- |
 | `icon_action_call.svg` | `#153D66` `#3175B9` | AlertListCard, CardiMemberDetailPage, QuickActionRow |
-| `icon_action_check.svg` | `#153D66` | AcceptInvitePage, AlertListCard, ChoiceSheetPage, FamilySwitcherPage, FindingsList, InviteWaitPage |
+| `icon_action_check.svg` | `#153D66` | AcceptInvitePage, AlertListCard, FamilySwitcherPage, FindingsList, InviteWaitPage |
 | `icon_action_details.svg` | `#3175B9` `#153D66` | DashboardPage |
 | `icon_action_profile.svg` | `#3175B9` `#153D66` | QuickActionRow |
 | `icon_action_sms.svg` | `#3175B9` `#153D66` `#FFFFFF` | CardiMemberDetailPage, QuickActionRow |
@@ -145,7 +145,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_back_white.svg` | `#FFFFFF` | AcceptInvitePage, AlertDetailPage, AlertRespondPage, AlertSettingsPage, AlertsPage, ApproveJoinRequestPage, CardiMemberDetailPage, CaregiverInvitesPage, DeviceManagementPage, EditCardiMemberPage, ExportConsentsPage, ExportHealthDataPage, FamilyPage, JoinFamilyPage, JournalEntryPage, JournalPage, JournalTimingPage, LegalDocumentPage, MedicalInformationPage, MemberChatPage, MetricAlarmEditPage, MetricAlarmsPage, MetricTrendPage, NotificationPreferencesPage, NotificationsPage, QuestionnairesPage, SettingsPage, StartFamilyPage, TransferFamilyAdminPage, WizardHeader |
 | `icon_caret_down.svg` | `#343434` | FilterChipBar |
 | `icon_caret_down_white.svg` | `#FFFFFF` | FamilyPage, FilterChipBar, MemberChatPage |
-| `icon_chevron.svg` | `#939DAA` | AlertDetailPage, CardiMemberDetailPage, DeviceCard, DeviceManagementPage, MemberChatPage |
+| `icon_chevron.svg` | `#939DAA` | AlertDetailPage, CardiMemberDetailPage, DeviceCard, DeviceManagementPage, FamilyPage, MemberChatPage |
 | `icon_chevron_down.svg` | `#939DAA` | AccordionSection, AlertListCard, ChoiceField, DeviceCard, DeviceManagementPage |
 | `icon_chevron_down_white.svg` | `#FFFFFF` | MemberChatPage |
 
@@ -173,7 +173,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_chatbot.svg` | `#36C09B` `#1884DC` `#174E86` `#9FEBFF` `#B9F1FF` `#123A5F` `#FFFFFF` | ChatBotLauncher, MemberChatPage, PendingBotIndicator |
 | `icon_chatbot_mono.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_check_disc.svg` | `#3175B9` `#153D66` `#FFFFFF` | BaselineLearningPage, FindingsList |
-| `icon_check_white.svg` | `#FFFFFF` | AlertDetailPage |
+| `icon_check_white.svg` | `#FFFFFF` | AlertDetailPage, ChoiceSheetPage |
 | `icon_clipboard.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, InviteWaitPage |
 | `icon_clipboard_ink.svg` | `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_edit.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage, MedicalInformationPage |
@@ -193,7 +193,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_open.svg` | `#153D66` | ExportDeliveryPopupPage |
 | `icon_pause.svg` | `#B45309` | CardiMemberDetailPage |
 | `icon_person_remove.svg` | `#FBE4E4` `#C42F2F` | CardiMemberDetailPage, FamilyPage |
-| `icon_plus.svg` | `#153D66` | ConnectionSuccessPage, DeviceManagementPage |
+| `icon_plus.svg` | `#153D66` | ConnectionSuccessPage, DeviceManagementPage, FamilyPage |
 | `icon_power_red.svg` | `#C42F2F` | SettingsPage |
 | `icon_power_white.svg` | `#FFFFFF` | DashboardPage, SettingsPage |
 | `icon_refresh.svg` | `#939DAA` | AlertsPage, ConnectionSuccessPage, DeviceCard |
@@ -201,7 +201,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_save.svg` | `#3175B9` `#153D66` `#C9E1FF` `#FFFFFF` | ExportDeliveryPopupPage |
 | `icon_share.svg` | `#153D66` | ExportDeliveryPopupPage, InviteWaitPage |
 | `icon_star.svg` | `#939DAA` | DeviceCard, StarRatingView |
-| `icon_trash.svg` | `#FBE4E4` `#C42F2F` | AlertDetailPage, AlertListCard, DeviceCard, MetricAlarmEditPage, QuestionCard |
+| `icon_trash.svg` | `#FBE4E4` `#C42F2F` | AlertListCard, DeviceCard, MetricAlarmEditPage, QuestionCard |
 | `icon_user_bell.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_watch.svg` | `#D9DCE1` `#727272` `#FFFFFF` | CardiMemberDetailPage |
 
