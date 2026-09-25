@@ -40,23 +40,6 @@
                            VerticalOptions="Center"
                            LineBreakMode="TailTruncation"/>
 
-                    <!-- Which of the stacked members the dashboard treats as primary — shown only
-                         when there is more than one to tell apart (SetPrimary). -->
-                    <Border x:Name="PrimaryPill"
-                            IsVisible="False"
-                            StrokeThickness="0"
-                            Padding="8,2"
-                            BackgroundColor="{StaticResource SelectedOptionBackground}"
-                            VerticalOptions="Center">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="8"/>
-                        </Border.StrokeShape>
-                        <Label Text="Primary"
-                               FontFamily="QuicksandSemiBold"
-                               FontSize="11"
-                               TextColor="{StaticResource PrimaryDark}"/>
-                    </Border>
-
             <!-- Last-session weather (EnvironmentalReading — not live, no stored coordinate).
                  Its own TapGestureRecognizer takes taps before the row's own below, so tapping
                  the chip opens the weather popup rather than M1-13. Hidden outright when the
@@ -89,6 +72,27 @@
             <HorizontalStackLayout Grid.Column="1"
                                     Spacing="8"
                                     VerticalOptions="Start">
+
+                <!-- Pin to the top of the dashboard: only while several members stack, since one
+                     card has nowhere else to go (SetPinning). Filled blue while pinned. -->
+                <Border x:Name="PinButton"
+                        WidthRequest="36" HeightRequest="36"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}"
+                        VerticalOptions="Center"
+                        IsVisible="False"
+                        SemanticProperties.Description="Pin to the top">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="18"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnPinTapped"/>
+                    </Border.GestureRecognizers>
+                    <Image x:Name="PinIcon"
+                           Source="icon_pin.svg"
+                           WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Border>
 
                 <!-- Every button in this row now says two things (see ApplyDaybook and its
                      siblings in the code-behind): the ring pulses while there is something behind

@@ -25,12 +25,12 @@ public partial class DashboardPage : ContentPage
     internal const string PrimaryMemberIdKey = "PrimaryCardiMemberId";
 
     /// <summary>
-    /// One card per CardiMember on screen, by member id. The primary member's card is always
-    /// first; the rest follow by first name (see <see cref="ArrangeCards"/>).
+    /// One card per CardiMember on screen, by member id, in the order <see cref="ArrangeCards"/>
+    /// gives them: pinned, then most worrying, then by name.
     /// </summary>
     private readonly Dictionary<Guid, MemberDashboardCard> _cards = [];
 
-    /// <summary>The order the other members' cards go in, from the last member-list read.</summary>
+    /// <summary>The members other than the one loaded first, from the last member-list read.</summary>
     private IReadOnlyList<Guid> _otherMemberOrder = [];
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
 
@@ -617,7 +617,7 @@ public partial class DashboardPage : ContentPage
         ChatBot.MemberFirstName = data.DisplayFirstName();
 
         CardFor(data.CardiMemberId).Apply(data, _popups);
-        ArrangeCards(data.CardiMemberId);
+        ArrangeCards();
         ApplyAlerts();
     }
 
@@ -635,6 +635,7 @@ public partial class DashboardPage : ContentPage
         card.NoDeviceRequested += async (_, _) => await OfferConnectAsync(card);
         card.QuestionRequested += async (_, _) => await AnswerPendingQuestionAsync(card);
         card.WeatherRequested += async (_, weather) => await _popups.ShowWeatherAsync(weather);
+        card.PinRequested += (_, _) => TogglePin(card);
         card.SleepAlertRequested += async (_, alertId) =>
             await Shell.Current.GoToAsync($"{AlertDetailPage.Route}?alertId={alertId}");
         _cards[memberId] = card;
@@ -642,29 +643,56 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// Puts the cards in order — the primary member first, the rest by first name — and marks the
-    /// primary once there is more than one member to tell it apart from.
+    /// Puts the cards in order — pinned first, then the most worrying, then by first name (see
+    /// <see cref="MemberCardOrder"/>) — and tells each whether it is one of several, which is what
+    /// offers the pin and shrinks the quick actions.
     /// </summary>
-    private void ArrangeCards(Guid primaryId)
+    private void ArrangeCards()
     {
-        var ordered = new List<MemberDashboardCard>();
-        if (_cards.TryGetValue(primaryId, out var primary))
-            ordered.Add(primary);
-        foreach (var id in _otherMemberOrder)
-        {
-            if (id != primaryId && _cards.TryGetValue(id, out var card) && card.Data is not null)
-                ordered.Add(card);
-        }
+        var pinned = LoadPins();
+        var shown = _cards.Values.Where(c => c.Data is not null).ToList();
+        var order = MemberCardOrder.Order(
+            shown.Select(c => (c.Data!.CardiMemberId, (string?)c.Data.HealthStatus, c.Data.DisplayFirstName())),
+            pinned);
+        var ordered = order.Select(id => _cards[id]).ToList();
 
         var several = ordered.Count > 1;
         foreach (var card in ordered)
-            card.SetPrimary(several && card == primary);
+            card.SetStacking(several, pinned.Contains(card.Data!.CardiMemberId));
 
         if (MemberCards.Children.SequenceEqual(ordered))
             return;
         MemberCards.Clear();
         foreach (var card in ordered)
             MemberCards.Add(card);
+    }
+
+    /// <summary>
+    /// The members this caregiver pinned, on this phone. Per caregiver — the key carries the same
+    /// non-reversible account token the disclosure hint uses — so the next person to sign in here
+    /// starts from their own order, not the last one's.
+    /// </summary>
+    private string? PinsKey() =>
+        HealthDataDisclosureScope.For(_authService.CurrentUserEmail) is { } scope
+            ? $"PinnedMembers:{scope}"
+            : null;
+
+    private IReadOnlySet<Guid> LoadPins() =>
+        PinsKey() is { } key
+            ? MemberCardOrder.ParsePins(Preferences.Default.Get(key, string.Empty))
+            : new HashSet<Guid>();
+
+    /// <summary>Pins or unpins a member and re-orders the dashboard straight away.</summary>
+    private void TogglePin(MemberDashboardCard card)
+    {
+        if (card.Data is not { } data || PinsKey() is not { } key)
+            return;
+
+        var pinned = LoadPins().ToHashSet();
+        if (!pinned.Remove(data.CardiMemberId))
+            pinned.Add(data.CardiMemberId);
+        Preferences.Default.Set(key, MemberCardOrder.FormatPins(pinned));
+        ArrangeCards();
     }
 
     /// <summary>
@@ -700,7 +728,7 @@ public partial class DashboardPage : ContentPage
             _cards.Remove(gone);
 
         await Task.WhenAll(others.Select(m => LoadOtherMemberAsync(m.Id, liveOnly)));
-        ArrangeCards(primaryId);
+        ArrangeCards();
         ApplyAlerts();
     }
 

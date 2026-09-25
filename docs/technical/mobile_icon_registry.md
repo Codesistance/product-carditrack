@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**115 icons**, **35 distinct colours**, **3 referenced nowhere**.
+**117 icons**, **35 distinct colours**, **5 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -24,9 +24,9 @@ lists every colour rather than only the common ones: a colour used once still pi
 | Colour | Icons | Also known as |
 | --- | --- | --- |
 | `#FFFFFF` | 41 | White |
-| `#153D66` | 28 | icons.json brand outer stroke |
-| `#3175B9` | 22 | icons.json brand and activity fill, steel blue |
-| `#939DAA` | 15 | MutedText |
+| `#153D66` | 29 | icons.json brand outer stroke |
+| `#3175B9` | 23 | icons.json brand and activity fill, steel blue |
+| `#939DAA` | 16 | MutedText |
 | `#C42F2F` | 12 | DangerRed |
 | `#1884DC` | 11 | Primary |
 | `#174E86` | 7 | PrimaryDark |
@@ -65,6 +65,8 @@ In the tree, used by nothing. Candidates for deletion — but check the history 
 icon can be staged ahead of a screen that has not shipped.
 
 - `icon_caution_danger.svg`
+- `icon_pin.svg`
+- `icon_pin_on.svg`
 - `icon_status_critical.svg`
 - `icon_status_urgent.svg`
 
@@ -213,6 +215,8 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_open.svg` | `#153D66` | ExportDeliveryPopupPage |
 | `icon_pause.svg` | `#B45309` | CardiMemberDetailPage |
 | `icon_person_remove.svg` | `#FBE4E4` `#C42F2F` | CardiMemberDetailPage, FamilyPage |
+| `icon_pin.svg` | `#939DAA` | **nothing** |
+| `icon_pin_on.svg` | `#3175B9` `#153D66` | **nothing** |
 | `icon_plus.svg` | `#153D66` | ConnectionSuccessPage, DeviceManagementPage, FamilyPage |
 | `icon_power_red.svg` | `#C42F2F` | SettingsPage |
 | `icon_power_white.svg` | `#FFFFFF` | DashboardPage, SettingsPage |

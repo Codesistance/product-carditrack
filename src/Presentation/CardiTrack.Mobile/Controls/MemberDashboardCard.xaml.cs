@@ -39,6 +39,7 @@ public partial class MemberDashboardCard : ContentView
         Hero.QaTapped += (_, _) => QuestionRequested?.Invoke(this, EventArgs.Empty);
         Hero.AdviseTapped += (_, _) => AdviseRequested?.Invoke(this, EventArgs.Empty);
         Hero.WeatherTapped += (_, weather) => WeatherRequested?.Invoke(this, weather);
+        Hero.PinTapped += (_, _) => PinRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>The dashboard this card last drew, or null before its first.</summary>
@@ -55,11 +56,19 @@ public partial class MemberDashboardCard : ContentView
     public event EventHandler? AdviseRequested;
     public event EventHandler<WeatherSnapshotResponse>? WeatherRequested;
     public event EventHandler<Guid>? SleepAlertRequested;
+    public event EventHandler? PinRequested;
 
     /// <summary>
-    /// Marks the member the dashboard treats as primary, when there is more than one to tell apart.
+    /// How the card sits among others: with more than one member on the dashboard it offers the
+    /// pin, and its SOS / Call / Message / Details shrink to the compact icon row Alert Details
+    /// uses — four tiles a card, several cards down, pushed everyone below the fold. One member
+    /// keeps the full tiles and no pin, since there is nothing to rank it against.
     /// </summary>
-    public void SetPrimary(bool isPrimary) => Hero.SetPrimary(isPrimary);
+    public void SetStacking(bool several, bool pinned)
+    {
+        Hero.SetPinning(several, pinned);
+        QuickActions.Compact = several;
+    }
 
     public void Apply(DashboardResponse data, IPopupService popups)
     {

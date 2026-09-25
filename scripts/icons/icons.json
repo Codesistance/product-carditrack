@@ -637,6 +637,20 @@
    "size": 24
   },
   {
+   "file": "icon_pin.svg",
+   "source": "iconpark",
+   "name": "pushpin",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_pin_on.svg",
+   "source": "iconpark",
+   "name": "pushpin",
+   "group": "brand",
+   "size": 24
+  },
+  {
    "file": "icon_btn_refresh.svg",
    "source": "iconpark",
    "name": "refresh",
