@@ -112,7 +112,7 @@ Cross-origin requests are restricted to a configured **origin allow-list** (`Cor
 
 ## Implemented Endpoints (September 2026)
 
-The full implemented surface is 68 endpoints across 13 controllers:
+The full implemented surface is 69 endpoints across 13 controllers:
 
 | Method + Route | Purpose | Doc |
 |----------------|---------|-----|

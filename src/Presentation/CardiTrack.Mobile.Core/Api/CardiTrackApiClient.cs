@@ -418,7 +418,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         {
             using var response = await _http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, whole.Token);
             if (!response.IsSuccessStatusCode)
-                throw await MapErrorAsync("POST", path, response, ct);
+                // Under the whole-send budget too: past the headers the handler's timeout has
+                // stopped, and an error body that stalls would otherwise hold the send open.
+                throw await MapErrorAsync("POST", path, response, whole.Token);
 
             await using var body = await response.Content.ReadAsStreamAsync(whole.Token);
             await foreach (var sse in ServerSentEventReader.ReadAsync(body, whole.Token))
@@ -430,7 +432,10 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
                             onStep.Report(step!);
                         break;
                     case "answer":
-                        answer = JsonSerializer.Deserialize<MemberChatMessageResponse>(sse.Data, Json);
+                        // Unreadable is treated as absent — the "cut off" message below — rather
+                        // than letting a JsonException escape as an unexplained failure.
+                        if (JsonUtility.TryDeserialize<MemberChatMessageResponse>(sse.Data, out var parsed, out _))
+                            answer = parsed;
                         break;
                     case "error":
                         throw StreamError(path, sse.Data);
@@ -441,6 +446,13 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
                 if (sse.Name == "done")
                     break;
             }
+        }
+        catch (Exception ex) when (answer is not null && ex is not ApiException
+                                   && (IsTransport(ex) || ex is IOException) && !ct.IsCancellationRequested)
+        {
+            // The answer had already arrived and the turn is saved server-side: a connection that
+            // drops (or a budget that runs out) before `done` costs the caregiver nothing.
+            _logger.LogWarning(ex, "API POST {Path} stream broke after its answer; keeping the answer", path);
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && whole.IsCancellationRequested)
         {

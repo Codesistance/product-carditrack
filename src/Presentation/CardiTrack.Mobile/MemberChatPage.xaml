@@ -101,7 +101,7 @@
                            FontFamily="Quicksand"
                            FontSize="11"
                            TextColor="{StaticResource White}"
-                           Opacity="0.7"
+                           Opacity="0.85"
                            LineBreakMode="WordWrap"
                            MaxLines="2"/>
                 </VerticalStackLayout>
@@ -443,10 +443,10 @@
             </CollectionView>
 
             <!-- The reply-in-progress bubble: the bot mark breathing while the model chain works,
-                 beside a line of waiting copy the code-behind cycles (LLM-written for this
-                 question, canned if that generation loses its race). A pinned row below the
-                 conversation rather than a CollectionView item, because its text changes every
-                 few seconds and its animation must run continuously — an immutable ChatTurnItem
+                 beside the step the server reports as each one starts (streamed, see
+                 MemberChatStep). A pinned row below the
+                 conversation rather than a CollectionView item, because its text changes as
+                 the steps arrive and its animation must run continuously — an immutable ChatTurnItem
                  would have to be swapped out per tick, recreating the bubble and restarting the
                  pulse mid-breath. -->
             <Grid x:Name="PendingPanel" Grid.Row="1" Padding="16,4,16,8" IsVisible="False">

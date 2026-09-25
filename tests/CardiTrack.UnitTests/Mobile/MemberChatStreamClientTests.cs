@@ -147,6 +147,51 @@ public class MemberChatStreamClientTests
     }
 
     [Fact]
+    public async Task AConnectionThatDropsAfterTheAnswer_StillReturnsIt()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new BreaksAfter(Encoding.UTF8.GetBytes(AnswerEvent.Replace("\r\n", "\n")))),
+        });
+
+        var answer = await client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null);
+
+        Assert.Equal("Steady night.", answer.Reply);
+    }
+
+    [Fact]
+    public async Task AConnectionThatDropsBeforeTheAnswer_IsANetworkError()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new BreaksAfter(Encoding.UTF8.GetBytes(
+                "event: step\ndata: {\"step\":\"reading\",\"text\":\"Reading…\"}\n\n"))),
+        });
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.StreamMemberChatMessageAsync(
+            _memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" }, onStep: null));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ex.StatusCode);
+        Assert.IsType<IOException>(ex.InnerException);
+    }
+
+    /// <summary>A body that serves its bytes, then fails the way a dropped connection does.</summary>
+    private sealed class BreaksAfter(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override int Read(byte[] buffer, int offset, int count) =>
+            base.Read(buffer, offset, count) is > 0 and var read ? read : throw new IOException("connection reset");
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            await base.ReadAsync(buffer, cancellationToken) is > 0 and var read ? read : throw new IOException("connection reset");
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+    }
+
+    [Fact]
     public async Task TheReader_JoinsMultiLineData_AndSkipsComments()
     {
         var body = new MemoryStream(Encoding.UTF8.GetBytes(
