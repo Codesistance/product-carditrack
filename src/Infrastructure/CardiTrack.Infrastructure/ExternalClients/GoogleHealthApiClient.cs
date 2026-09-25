@@ -1099,11 +1099,11 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             // loudly rather than thrown.
             //
             // Deliberately NOT passing ex itself, or ex.Message, to the logger. EnsureSuccessAsync
-            // and ParseBodyAsync build GoogleHealthApiException.Message from the raw response body
-            // verbatim -- for these two data types that body can be an ECG reading or a batch of
-            // IRN heartbeats. Attaching the exception object here would put beat-level cardiac
-            // data into whatever sink ILogger writes to (Serilog to Cloud Logging to Datadog,
-            // 100%-sampled), which is exactly the exposure the fields selector and the
+            // and ParseBodyAsync no longer put the response body in GoogleHealthApiException.Message,
+            // but for these two data types that body can be an ECG reading or a batch of IRN
+            // heartbeats, and this log is not where a future message change should get to leak
+            // beat-level cardiac data into whatever sink ILogger writes to (Serilog to Cloud
+            // Logging to Datadog, 100%-sampled) -- exactly the exposure the fields selector and the
             // waveform-never-fetched discipline exist to prevent everywhere else in this file.
             // Only the data type name, the status code and the malformed flag are safe to log.
             if (ex.IsMalformedRequest)
@@ -1188,7 +1188,12 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
                 // Bedtime clipping is enrichment. A transient failure on tomorrow's list
                 // must not discard today's snapshot — the ended night still clips the
                 // small hours; the evening tail stays inside the stretch until the next sync.
-                _logger.LogWarning(ex, "Tomorrow's sleep list failed; stretching without bedtime clip.");
+                // Type and status only — never the exception: a provider failure's message is
+                // not this log's to carry, and the sleep list is the wearer's nights.
+                _logger.LogWarning(
+                    "Tomorrow's sleep list failed ({Failure}, status {StatusCode}); stretching "
+                    + "without bedtime clip.",
+                    ex.GetType().Name, (ex as GoogleHealthApiException)?.StatusCode);
                 stretchWindows = sleep.SessionWindows;
             }
         }
@@ -2096,12 +2101,16 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         }
     }
 
+    // Neither throw below puts the response body in the exception message. Every sync catch-all
+    // up the stack (Worker, PipelineJobs, manual sync) logs the exception object whole, so its
+    // message lands in Datadog, and a body from this API can be the wearer's readings. Length,
+    // parse-error locations and the status enum are what is safe to carry.
     private static async Task<JToken> ParseBodyAsync(HttpResponseMessage response, string what)
     {
         var body = await response.Content.ReadAsStringAsync();
         if (!JsonUtility.TryParse(body, out var root, out var errors))
             throw new GoogleHealthApiException((int)response.StatusCode,
-                $"Google Health API {what} response was not valid JSON: {string.Join("; ", errors)}. Payload: {JsonUtility.PreviewOf(body)}");
+                $"Google Health API {what} response was not valid JSON ({body.Length} chars): {string.Join("; ", errors)}");
         return root!;
     }
 
@@ -2111,9 +2120,27 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         {
             var body = await response.Content.ReadAsStringAsync();
             throw new GoogleHealthApiException((int)response.StatusCode,
-                $"Google Health API returned {(int)response.StatusCode}: {body}",
+                $"Google Health API returned {(int)response.StatusCode} ({ErrorStatusOf(body) ?? "no error status"}).",
                 IsMalformedRequest((int)response.StatusCode, body));
         }
+    }
+
+    /// <summary>
+    /// The <c>error.status</c> enum of a Google API error envelope (e.g. <c>PERMISSION_DENIED</c>),
+    /// or null. Only an enum-shaped value is returned: anything else in that slot is free text
+    /// from the provider, which is what the exception message must not carry.
+    /// </summary>
+    private static string? ErrorStatusOf(string body)
+    {
+        if (!JsonUtility.TryParse(body, out var root, out _) || root is not JObject envelope)
+            return null;
+
+        var status = (envelope["error"] as JObject)?["status"] is JValue { Type: JTokenType.String } value
+            ? (string?)value
+            : null;
+        return status is { Length: > 0 and <= 64 } && status.All(c => c is (>= 'A' and <= 'Z') or '_')
+            ? status
+            : null;
     }
 
     /// <summary>

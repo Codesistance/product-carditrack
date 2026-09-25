@@ -74,7 +74,8 @@ public class OAuthTokenRefreshService : IOAuthTokenRefreshService
         {
             var errorBody = await response.Content.ReadAsStringAsync();
             var message =
-                $"Token refresh returned {(int)response.StatusCode} for DeviceConnection {connection.Id}: {errorBody}";
+                $"Token refresh returned {(int)response.StatusCode} for DeviceConnection {connection.Id} " +
+                $"({OAuthErrorCode.Describe(errorBody)}).";
 
             if (IsGrantRejection(response.StatusCode, errorBody))
             {

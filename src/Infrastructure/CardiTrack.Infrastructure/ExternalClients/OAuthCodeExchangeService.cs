@@ -55,7 +55,8 @@ public class OAuthCodeExchangeService : IOAuthCodeExchangeService
         if (!response.IsSuccessStatusCode)
         {
             throw new OAuthExchangeException(
-                $"Token exchange returned {(int)response.StatusCode} from {providerConfig.Provider}: {content}");
+                $"Token exchange returned {(int)response.StatusCode} from {providerConfig.Provider} " +
+                $"({OAuthErrorCode.Describe(content)}).");
         }
 
         if (!JsonUtility.TryParse(content, out var root, out var jsonErrors))
