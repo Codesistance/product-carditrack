@@ -153,11 +153,17 @@
                                        Style="{StaticResource Heading3}"
                                        TextColor="{StaticResource White}"
                                        LineBreakMode="WordWrap"/>
+                                <!-- A size under the body text: when it happened is the least
+                                     load-bearing line on the banner, and at body size it competed
+                                     with the title. Pinned to the bottom of its row so its last line
+                                     sits on the icon tile's bottom edge — the tile spans both rows,
+                                     so the two finish on the same line whatever the title wraps to. -->
                                 <Label x:Name="TimeLabel"
                                        Grid.Row="1" Grid.Column="1"
                                        Style="{StaticResource Body2}"
+                                       FontSize="12"
                                        TextColor="{StaticResource White}"
-                                       VerticalOptions="Center"/>
+                                       VerticalOptions="End"/>
                             </Grid>
                         </Border>
 
