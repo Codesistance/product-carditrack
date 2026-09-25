@@ -158,7 +158,7 @@ public class InactivityDetectionService : IInactivityDetectionService
         }
 
         var lastDataUtc = await LastGranularMinuteAsync(memberId, utcNow, rules.SilenceThresholdMinutes, ct);
-        var revived = lastDataUtc is not null && lastDataUtc > utcNow.AddMinutes(-rules.SilenceThresholdMinutes);
+        var revived = IsReporting(lastDataUtc, utcNow, rules);
 
         if (revived)
         {
@@ -194,6 +194,42 @@ public class InactivityDetectionService : IInactivityDetectionService
         if (await _unitOfWork.UserCardiMembers.IsLeftUnwatchedByPendingDeletionAsync(memberId))
             return false;
 
+        // Soft-deleted rows still count: removing the card dismisses this silence episode, not
+        // the next 15-minute tick of the same dead watch. Resolving when the device reports
+        // again is what re-arms the path.
+        var existing = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false)).ToList();
+        bool IsThisRule(Alert a) => AlertRuleMarkers.Suppresses(
+            a, AlertType.Inactivity, AlertRuleMarkers.DeviceSilenceRule);
+
+        // An episode already running is settled here, above every gate below. Those gates all
+        // answer one question — "is now a fair moment to accuse a watch of being dead?" — and
+        // none of them bears on whether an accusation already made is over. Closing an alert
+        // whose readings have demonstrably come back is never the wrong call, whatever the clock
+        // says and whether or not the rule is still switched on.
+        //
+        // It used to sit below them, and that is #1249: a caregiver who reconnected the watch at
+        // nine in the evening was outside waking hours, so the resolve never ran and the "gone
+        // quiet" alert stood until nine the next morning. Disconnecting, reconnecting and
+        // re-syncing all looked like they did nothing, because each of them lands readings and
+        // none of them moves the clock.
+        if (existing.Any(IsThisRule))
+        {
+            var lastData = await LastGranularMinuteAsync(memberId, utcNow, rules.SilenceThresholdMinutes, ct);
+            if (IsReporting(lastData, utcNow, rules) && AlertResolution.Resolve(existing, IsThisRule, utcNow) > 0)
+            {
+                await _unitOfWork.SaveChangesAsync();
+                // The persisted status line catches up on the next pipeline pass — the Worker
+                // has no medical model to regenerate it here, by design.
+            }
+
+            // Settled either way. Still silent is the cooldown: one unresolved device-silence
+            // alert at a time, or a dead device re-pages every fifteen minutes. Scoped to this
+            // rule rather than the whole Inactivity type — the statistical engine's
+            // activity-decline alert shares the type but asks for a different action ("encourage
+            // movement", not "charge the watch"), and the two may legitimately stand together.
+            return false;
+        }
+
         var rulePrefs = AlertRuleOverrides.FromJson(
             (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
         if (!rulePrefs.IsEnabled(AlertRuleCatalogue.DeviceSilence))
@@ -213,42 +249,9 @@ public class InactivityDetectionService : IInactivityDetectionService
             return false;
         }
 
-        // Soft-deleted rows still count: removing the card dismisses this silence episode, not
-        // the next 15-minute tick of the same dead watch. Resolving when the device reports
-        // again (below) is what re-arms the path.
-        var existing = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false)).ToList();
         var lastDataUtc = await LastGranularMinuteAsync(memberId, utcNow, rules.SilenceThresholdMinutes, ct);
-
-        if (lastDataUtc is not null && lastDataUtc > utcNow.AddMinutes(-rules.SilenceThresholdMinutes))
-        {
-            // The device is reporting again, which is exactly this alert's episode ending. Closing
-            // it here is what re-arms the cooldown below: nothing else in the system resolves an
-            // alert, so without this the first silence a member ever had would suppress every one
-            // after it, for good.
-            if (AlertResolution.Resolve(
-                    existing,
-                    a => AlertRuleMarkers.Suppresses(
-                        a, AlertType.Inactivity, AlertRuleMarkers.DeviceSilenceRule),
-                    utcNow) > 0)
-            {
-                await _unitOfWork.SaveChangesAsync();
-                // The persisted status line catches up on the next pipeline pass — the Worker
-                // has no medical model to regenerate it here, by design.
-            }
-
+        if (IsReporting(lastDataUtc, utcNow, rules))
             return false;
-        }
-
-        // Cooldown: one unresolved device-silence alert at a time — a dead device would
-        // otherwise re-page every 15 minutes; resolving the alert re-arms the check. Scoped to
-        // this rule, not the whole Inactivity type: the statistical engine's activity-decline
-        // alert shares the type but asks for a different action ("encourage movement", not
-        // "charge the watch"), and the two may legitimately stand together.
-        if (existing.Any(a => AlertRuleMarkers.Suppresses(
-                a, AlertType.Inactivity, AlertRuleMarkers.DeviceSilenceRule)))
-        {
-            return false;
-        }
 
         // Last check before telling a family their father's watch has stopped: pull now, rather
         // than believing a schedule. Silence at this point means no granular readings have
@@ -296,6 +299,14 @@ public class InactivityDetectionService : IInactivityDetectionService
 
         return true;
     }
+
+    /// <summary>
+    /// Whether the device has produced a reading inside the silence threshold — the single
+    /// question both ends of an episode turn on, so both read it the same way.
+    /// </summary>
+    private static bool IsReporting(
+        DateTime? lastDataUtc, DateTime utcNow, InactivityDetectionRules rules) =>
+        lastDataUtc is not null && lastDataUtc > utcNow.AddMinutes(-rules.SilenceThresholdMinutes);
 
     /// <summary>
     /// The end of the member's most recent minute with any granular reading at all, or null if
