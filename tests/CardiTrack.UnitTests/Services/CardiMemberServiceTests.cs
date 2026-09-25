@@ -1073,7 +1073,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Penicillin allergy, stopped aspirin",
@@ -1105,7 +1106,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Allergy: Penicillin",
@@ -1129,7 +1131,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Pacemaker fitted 2019. Now also on lisinopril",
@@ -1151,7 +1154,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = null,
@@ -1178,7 +1182,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Allergy: Penicillin",
@@ -1207,7 +1212,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Pacemaker fitted 2019",
