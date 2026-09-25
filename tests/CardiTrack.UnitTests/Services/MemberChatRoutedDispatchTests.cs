@@ -57,6 +57,12 @@ public class MemberChatRoutedDispatchTests
         _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns((MemberChatSession?)null);
 
+        // A member who has sent readings this week, so the reading rungs run their pipeline: one
+        // with none is answered in code before the planner (SendsNoReadings, below). The planner
+        // mocks here fetch nothing, so this row reaches only that check and the hero's read.
+        _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([new ActivityLog { Date = DateOnly.FromDateTime(DateTime.UtcNow), Steps = 4200 }]);
+
         // Clean triage: a plain health question, so the fallback path would run analysis.
         _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -418,11 +424,159 @@ public class MemberChatRoutedDispatchTests
     public async Task AnInferenceVerdict_UnderAGreenHero_IsLeftAlone()
     {
         RouterAnswers(MemberChatWorkflow.Inference);
+        HasAnEstablishedBaseline();
         InferenceAnswers(analysis: "Settled.", rewrite: "Everything looks settled.");
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "anything to follow up on?");
 
         Assert.Equal("Everything looks settled.", reply.Reply);
+        // Green because the dashboard has graded this member — readings and a 30-day baseline —
+        // not because nothing had been judged.
+        var clinicalPrompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("Tier: Green (settled", clinicalPrompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The dashboard shows "unknown" for a member it has not graded yet — still learning the
+    /// 30-day baseline — and the Green the tier resolver returns with nothing raised is not a
+    /// verdict for them. The read is told the tier is unknown, never that things are settled.
+    /// </summary>
+    [Fact]
+    public async Task AnInferenceRead_UnderAHeroStillLearning_IsToldTheTierIsUnknown_NotSettled()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        InferenceAnswers(analysis: "Too little to judge.", rewrite: "There isn't enough yet to say.");
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "anything to follow up on?");
+
+        var clinicalPrompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("Tier: Unknown (not enough readings yet", clinicalPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("nothing pressing", clinicalPrompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>The 30-day baseline the dashboard grades a member against, so the hero is Green
+    /// rather than still learning.</summary>
+    private void HasAnEstablishedBaseline() =>
+        _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(_memberId, BaselineProgress.PeriodDays)
+            .Returns(new PatternBaseline { CardiMemberId = _memberId, PeriodDays = BaselineProgress.PeriodDays, AvgSteps = 4000 });
+
+    // ---- A member with nothing to read -----------------------------------------------------
+
+    /// <summary>No daily reading this week, whatever window is asked for.</summary>
+    private void SendsNoReadings() =>
+        _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([]);
+
+    /// <summary>
+    /// The suggested "Anything I should keep an eye on?" about a member whose watch had never
+    /// synced came back "Everything looks settled and steady… nothing to worry about"
+    /// (2026-09-25), under a dashboard saying nothing had come through yet. A verdict question
+    /// names no reading, so the coverage gate had nothing to measure. Every reading rung now
+    /// answers a member with nothing to read in code, before the planner: no plan, no clinical
+    /// read, no rewrite.
+    /// </summary>
+    [Theory]
+    [InlineData(MemberChatWorkflow.Inference)]
+    [InlineData(MemberChatWorkflow.Analysis)]
+    [InlineData(MemberChatWorkflow.Investigation)]
+    public async Task AReadingQuestion_AboutAMemberWhoHasNeverSentReadings_IsAnsweredInCode(MemberChatWorkflow rung)
+    {
+        RouterAnswers(rung);
+        SendsNoReadings();
+        InferenceAnswers(analysis: "Settled.", rewrite: "Everything looks settled and steady.");
+        PipelineAnswers();
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "Anything I should keep an eye on?");
+
+        Assert.Equal(
+            "Moses hasn't sent any readings through yet, so there's nothing for me to go on — I can't say "
+            + "whether anything needs keeping an eye on. Once their watch has synced, ask me again and I'll "
+            + "take a look.",
+            reply.Reply);
+        Assert.DoesNotContain("settled", reply.Reply, StringComparison.OrdinalIgnoreCase);
+        Assert.False(MemberChatReplies.ClaimsSettled(reply.Reply));
+        Assert.Empty(reply.Charts);
+        await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
+        Assert.Empty(_medicalAi.ReceivedCalls());
+        await _rewriteAi.DidNotReceiveWithAnyArgs().GenerateWithUsageAsync(default!, default);
+        // Billed for the triage and the route that ran, and for no plan.
+        await _usages.DidNotReceive().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.QueryPlan));
+    }
+
+    /// <summary>
+    /// A member who has synced before and sent nothing for a week has gone quiet rather than not
+    /// started — and the reply says the week, not "yet", and never why.
+    /// </summary>
+    [Fact]
+    public async Task AReadingQuestion_AboutAMemberQuietForAWeek_SaysNoReadingsReachedUsInSevenDays()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        SendsNoReadings();
+        _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(_memberId).Returns(
+        [
+            new DeviceConnection { CardiMemberId = _memberId, LastSyncDate = DateTime.UtcNow.AddDays(-12) },
+        ]);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "Anything I should keep an eye on?");
+
+        Assert.StartsWith(
+            "No readings have reached us from Moses in the last 7 days, so I can't say whether anything "
+            + "needs keeping an eye on.",
+            reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("hasn't sent", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("settled", reply.Reply, StringComparison.OrdinalIgnoreCase);
+        await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
+        Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
+    /// <summary>An open alert is something to talk about even with no reading this week, so the
+    /// verdict still runs — the gate is for a member with nothing at all.</summary>
+    [Fact]
+    public async Task AMemberWithNoReadings_ButAnOpenAlert_StillGetsTheVerdictRead()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        SendsNoReadings();
+        _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(
+            [new Alert { CardiMemberId = _memberId, Severity = AlertSeverity.Yellow, Title = "Steps well below usual" }]);
+        InferenceAnswers(analysis: "Worth attention: an open alert on steps.", rewrite: "The steps alert is worth a look.");
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "Anything I should keep an eye on?");
+
+        Assert.Equal("The steps alert is worth a look.", reply.Reply);
+        await _planner.ReceivedWithAnyArgs(1).PlanAsync(default!, default, default, default);
+    }
+
+    /// <summary>
+    /// With nothing to read, the watch-out chip — a question chat could only answer "nothing to
+    /// go on" — gives way to the one the family is actually asking, still six chips.
+    /// </summary>
+    [Fact]
+    public async Task TheChips_ForAMemberWithNoReadings_AskWhetherAnythingHasComeThrough()
+    {
+        SendsNoReadings();
+
+        var chips = (await CreateSut().GetSuggestionsAsync(_userId, _memberId)).Suggestions;
+
+        Assert.Equal(6, chips.Count);
+        Assert.Equal("Has anything come through yet?", chips[0]);
+        Assert.DoesNotContain("Anything I should keep an eye on?", chips);
+    }
+
+    /// <summary>
+    /// And that chip is a status question: the status rung answers it in code from the same
+    /// week-wide read, with no model beyond the triage and the route.
+    /// </summary>
+    [Fact]
+    public async Task TheNoReadingsChip_RoutedToStatus_SaysNothingHasComeThroughYet()
+    {
+        RouterAnswers(MemberChatWorkflow.Status);
+        SendsNoReadings();
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "Has anything come through yet?");
+
+        Assert.StartsWith("Nothing recent has come through for Moses yet", reply.Reply, StringComparison.Ordinal);
+        await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
+        Assert.Empty(_medicalAi.ReceivedCalls());
     }
 
     [Fact]

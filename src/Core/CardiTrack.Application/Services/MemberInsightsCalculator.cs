@@ -474,7 +474,18 @@ public static class MemberInsightsCalculator
     }
 
     public static string ComputeHealthStatus(
-        IReadOnlyCollection<Alert> unresolvedAlerts, bool isLearning, DashboardMetrics? metrics)
+        IReadOnlyCollection<Alert> unresolvedAlerts, bool isLearning, DashboardMetrics? metrics) =>
+        ComputeHealthStatus(unresolvedAlerts, isLearning, hasReadings: metrics is not null);
+
+    /// <summary>
+    /// The same status from whether the member has any readings in the dashboard's window, for a
+    /// caller that needs the verdict without building the metric cards — member chat, which must
+    /// not describe as settled a member the dashboard shows as <see cref="UnknownStatus"/>.
+    /// </summary>
+    /// <param name="hasReadings">Whether any daily reading falls in the dashboard's 30-day window
+    /// — the condition under which the dashboard builds metrics at all.</param>
+    public static string ComputeHealthStatus(
+        IReadOnlyCollection<Alert> unresolvedAlerts, bool isLearning, bool hasReadings)
     {
         if (unresolvedAlerts.Count > 0)
         {
@@ -482,8 +493,12 @@ public static class MemberInsightsCalculator
             if (worst >= AlertSeverity.Yellow)
                 return SeverityLabel(worst);
         }
-        return isLearning || metrics is null ? "unknown" : "green";
+        return isLearning || !hasReadings ? UnknownStatus : "green";
     }
+
+    /// <summary>The status a member gets when there is not yet enough to grade them by: still
+    /// learning their 30-day baseline, or no readings in the window at all.</summary>
+    public const string UnknownStatus = "unknown";
 
     public static string SeverityLabel(AlertSeverity severity) =>
         severity.ToString().ToLowerInvariant();
