@@ -81,6 +81,11 @@ public static class AlertDetailComposer
         StatisticalAlertRules.OvernightBreathingUpRule => HeartRateDays,
         StatisticalAlertRules.ElevatedZoneWithoutMovementRule => ActivityDays,
         StatisticalAlertRules.DaytimeInactivityBlockRule => ActivityDays,
+        // The published-range rules read three weeks; the chart shows the stretch around the
+        // finding, at the grain each metric's own chart already uses.
+        StatisticalAlertRules.SleepOutsideRangeRule => SleepDays,
+        StatisticalAlertRules.RestingHeartRateOutsideRangeRule => SleepDays,
+        StatisticalAlertRules.OxygenBelowRangeRule => SleepDays,
         DeviceSilenceRule => 0,
         RealtimeHeartRateRule => 0,
 
@@ -130,7 +135,8 @@ public static class AlertDetailComposer
         or StatisticalAlertRules.ElevatedHeartRateRule
         or StatisticalAlertRules.LongTermTrendRule
         or StatisticalAlertRules.DaytimeInactivityBlockRule
-        or StatisticalAlertRules.ElevatedZoneWithoutMovementRule;
+        or StatisticalAlertRules.ElevatedZoneWithoutMovementRule
+        or StatisticalAlertRules.RestingHeartRateOutsideRangeRule;
 
     /// <summary>
     /// The civil day this alert is about. Prefers the <c>day</c> / <c>night</c> stamp the
@@ -380,6 +386,11 @@ public static class AlertDetailComposer
         StatisticalAlertRules.OvernightBreathingUpRule => AlertReasons.Monitoring,
         StatisticalAlertRules.DaytimeInactivityBlockRule => AlertReasons.Activity,
         StatisticalAlertRules.IrregularSleepRule => AlertReasons.Sleep,
+        StatisticalAlertRules.SleepOutsideRangeRule => AlertReasons.Sleep,
+        StatisticalAlertRules.RestingHeartRateOutsideRangeRule => AlertReasons.Heart,
+        // Monitoring, like overnight breathing: there is no oxygen artwork, and a heart icon
+        // would name the wrong organ.
+        StatisticalAlertRules.OxygenBelowRangeRule => AlertReasons.Monitoring,
 
         // The heart icon, not monitoring: a rhythm finding is the most literally cardiac thing
         // this screen shows. Without these two arms AlertType.Rhythm falls through to the default
@@ -782,7 +793,9 @@ public static class AlertDetailComposer
                     l => l.OvernightBreathingRate,
                     baseline?.AvgOvernightBreathingRate
                         ?? ReadDecimal(metrics, "baselineAvgOvernightBreathingRate"),
-                    reference: HealthReferenceRanges.BreathingRate,
+                    // No band: WHO's 12–20 is a waking rate, not a sleeping one
+                    // (HealthReferenceRanges.NoOvernightBreathingBand).
+                    reference: null,
                     headlineDate: aboutDate),
 
             StatisticalAlertRules.ElevatedZoneWithoutMovementRule
@@ -811,6 +824,32 @@ public static class AlertDetailComposer
 
             RealtimeHeartRateRule => GranularHeartChart(granular, baseline?.AvgRestingHeartRate),
 
+            // The published-range rules draw the range they were judged against as the chart's
+            // reference — the thing the finding is about — with the member's usual as the line.
+            StatisticalAlertRules.SleepOutsideRangeRule
+                => DailyChart(
+                    "sleep", "Sleep", "hours", SleepDays, today, logs,
+                    l => Hours(l.SleepMinutes),
+                    Hours(baseline?.AvgSleepMinutes),
+                    reference: SleepReference(metrics, member, today),
+                    headlineDate: aboutDate),
+
+            StatisticalAlertRules.RestingHeartRateOutsideRangeRule
+                => DailyChart(
+                    "restingHeartRate", "Heart Rate", "bpm", SleepDays, today, logs,
+                    l => l.RestingHeartRate,
+                    baseline?.AvgRestingHeartRate,
+                    reference: HealthReferenceRanges.RestingHeartRate,
+                    headlineDate: aboutDate),
+
+            StatisticalAlertRules.OxygenBelowRangeRule
+                => DailyChart(
+                    "spo2", "Blood Oxygen", "%", SleepDays, today, logs,
+                    l => l.SpO2Average,
+                    baseline: null,
+                    reference: HealthReferenceRanges.SpO2,
+                    headlineDate: aboutDate),
+
             _ => null,
         };
     }
@@ -825,8 +864,12 @@ public static class AlertDetailComposer
     /// </summary>
     private static MetricReference? SleepReference(JsonElement metrics, CardiMember? member, DateOnly today)
     {
-        if (ReadDecimal(metrics, "recommendedLowHours") is { } low
-            && ReadDecimal(metrics, "recommendedHighHours") is { } high)
+        // irregular_sleep stores the band as recommended*Hours; sleep_outside_range as range*,
+        // the shape every published-range rule shares. Either way it is the band the night was
+        // judged against, which must win over the member's current age — a member who has since
+        // turned 65 would otherwise have a 7-9 judgement drawn against 7-8.
+        if ((ReadDecimal(metrics, "recommendedLowHours") ?? ReadDecimal(metrics, "rangeLow")) is { } low
+            && (ReadDecimal(metrics, "recommendedHighHours") ?? ReadDecimal(metrics, "rangeHigh")) is { } high)
         {
             return new MetricReference
             {

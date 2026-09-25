@@ -63,8 +63,12 @@ public class TrendInterpretationService
     /// family reads. Every stored narrative was written by a model working under the tone block,
     /// so every one of them is what this change exists to replace — the stamp is what makes them
     /// regenerate rather than sit there looking current.
+    /// <br/>
+    /// 5: the published range decides and the usual is context (decision 2026-09-25,
+    /// <c>PublishedNormal</c>). The brief used to weigh the two equally, so a narrative could read
+    /// a steady week outside the range as settled for this member.
     /// </remarks>
-    internal const int BriefVersion = 4;
+    internal const int BriefVersion = 5;
 
     /// <summary>
     /// The brief and the pinned table it carries, as one stamped number. A row written by an older
@@ -139,12 +143,13 @@ public class TrendInterpretationService
         a figure against a range printed below it — below it, inside it, or above it — because that
         is reading two given numbers against each other rather than calculating a third.
 
-        You are given two things to measure against, and they answer different questions. Their own
-        usual says whether this is a change for them. The published ranges say whether it sits
-        where the bodies that publish guidance say it should. Use both: a reading can be down on
-        their usual and still comfortably inside the published range, and one can be steady for
-        them and outside it. Both are worth a family knowing, and either alone leaves them to
-        guess the other.
+        You are given two things to measure against, and they answer different questions. The
+        published ranges say whether it sits where the bodies that publish guidance say it should,
+        and for sleep, resting heart rate and blood oxygen that is what normal means. Their own
+        usual says whether this is a change for them — context, never a reason to call a figure
+        outside its range fine. A reading can be down on their usual and still comfortably inside
+        the published range, and one can be steady for them and outside it; the second is worth
+        attention, not reassurance.
 
         Where the published block gives a range for a metric, say where their figure sits against
         it and name the body it comes from. Where the block gives no range for a metric, say

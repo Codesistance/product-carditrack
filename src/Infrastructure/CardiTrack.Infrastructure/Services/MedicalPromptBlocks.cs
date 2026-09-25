@@ -229,8 +229,15 @@ internal static partial class MedicalPromptBlocks
     /// Google's wearable clinical-reasoning role: MedGemma is a longitudinal reasoner over daily
     /// readings, not a wellness copywriter. First line of every two-slot clinical brief.
     /// </summary>
+    /// <remarks>
+    /// The published ranges come first (decision 2026-09-25, <see cref="PublishedNormal"/>): for
+    /// sleep, resting heart rate and blood oxygen a range given with the readings is what normal
+    /// means, and a person's baseline says only whether a reading is new for them. The role used to
+    /// name baselines alone, which made the member's own average the yardstick for every reading —
+    /// including the ones where a poor average is precisely what needed saying.
+    /// </remarks>
     internal const string WearableClinicalRole =
-        "You are a clinical reasoning AI specializing in longitudinal wearable data analysis. Your role is to analyze a structured dataset of daily wearable readings against this person's known baselines when they are given, and otherwise to describe the trajectory without inventing a usual.";
+        "You are a clinical reasoning AI specializing in longitudinal wearable data analysis. Your role is to analyze a structured dataset of daily wearable readings against the published normal ranges given for sleep, resting heart rate and blood oxygen, and against this person's known baselines when they are given; where neither is given, describe the trajectory without inventing a usual.";
 
     /// <summary>
     /// Google's three data constraints, one bullet per line. Adjunct, not diagnosis; physiology
@@ -433,11 +440,16 @@ internal static partial class MedicalPromptBlocks
         "Never propose starting, stopping or changing any treatment or medication.";
 
     /// <summary>
-    /// What a journal entry is actually for: the reading, the member's own usual, and the distance
-    /// between them. The only positive instruction in the block.
+    /// What a journal entry is actually for: the reading, where it sat against its published range,
+    /// and the member's own usual. The only positive instruction in the block.
     /// </summary>
+    /// <remarks>
+    /// The published range comes before the usual (decision 2026-09-25, <see cref="PublishedNormal"/>):
+    /// a book that told a family only where a night sat against their own usual would call a
+    /// five-hour night ordinary for someone who always sleeps five hours.
+    /// </remarks>
     internal const string JournalMeasuredAgainstUsual =
-        "Say what was measured, what their own usual is, and where the reading sat against it.";
+        "Say what was measured, where it sat against the published range where one is given, and what their own usual is.";
 
     /// <summary>
     /// The register every CardiJournal book writes in — Daybook, Weekbook and Monthbook alike: the same family reader as

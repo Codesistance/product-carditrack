@@ -29,6 +29,9 @@ public static class AlertRuleCatalogue
     public const string ElevatedZoneWithoutMovement = StatisticalAlertRules.ElevatedZoneWithoutMovementRule;
     public const string IrregularRhythm = StatisticalAlertRules.IrregularRhythmRule;
     public const string EcgAtrialFibrillation = StatisticalAlertRules.EcgAtrialFibrillationRule;
+    public const string SleepOutsideRange = StatisticalAlertRules.SleepOutsideRangeRule;
+    public const string RestingHeartRateOutsideRange = StatisticalAlertRules.RestingHeartRateOutsideRangeRule;
+    public const string OxygenBelowRange = StatisticalAlertRules.OxygenBelowRangeRule;
 
     // A–G (catalogue reserved; producers not shipped yet)
     public const string LateBedtime = "late_bedtime";
@@ -62,6 +65,7 @@ public static class AlertRuleCatalogue
                 new(LateBedtime, "Late or missed bedtime", "Still active past their usual bedtime", IsImplemented: false),
                 new(FragmentedSleep, "Restless night", "More wake-ups or awake time than usual", IsImplemented: false),
                 new(IrregularSleep, "Unusual sleep length", "Last night was much shorter than usual, or well past the recommended hours", IsImplemented: true),
+                new(SleepOutsideRange, "Sleep outside the recommended hours", "Most nights this week outside the hours recommended at their age, even if that is usual for them", IsImplemented: true),
                 new(DaytimeInactivityBlock, "Long daytime rest", "An unusually long inactive stretch in waking hours", IsImplemented: true),
             ]),
             new(ClusterRhythm, "Heart rhythm", "Findings their own watch made about their heart rhythm",
@@ -72,6 +76,8 @@ public static class AlertRuleCatalogue
             new(ClusterHeart, "Heart & overnight", "Resting heart rate and overnight vitals",
             [
                 new(ElevatedHeartRate, "Elevated resting heart rate", "Yesterday's resting rate was higher than usual", IsImplemented: true),
+                new(RestingHeartRateOutsideRange, "Resting heart rate outside the typical range", "Most days this week outside 60–100 bpm, even if that is usual for them", IsImplemented: true),
+                new(OxygenBelowRange, "Low blood oxygen", "Most days this week below 94%", IsImplemented: true),
                 new(OvernightVitals, "Unusual overnight vitals", "Heart rate or SpO₂ looked off during sleep", IsImplemented: false),
                 new(RealtimeHeartRate, "Sudden heart-rate change", "A sharp change in the last hour of heart-rate data", IsImplemented: true),
                 new(HeartRateVariabilityDrop, "Heart rate variability has dropped", "Two nights running well below their usual — often the first sign of illness or strain", IsImplemented: true),

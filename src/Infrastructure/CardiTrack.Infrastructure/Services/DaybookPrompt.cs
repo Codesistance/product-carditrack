@@ -60,6 +60,7 @@ internal static class DaybookPrompt
         The hour-by-hour JSON is the day's own record: use them to say when in the day things happened, and quote only figures that appear in them.
         A null field is a gap, not a zero; never let a missing reading read as a reassuring one.
         vs_usual and published_band fields are already computed: say them as they are given and never work a comparison out yourself. Where a published band is given, name who publishes it.
+        For sleep, resting heart rate and blood oxygen the published band is what normal means: a reading outside it is worth attention even when it is their usual, and their usual is context, never a reason to call it fine.
         Clock times are already on the member's own local clock: read them as the household's evening and morning, and never convert or relabel them.
         Where a time is given as far off their usual with no direction, say that it was far off and do not decide for yourself whether it was earlier or later.
         Read the day as a whole before concluding: the readings are one person's day and are explained by each other more often than one at a time.
@@ -317,14 +318,14 @@ internal static class DaybookPrompt
                 Band(breathing, band.Low, band.High, "/min", band.Source);
         }
 
+        // No published band: WHO's 12–20 is a waking rate at rest, not a sleeping one
+        // (HealthReferenceRanges.NoOvernightBreathingBand) — breathing asleep is read against the
+        // member's own usual alone.
         if (log.OvernightBreathingRate is { } overnight)
         {
-            var band = HealthReferenceRanges.BreathingRate;
             day["overnight_breathing_rate"] = Decimal1Number(overnight);
             SetUsualDecimal(day, "overnight_breathing_usual", "overnight_breathing_vs_usual",
                 overnight, baseline?.AvgOvernightBreathingRate, v => Decimal1(v) + "/min", tolerances);
-            day["overnight_breathing_published_band"] =
-                Band(overnight, band.Low, band.High, "/min", band.Source);
         }
     }
 

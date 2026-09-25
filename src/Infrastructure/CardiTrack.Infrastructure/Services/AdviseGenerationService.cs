@@ -5,6 +5,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -71,8 +72,13 @@ public class AdviseGenerationService
     /// (task, record, Include, JSON:) rather than a CardiTrack instruction essay. Version 8 is
     /// Google's wearable clinical-reasoning shell: role, data constraints, patient context with
     /// isolated baselines, a JSON array of daily readings, then the existing entries schema.
+    /// Version 9 brings back a published range, narrowly: the three this product treats as what
+    /// normal means (decision 2026-09-25, <see cref="PublishedNormal"/>) — sleep, resting heart
+    /// rate and blood oxygen — and nothing else of the table version 6 removed. A shortfall
+    /// against one of them is a finding even with no learned usual, where version 8 returned
+    /// nothing for a member still being learned however short their nights were.
     /// </remarks>
-    internal const int CurrentPromptVersion = 8;
+    internal const int CurrentPromptVersion = 9;
 
     /// <summary>
     /// <c>CARDITRACK_ADVISE_PROMPT</c>, clinical half — Google's wearable clinical-reasoning
@@ -90,7 +96,7 @@ public class AdviseGenerationService
         [OUTPUT FORMAT]
         Return a JSON object with this layout:
         {"entries":[{"topic":"Sleep","finding":"the trajectory against known baselines","action":"what would address that shortfall","guidelineCited":"what the finding draws on"}]}
-        topic is exactly one of Sleep, Activity, HeartRate or General. At most one entry per topic. Empty entries when the data give nothing to say. Each finding is a trajectory against known baselines when they are given, not a diagnosis. Each action is what would address that shortfall, not a treatment. When known baselines say none are established, return an empty entries list rather than inventing a usual.
+        topic is exactly one of Sleep, Activity, HeartRate or General. At most one entry per topic. Empty entries when the data give nothing to say. Each finding is a trajectory against the published normal range where one is given and against known baselines when they are given, not a diagnosis. A reading outside its published normal range is a shortfall even when it is their usual. Each action is what would address that shortfall, not a treatment. When known baselines say none are established, find only what sits outside a published normal range, rather than inventing a usual.
 
         JSON:
         """;
@@ -220,7 +226,8 @@ public class AdviseGenerationService
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.Advise), ct);
 
-        var clinicalPrompt = BuildClinicalPrompt(memberContext, baseline, recentLogs, today);
+        var clinicalPrompt = BuildClinicalPrompt(
+            memberContext, baseline, recentLogs, today, member.DateOfBirth.ToAgeInYears(today));
         var clinicalResponse = await _medicalAi.GenerateStructuredAsync<AdviseClinicalAiResponse>(clinicalPrompt, ct);
 
         // One clinical survivor per topic, defensively parsed: an unrecognised topic name is
@@ -626,7 +633,8 @@ public class AdviseGenerationService
         string memberContext,
         PatternBaseline? baseline,
         IEnumerable<ActivityLog> recentLogs,
-        DateOnly today)
+        DateOnly today,
+        int? ageYears)
     {
         return $"""
             {ClinicalHead}
@@ -635,6 +643,8 @@ public class AdviseGenerationService
             {memberContext}
 
             Known baselines: {MedicalPromptBlocks.BaselineSummary(baseline)}
+
+            {PublishedNormal.Ranges(ageYears)}
 
             [INPUT DATA]
             {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 7, today))}

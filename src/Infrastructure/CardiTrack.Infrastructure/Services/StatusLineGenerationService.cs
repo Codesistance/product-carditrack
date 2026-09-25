@@ -6,6 +6,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -67,8 +68,8 @@ public class StatusLineGenerationService
         Read this person's recent readings and say what they show. This is an internal clinical
         read: a separate step writes the family's status line from it, so write precisely and
         address no one.
-        Say what the readings show against the usual pattern, in clinical terms. Nothing you write
-        here reaches a family.
+        Say what the readings show against the published normal ranges and the usual pattern, in
+        clinical terms. Nothing you write here reaches a family.
         Do not quote a figure that is not in the readings or computed observations below.
         Match the given tier's seriousness: green the least, then yellow, then orange, then red.
         Lead with a computed observation when one is present; do not recap every figure.
@@ -130,8 +131,14 @@ public class StatusLineGenerationService
     /// larger form left slack in the canonical one, which is exactly the free headroom this
     /// constant exists to deny, so the measurement below normalizes instead.
     /// </para>
+    /// <para>
+    /// 1,622 → 1,755 (decision 2026-09-25): the shared clinical opening now names the published
+    /// ranges for sleep, resting heart rate and blood oxygen as what the readings are read against,
+    /// and this brief says to read them there as well as against the usual pattern. The addition
+    /// buys a status line that no longer calls a member settled because their poor usual is steady.
+    /// </para>
     /// </remarks>
-    internal const int StatusPromptBudget = 1_622;
+    internal const int StatusPromptBudget = 1_755;
 
     /// <summary>
     /// Exposed for the budget test — the instructions themselves stay private.
@@ -236,7 +243,7 @@ public class StatusLineGenerationService
 
         var prompt = BuildCurrentStatusPrompt(
             memberContext, severity, unresolvedAlerts, recentLogs, today, progress,
-            baseline, latestAssessment, localNow, utcNow);
+            baseline, latestAssessment, localNow, utcNow, member.DateOfBirth.ToAgeInYears(today));
         var clinical = await _medicalAi.GenerateStructuredAsync<StatusClinicalAiResponse>(prompt, ct);
 
         // A blank finding is a transient model hiccup, and there is nothing for the rewrite to
@@ -400,7 +407,8 @@ public class StatusLineGenerationService
         PatternBaseline? baseline,
         RealtimeAssessment? latestAssessment,
         DateTime localNow,
-        DateTime utcNow)
+        DateTime utcNow,
+        int? ageYears)
     {
         // One row per local day — same pick as the window table and BaselineCalculator.
         // ActivityLogs is unique per member+date in the store; this still keeps an in-memory
@@ -429,7 +437,8 @@ public class StatusLineGenerationService
 
             --- Current severity tier ---
             {severity}
-            {DigestInterpretationSignals.Section(baseline, todayLog, yesterdayLog, localNow)}{RecentHourSection(latestAssessment, utcNow)}{UsualPatternLine(baseline)}
+            {PublishedNormal.Block(ageYears)}
+            {DigestInterpretationSignals.Section(baseline, todayLog, yesterdayLog, localNow, ageYears)}{RecentHourSection(latestAssessment, utcNow)}{UsualPatternLine(baseline)}
             [INPUT DATA]
             yesterday and today
             {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.StatusWindowDailyReadingsJson(logs, today, progress))}

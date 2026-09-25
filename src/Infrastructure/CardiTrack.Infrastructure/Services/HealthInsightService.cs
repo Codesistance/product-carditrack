@@ -5,6 +5,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Diagnostics;
 using CardiTrack.Infrastructure.Services.PromptContext;
 
@@ -43,8 +44,12 @@ public class HealthInsightService : IHealthInsightService
     /// <br/>
     /// 4: the three briefs are split in two, clinical read then rewrite. Same reasoning as the
     /// alert stamp above — every stored card was written under the tone block.
+    /// <br/>
+    /// 5: a reading outside its published range is named whether or not it moved, and even while
+    /// the member is still being learned (decision 2026-09-25) — a card that read "steady" over a
+    /// week of four-hour nights is the card this exists to replace.
     /// </remarks>
-    internal const int BaselinePromptVersion = 4;
+    internal const int BaselinePromptVersion = 5;
 
     /// <summary>
     /// How recently a baseline insight has to have been written before a pass skips it. An hour,
@@ -162,6 +167,8 @@ public class HealthInsightService : IHealthInsightService
         figures say. Never work out a comparison, a percentage or a direction yourself, and never
         introduce a number that is not in front of you. Do not call a metric unchanged unless it
         is named as steady below.
+        A metric listed as outside the published normal range sat outside it this week whether or
+        not it moved: that is worth attention even when it is their usual, so say it.
 
         """ + ClinicalReadNote + """
         The two fields below have different jobs and must not carry the same sentence twice. The
@@ -192,7 +199,9 @@ public class HealthInsightService : IHealthInsightService
     private const string LearningInstructions =
         MedicalPromptBlocks.WearableClinicalOpening + """
         Describe what the readings have shown so far.
-        There is not yet enough history to know this person's normal, so call nothing unusual.
+        There is not yet enough history to know this person's own usual, so call nothing unusual for
+        them. A sleep, resting heart rate or blood oxygen reading outside its published normal range
+        below is outside it whatever their usual turns out to be — name it.
 
         """ + ClinicalReadNote + """
         Respond with:
@@ -212,7 +221,7 @@ public class HealthInsightService : IHealthInsightService
         MedicalPromptBlocks.WearableClinicalOpening + """
         Describe an early reading against this short window.
         The baseline is provisional — under 30 days of history — so a comparison is an impression, not an established pattern.
-        Do not treat so short a window as settled.
+        Do not treat so short a window as settled. A sleep, resting heart rate or blood oxygen reading outside its published normal range below is outside it whatever this early window shows — name it.
 
         """ + ClinicalReadNote + """
         Respond with:
@@ -401,7 +410,8 @@ public class HealthInsightService : IHealthInsightService
         var memberContext = await ComposeMemberContextAsync(
             member, alert.CardiMemberId, to, PromptPurpose.AlertInsight, ct);
 
-        var prompt = BuildAlertPrompt(alert, memberContext, recentLogs, baseline, to);
+        var prompt = BuildAlertPrompt(
+            alert, memberContext, recentLogs, baseline, to, member?.DateOfBirth.ToAgeInYears(to));
         var read = await _medicalAi.GenerateStructuredAsync<AlertAiResponse>(prompt, ct);
 
         // No read, nothing for the rewrite to write from, and no second call spent finding that
@@ -690,8 +700,9 @@ public class HealthInsightService : IHealthInsightService
         // the sync has got — a morning's steps and no active minutes yet — and it is one of seven
         // in the average, so including it reports a departure that is only the clock.
         // TrendInterpretationService ends its window a day back for the same reason.
+        var ageYears = member?.DateOfBirth.ToAgeInYears(to);
         var movements = BaselineMovementCalculator.Compute(
-            recentLogs, primaryBaseline, to.AddDays(-1));
+            recentLogs, primaryBaseline, to.AddDays(-1), ageYears);
 
         if (primaryBaseline is not null && movements is { HasAnythingToSay: false })
         {
@@ -721,10 +732,10 @@ public class HealthInsightService : IHealthInsightService
         var prompt = (primaryBaseline, provisionalBaseline) switch
         {
             (not null, _) => BuildBaselinePrompt(
-                memberContext, baselines, movements!, to, timeZone),
+                memberContext, baselines, movements!, to, timeZone, ageYears),
             (null, not null) => BuildProvisionalPrompt(
-                memberContext, provisionalBaseline, recentLogs, to, timeZone),
-            _ => BuildLearningPrompt(memberContext, recentLogs, to),
+                memberContext, provisionalBaseline, recentLogs, to, timeZone, ageYears),
+            _ => BuildLearningPrompt(memberContext, recentLogs, to, ageYears),
         };
 
         var read = await _medicalAi.GenerateStructuredAsync<BaselineAiResponse>(prompt, ct);
@@ -1118,7 +1129,8 @@ public class HealthInsightService : IHealthInsightService
         string memberContext,
         IEnumerable<ActivityLog> recentLogs,
         PatternBaseline? baseline,
-        DateOnly today)
+        DateOnly today,
+        int? ageYears)
     {
         var recentSummary = MedicalPromptBlocks.JsonFence(
             MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 3, today));
@@ -1138,6 +1150,8 @@ public class HealthInsightService : IHealthInsightService
             Metric values: {AlertFieldOrNone(alert.MetricValues)}
 
             Known baselines: {MedicalPromptBlocks.BaselineSummary(baseline)}
+
+            {PublishedNormal.Block(ageYears)}
 
             [INPUT DATA]
             {recentSummary}
@@ -1200,7 +1214,8 @@ public class HealthInsightService : IHealthInsightService
         IEnumerable<PatternBaseline> baselines,
         BaselineMovements movements,
         DateOnly today,
-        TimeZoneInfo? timeZone)
+        TimeZoneInfo? timeZone,
+        int? ageYears)
     {
         var baselineLines = baselines.Select(b =>
             MedicalPromptBlocks.BaselineSummary(b) + SleepWindow(b, today, timeZone));
@@ -1214,6 +1229,8 @@ public class HealthInsightService : IHealthInsightService
             --- Baselines ---
             {string.Join("\n", baselineLines)}
 
+            {PublishedNormal.Block(ageYears)}
+
             --- What has moved this week ---
             {BaselineMovementCalculator.Render(movements)}
             """;
@@ -1224,7 +1241,8 @@ public class HealthInsightService : IHealthInsightService
         PatternBaseline baseline,
         IEnumerable<ActivityLog> recentLogs,
         DateOnly today,
-        TimeZoneInfo? timeZone)
+        TimeZoneInfo? timeZone,
+        int? ageYears)
     {
         return $"""
             {ProvisionalInstructions}
@@ -1235,13 +1253,15 @@ public class HealthInsightService : IHealthInsightService
             --- Provisional baseline ---
             {MedicalPromptBlocks.BaselineSummary(baseline, provisional: true)}{SleepWindow(baseline, today, timeZone)}
 
+            {PublishedNormal.Block(ageYears)}
+
             [INPUT DATA]
             {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 7, today))}
             """;
     }
 
     private static string BuildLearningPrompt(
-        string memberContext, IReadOnlyCollection<ActivityLog> recentLogs, DateOnly today)
+        string memberContext, IReadOnlyCollection<ActivityLog> recentLogs, DateOnly today, int? ageYears)
     {
         var daysObserved = recentLogs.Select(l => l.Date).Distinct().Count();
 
@@ -1254,6 +1274,8 @@ public class HealthInsightService : IHealthInsightService
             --- Observation so far ---
             Days with data in the last 14: {daysObserved}
             No baseline has been established yet.
+
+            {PublishedNormal.Block(ageYears)}
 
             [INPUT DATA]
             {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 14, today))}

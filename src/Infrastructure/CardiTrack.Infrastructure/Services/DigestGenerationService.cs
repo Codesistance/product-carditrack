@@ -59,10 +59,10 @@ public partial class DigestGenerationService : IDigestGenerationService
         Read this person's recent readings and say what they show. This is an internal clinical
         read: a separate step writes the family's summary from it, so write precisely and address
         no one.
-        Say what the readings show against the usual pattern, in clinical terms. Nothing you write
-        here reaches a family.
+        Say what the readings show against the published normal ranges and the usual pattern, in
+        clinical terms. Nothing you write here reaches a family.
         Do not quote a figure that is not in the readings or computed observations below.
-        Where a usual pattern is given, read each reading against it, and read the vitals against the steps walked that day, before concluding.
+        Read sleep, resting heart rate and blood oxygen against their published range first; where a usual pattern is given, read each reading against it too, and read the vitals against the steps walked that day, before concluding.
         Steps and active minutes accumulate as a day passes, so today's are a running total, not a day's worth: read them against how much of the waking day has gone, which today's label states, and never against a whole-day usual.
         Never call today's movement low, down or short of anything unless a computed observation below says it is; early in their day a small total is the hour, not the person.
         """ + "\nIf \"" + EnvironmentalContextSource.RecentConditionsLabel + "\" is present, weigh"
@@ -341,6 +341,10 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// Version 2 puts the clinical half in Google's wearable shell (role, data constraints,
     /// isolated baselines, JSON daily readings) so a better brief reaches every member on the
     /// next pass rather than hiding behind the interval.
+    /// Version 3 reads sleep, resting heart rate and blood oxygen against the published range first
+    /// (decision 2026-09-25, <see cref="PublishedNormal"/>) and names a night or a reading outside
+    /// it even when it is the member's usual — a summary written before that could call a
+    /// five-hour sleeper's night ordinary.
     /// </para>
     /// <para>
     /// One counter for the service rather than one per audience. It is stamped on the journals too
@@ -349,7 +353,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// <see cref="DigestEntry.PromptVersion"/>.
     /// </para>
     /// </remarks>
-    internal const int CurrentPromptVersion = 2;
+    internal const int CurrentPromptVersion = 3;
 
     /// <summary>
     /// The floor that replaces <see cref="MinimumRegenerationInterval"/> in the first
@@ -1941,8 +1945,9 @@ public partial class DigestGenerationService : IDigestGenerationService
 
             [PATIENT CONTEXT]
             {memberContext}
+            {PublishedNormal.Block(member?.DateOfBirth.ToAgeInYears(describedDate))}
             {UsualPatternSection(baseline, logs, describedDate)}
-            {DigestInterpretationSignals.Section(baseline, today, yesterday, localNow)}
+            {DigestInterpretationSignals.Section(baseline, today, yesterday, localNow, member?.DateOfBirth.ToAgeInYears(describedDate))}
             {trendSection}
             [INPUT DATA]
             oldest first; the summary is about today

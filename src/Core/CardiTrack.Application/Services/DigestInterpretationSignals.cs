@@ -1,5 +1,6 @@
 using System.Globalization;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Services;
 
@@ -34,24 +35,43 @@ public static class DigestInterpretationSignals
     public const int MeasuredZeroQuietFromHour = 10;
 
     /// <summary>
-    /// Prompt section, or empty when there is no baseline or nothing off the usual. Empty
+    /// Prompt section, or empty when nothing is off the usual or outside a published range. Empty
     /// rather than a section saying nothing: on a calm member the words are not in the prompt
     /// to be echoed.
     /// </summary>
+    /// <param name="ageYears">
+    /// Picks the sleep range's ceiling (<see cref="HealthReferenceRanges.Sleep"/>). Null still
+    /// judges the floor, which is seven hours at every adult age, and never a ceiling it cannot
+    /// place.
+    /// </param>
+    /// <remarks>
+    /// Runs without a baseline for the published ranges (decision 2026-09-25,
+    /// <see cref="PublishedNormal"/>): a member still being learned who slept four hours, or whose
+    /// resting heart rate sat at 108, is outside the range on day one, and waiting thirty days for a
+    /// usual before saying so is the silence the decision exists to end. Everything that compares
+    /// against their own usual still needs one.
+    /// </remarks>
     public static string Section(
         PatternBaseline? baseline,
         ActivityLog? today,
         ActivityLog? yesterday,
-        DateTime localNow)
+        DateTime localNow,
+        int? ageYears = null)
     {
-        if (baseline is null)
-            return string.Empty;
-
         var lines = new List<string>();
-        AddLastNight(lines, baseline, today);
-        AddOvernightHeartRateVariability(lines, baseline, today, yesterday);
-        AddDay(lines, baseline, yesterday, complete: true, localNow, "Yesterday");
-        AddDay(lines, baseline, today, complete: false, localNow, "Today so far");
+        AddLastNight(lines, baseline, today, ageYears);
+
+        if (baseline is not null)
+        {
+            AddOvernightHeartRateVariability(lines, baseline, today, yesterday);
+            AddDay(lines, baseline, yesterday, complete: true, localNow, "Yesterday");
+            AddDay(lines, baseline, today, complete: false, localNow, "Today so far");
+        }
+        else
+        {
+            AddRangesOnly(lines, yesterday, "Yesterday");
+            AddRangesOnly(lines, today, "Today so far");
+        }
 
         if (lines.Count == 0)
             return string.Empty;
@@ -87,19 +107,95 @@ public static class DigestInterpretationSignals
     /// rather than per-day: "today so far" has no night in it yet, and the night before last is not
     /// something a caregiver is being asked to act on this morning.
     /// </para>
+    /// <para>
+    /// The published range is named first, and on its own: a night outside it is stated whether or
+    /// not it is this member's usual (decision 2026-09-25, <see cref="PublishedNormal"/>). A
+    /// five-hour night against a five-hour usual used to produce no line at all.
+    /// </para>
     /// </remarks>
-    private static void AddLastNight(List<string> lines, PatternBaseline baseline, ActivityLog? today)
+    private static void AddLastNight(
+        List<string> lines, PatternBaseline? baseline, ActivityLog? today, int? ageYears)
     {
-        if (baseline.AvgSleepMinutes is not > 0 || today?.SleepMinutes is not { } lastNight)
+        if (today?.SleepMinutes is not { } lastNight)
             return;
 
-        var usual = baseline.AvgSleepMinutes.Value;
-        if (Math.Abs(lastNight - usual) <= usual * StatisticalAlertRules.DeviationFraction)
+        var clauses = new List<string>();
+        if (SleepOutsideRange(lastNight, ageYears) is { } range)
+            clauses.Add(range);
+
+        var usual = baseline?.AvgSleepMinutes is > 0 ? baseline.AvgSleepMinutes.Value : (int?)null;
+        if (usual is { } u && Math.Abs(lastNight - u) > u * StatisticalAlertRules.DeviationFraction)
+            clauses.Add(lastNight < u ? "well short of their usual" : "well past their usual");
+
+        if (clauses.Count == 0)
             return;
 
-        var direction = lastNight < usual ? "well short of" : "well past";
-        lines.Add(
-            $"- Last night: {Hours(lastNight)} hours of sleep (usual {Hours(usual)}) — {direction} their usual.");
+        var night = today.NightStatus == NightSleepStatus.Awake
+            ? ReadingFigures.AwakeNight
+            : $"{Hours(lastNight)} hours of sleep";
+        var usualFigure = usual is { } shown ? $" (usual {Hours(shown)})" : string.Empty;
+        lines.Add($"- Last night: {night}{usualFigure} — {string.Join(", and ", clauses)}.");
+    }
+
+    /// <summary>
+    /// Where a night sits against the published sleep range, or null when it is inside it. The
+    /// floor is seven hours at every adult age, so it is judged without an age; the ceiling moves
+    /// at 65 and is only judged when the age is known.
+    /// </summary>
+    private static string? SleepOutsideRange(int minutes, int? ageYears)
+    {
+        var hours = minutes / 60m;
+        if (ageYears is { } age)
+        {
+            var band = HealthReferenceRanges.Sleep(age);
+            if (hours < band.Low)
+                return string.Create(CultureInfo.InvariantCulture,
+                    $"below the {band.Low:0.#}-{band.High:0.#} hours recommended at their age ({band.Source})");
+            if (hours > band.High)
+                return string.Create(CultureInfo.InvariantCulture,
+                    $"above the {band.Low:0.#}-{band.High:0.#} hours recommended at their age ({band.Source})");
+            return null;
+        }
+
+        return hours < HealthReferenceRanges.RecommendedSleepFloorHours
+            ? string.Create(CultureInfo.InvariantCulture,
+                $"below the {HealthReferenceRanges.RecommendedSleepFloorHours:0.#} hours a night recommended for adults ({HealthReferenceRanges.SleepSource})")
+            : null;
+    }
+
+    /// <summary>
+    /// The published-range findings for a day, for a member with no usual yet to set them
+    /// against. Everything else this block says needs one.
+    /// </summary>
+    private static void AddRangesOnly(List<string> lines, ActivityLog? log, string label)
+    {
+        if (log is null)
+            return;
+
+        var parts = new List<string>();
+        if (log.RestingHeartRate is { } resting && RestingOutsideRange(resting) is { } range)
+            parts.Add($"resting heart rate {resting} bpm, {range}");
+        if (log.SpO2Average is { } spo2 && spo2 < HealthReferenceRanges.SpO2.Low)
+            parts.Add(OxygenBelowRange(spo2));
+
+        if (parts.Count > 0)
+            lines.Add($"- {label}: {string.Join(", ", parts)}.");
+    }
+
+    private static string? RestingOutsideRange(int resting)
+    {
+        var band = HealthReferenceRanges.RestingHeartRate;
+        return resting < band.Low || resting > band.High
+            ? string.Create(CultureInfo.InvariantCulture,
+                $"outside the {band.Low:0}-{band.High:0} bpm published range ({band.Source})")
+            : null;
+    }
+
+    private static string OxygenBelowRange(decimal spo2)
+    {
+        var band = HealthReferenceRanges.SpO2;
+        return string.Create(CultureInfo.InvariantCulture,
+            $"oxygen {spo2:0.#}%, below the {band.Low:0}% published floor ({band.Source})");
     }
 
     /// <summary>
@@ -218,11 +314,15 @@ public static class DigestInterpretationSignals
         var usualResting = baseline.AvgRestingHeartRate;
         var margin = HeartRateMarginBpm(baseline);
 
-        if (StatisticalAlertRules.ElevatedHeartRate(baseline, log) is not null
-            && log.RestingHeartRate is { } resting
-            && usualResting is { } usual)
+        // Above the member's usual, or outside the published range whatever their usual — the
+        // second is named even when it is ordinary for them (decision 2026-09-25).
+        if (log.RestingHeartRate is { } resting
+            && (StatisticalAlertRules.ElevatedHeartRate(baseline, log) is not null
+                || RestingOutsideRange(resting) is not null))
         {
-            parts.Add($"resting heart rate {resting} bpm (usual {usual})");
+            var usualClause = usualResting is { } usual ? $" (usual {usual})" : string.Empty;
+            var rangeClause = RestingOutsideRange(resting) is { } range ? $", {range}" : string.Empty;
+            parts.Add($"resting heart rate {resting} bpm{usualClause}{rangeClause}");
         }
 
         if (usualResting is > 0 && log.AvgHeartRate is { } avg
@@ -233,7 +333,7 @@ public static class DigestInterpretationSignals
 
         if (log.SpO2Average is { } spo2 && spo2 < HealthReferenceRanges.SpO2.Low)
         {
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"oxygen {spo2:0.#}%"));
+            parts.Add(OxygenBelowRange(spo2));
         }
 
         if (log.BreathingRate is { } breathing && breathing > HealthReferenceRanges.BreathingRate.High)

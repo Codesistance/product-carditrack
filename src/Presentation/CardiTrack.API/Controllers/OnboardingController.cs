@@ -123,6 +123,7 @@ public class OnboardingController : BaseApiController
     [AuditHealthDataAccess("CreateCardiMember")]
     [ProducesResponseType(typeof(ApiResponse<CardiMemberResponse>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<CardiMemberResponse>>> CreateCardiMember(
         [FromBody] CreateCardiMemberRequest request)
     {
@@ -185,6 +186,16 @@ public class OnboardingController : BaseApiController
             // 500 and the audit middleware, which sits outside it, reads this on the way out.
             HttpContext.Items[AuditHealthDataAccessAttribute.CardiMemberIdItemKey] = ex.CardiMemberId;
             throw;
+        }
+        catch (FamilyRuleException ex)
+        {
+            // The plan has no room for another CardiMember. Said in the service's own words —
+            // safe here because the caller is inside the family it is adding to (their home
+            // family, resolved above). Caught here rather than mapped globally, because the same
+            // exception from an invite redemption reaches somebody not yet inside, and there the
+            // family's plan and headcount are not theirs to read. 422, as FamiliesController and
+            // FamilyJoinController return for it.
+            return Error(ex.Message, StatusCodes.Status422UnprocessableEntity);
         }
 
         HttpContext.Items[AuditHealthDataAccessAttribute.CardiMemberIdItemKey] = response.Id;

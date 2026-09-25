@@ -53,6 +53,7 @@ internal static class WeekbookPrompt
         Say what moved and what held steady across the seven days, and where a single day stood apart from the rest, name that day and what set it apart.
         vs_usual is already computed: say it as given and never work a comparison out yourself.
         Where a published band is given, say where the week sat against it, and name who publishes it.
+        For sleep, resting heart rate and blood oxygen the published band is what normal means: a reading outside it is worth attention even when it is their usual, and their usual is context, never a reason to call it fine.
         Where a reading was measured on only some days, say how many; never let days without a reading read as days that were fine.
         Read the week as a whole: sleep, heart, oxygen, breathing and movement in one person explain each other more often than one at a time.
         If "The week's monitoring" is present, account for what the monitoring made of the week in your own words; when it is absent, never mention monitoring, alerts or observations at all.
@@ -188,10 +189,12 @@ internal static class WeekbookPrompt
             baseline?.AvgHeartRateVariabilityMs,
             null);
 
+        // No band: WHO's 12–20 is the waking rate above, not a sleeping one
+        // (HealthReferenceRanges.NoOvernightBreathingBand).
         Add(metrics, days, "Breathing while asleep", l => l.OvernightBreathingRate,
             v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)} breaths a minute",
             baseline?.AvgOvernightBreathingRate,
-            JournalPeriodSections.Band(breathingBand.Low, breathingBand.High, "breaths a minute", breathingBand.Source));
+            null);
 
         Add(metrics, days, "Minutes with heart rate raised", l => BaselineCalculator.ElevatedZoneMinutes(l),
             v => $"{Math.Round(v)} minutes",

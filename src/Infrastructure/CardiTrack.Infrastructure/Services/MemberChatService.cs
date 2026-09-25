@@ -230,7 +230,8 @@ public class MemberChatService : IMemberChatService
         A family caregiver asked a question about this member. Answer it from the data below only —
         this is an internal clinical read, not the final reply the caregiver sees, so write precisely
         rather than in caregiver language; a separate step turns this into caregiver-facing prose.
-        Say what the readings show against their baseline, in clinical terms. Nothing you write here
+        Say what the readings show against the published range where one applies and against their
+        baseline, in clinical terms. Nothing you write here
         reaches a family: the rewrite step decides what is said to them and is bound by its own limits.
         If the data below does not answer the question, say so rather than guessing or inventing a
         reading the data does not contain. The activity data covers only the dates named in its
@@ -239,8 +240,10 @@ public class MemberChatService : IMemberChatService
         every day in that heading rather than any one of them.
 
         When the question is how the person is doing rather than what a particular reading was,
-        answer it: say how the readings compare with their baseline and whether that is settled or
-        worth attention. Listing the readings back is not an answer to that question.
+        answer it: say how the readings compare with the published range where one applies and with
+        their baseline, and whether that is settled or worth attention — a reading outside its
+        published range is worth attention even when it is their usual. Listing the readings back is
+        not an answer to that question.
 
         Every figure below describes a period that has already finished — a night that ended that
         morning, a day's totals so far. None of it says what the person is doing at this moment.
@@ -308,24 +311,25 @@ public class MemberChatService : IMemberChatService
         clinical read, not the final reply, so write precisely rather than in caregiver language.
 
         Open with the verdict in one sentence: settled, or worth attention. Then name exactly what
-        it rests on — the readings, the comparison against this member's own baseline, and the
-        published range where one applies. A verdict that does not name its basis is not usable,
+        it rests on — the readings, the published range where one applies, and the comparison
+        against this member's own baseline. A verdict that does not name its basis is not usable,
         and it travels to the family as written: nothing downstream can supply a basis you did not
         give. Include the figures that carry the verdict; the caregiver's reply is built from this
         read and must be able to quote them.
 
-        Judge against both references where both exist: this member's own baseline says what is
-        usual for them, and the published range says what is typical generally. When they
-        disagree, the member's own baseline decides whether attention is worth raising, and the
-        published range is context to mention. Name the mechanism the readings are consistent
+        Where a published range exists, it is what normal means: a reading outside it is worth
+        attention even when it is this member's usual, because a usual outside the range is
+        outside it too. This member's own baseline is context — whether a reading is new for them —
+        and is the only yardstick for a reading with no published range. Name the mechanism the readings are consistent
         with where they support one — this read is not shown to the family. Do not provide a
         formal diagnosis. Never recommend an action: what to do about a finding is a different
         question this read must not answer.
 
         When the question names no particular reading, it is asking for the same verdict across
         everything you were given. Lead
-        with what is outstanding or has moved: any unresolved alert first, then any reading that
-        has drifted from this member's own baseline. If nothing has, say that plainly and stop.
+        with what is outstanding or has moved: any unresolved alert first, then any reading outside
+        its published range, then any reading that has drifted from this member's own baseline. If
+        none of those, say that plainly and stop.
         Listing today's figures back is not an answer to that question, and a caregiver who has
         just been given those figures is asking precisely because the list did not tell them
         whether anything mattered.
@@ -2655,15 +2659,14 @@ public class MemberChatService : IMemberChatService
 
         if (Wanted(ChartMetricKind.OvernightBreathingRate))
         {
-            // The same adult band the Details and alert charts shade behind the overnight series —
-            // WHO publishes no separate sleeping range, and overnight averages sit toward its
-            // lower half, which the clinical prompt's bands block already says in words.
+            // No published band: WHO's 12–20 is a waking rate at rest, and shaded behind an
+            // overnight series it grades the figure against a measurement it is not
+            // (HealthReferenceRanges.NoOvernightBreathingBand). The member's own usual is the line.
             charts.Add(new ChartSeries("Breathing while asleep", data.RecentActivity
                 .Where(l => l.OvernightBreathingRate.HasValue)
                 .Select(l => new ChartPoint(l.Date, (double)l.OvernightBreathingRate!.Value))
                 .ToList(),
-                Baseline: (double?)baseline?.AvgOvernightBreathingRate,
-                Reference: HealthReferenceRanges.BreathingRate));
+                Baseline: (double?)baseline?.AvgOvernightBreathingRate));
         }
 
         // A series the member has no readings for charts as an empty line, which draws as an empty

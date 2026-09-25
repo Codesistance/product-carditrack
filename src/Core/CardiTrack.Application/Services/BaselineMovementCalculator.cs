@@ -53,15 +53,28 @@ public sealed record MetricMovement(
 /// <param name="Unjudged">
 /// Metrics this member has a usual for, but too few readings this week to judge against it.
 /// </param>
+/// <param name="OutsideRange">
+/// Sleep and resting heart rate whose week sat outside the published normal range, moved or not —
+/// see <see cref="RangePlacement"/>. Never also in <paramref name="Steady"/>: a week outside the
+/// range is not "nothing to report" however ordinary it is for them.
+/// </param>
 public sealed record BaselineMovements(
     DateOnly Through,
     int BaselinePeriodDays,
     IReadOnlyList<MetricMovement> Notable,
     IReadOnlyList<string> Steady,
-    IReadOnlyList<string> Unjudged)
+    IReadOnlyList<string> Unjudged,
+    IReadOnlyList<RangePlacement>? OutsideRange = null)
 {
-    /// <summary>Whether there is anything here worth spending a model call on.</summary>
-    public bool HasAnythingToSay => Notable.Count > 0;
+    /// <summary><see cref="OutsideRange"/>, never null.</summary>
+    public IReadOnlyList<RangePlacement> OutsidePublishedRange => OutsideRange ?? [];
+
+    /// <summary>
+    /// Whether there is anything here worth spending a model call on: something moved, or
+    /// something sat outside its published range (decision 2026-09-25 — a week outside the range
+    /// is worth a card even when it is this member's usual).
+    /// </summary>
+    public bool HasAnythingToSay => Notable.Count > 0 || OutsidePublishedRange.Count > 0;
 
     /// <summary>
     /// Whether this week is positive evidence that nothing is off: every metric this member has a
@@ -84,8 +97,24 @@ public sealed record BaselineMovements(
     /// </para>
     /// </remarks>
     public bool ShowsNothingIsOff =>
-        Notable.Count == 0 && Unjudged.Count == 0 && Steady.Count > 0;
+        Notable.Count == 0 && Unjudged.Count == 0 && OutsidePublishedRange.Count == 0 && Steady.Count > 0;
 }
+
+/// <summary>
+/// One metric's week against its published normal range: what it averaged, and the range it sat
+/// outside, already worded.
+/// </summary>
+/// <param name="Kind">
+/// Which of the six tracked metrics, or null for blood oxygen — placed against its range here
+/// although it is not one of the six this card judges movement for, because it has no learned usual
+/// to move from and its published floor is the whole yardstick.
+/// </param>
+/// <param name="Metric">The label a caregiver reads.</param>
+/// <param name="Unit">What <paramref name="Recent"/> is in.</param>
+/// <param name="Recent">The week's mean.</param>
+/// <param name="Placement">"below the 7-9 hours recommended at their age (NSF)" and the like.</param>
+public sealed record RangePlacement(
+    TrackedMetric? Kind, string Metric, string Unit, decimal Recent, string Placement);
 
 /// <summary>
 /// The deterministic half of "how are they doing": which of this member's metrics have moved away
@@ -194,8 +223,12 @@ public static class BaselineMovementCalculator
     /// What has moved for this member, or null when there is no established baseline to measure
     /// against — the learning state, which is a different card and a different brief.
     /// </summary>
+    /// <param name="ageYears">
+    /// Picks the sleep range's ceiling. Null still judges the seven-hour floor, which holds at every
+    /// adult age, and never a ceiling it cannot place.
+    /// </param>
     public static BaselineMovements? Compute(
-        IReadOnlyList<ActivityLog> logs, PatternBaseline? baseline, DateOnly through)
+        IReadOnlyList<ActivityLog> logs, PatternBaseline? baseline, DateOnly through, int? ageYears = null)
     {
         if (baseline is null)
             return null;
@@ -215,6 +248,7 @@ public static class BaselineMovementCalculator
         var notable = new List<MetricMovement>();
         var steady = new List<string>();
         var unjudged = new List<string>();
+        var outsideRange = new List<RangePlacement>();
 
         foreach (var metric in Metrics)
         {
@@ -234,12 +268,19 @@ public static class BaselineMovementCalculator
             var recent = Math.Round(readings.Average(), 1);
             var margin = MarginFor(metric, baseline, usual);
 
+            // Placed against the published range before the usual is consulted, and whether or not
+            // it moved: a steady week outside the range is still outside it.
+            var placement = PlacementFor(metric.Kind, recent, ageYears);
+            if (placement is not null)
+                outsideRange.Add(new RangePlacement(metric.Kind, metric.Label, metric.Unit, recent, placement));
+
             // At exactly the margin the metric is steady, not notable: the bar is what a movement
             // has to pass, and StatisticalAlertRules draws the boundary the same way
             // (`restingHr <= average + margin` returns no finding).
             if (Math.Abs(recent - usual) <= margin)
             {
-                steady.Add(metric.Label);
+                if (placement is null)
+                    steady.Add(metric.Label);
                 continue;
             }
 
@@ -253,6 +294,23 @@ public static class BaselineMovementCalculator
                 readings.Count));
         }
 
+        // Blood oxygen, outside the loop above because it is not one of the six: no usual is
+        // learned for it, so it can never have moved — and a week under WHO's floor is exactly the
+        // week the range-first decision exists for. The card's prompt carries no daily readings,
+        // so a finding not listed here is a finding the card can never make.
+        var oxygen = days.Select(l => l.SpO2Average).OfType<decimal>().ToList();
+        if (oxygen.Count >= MinimumMeasuredDays)
+        {
+            var recentOxygen = Math.Round(oxygen.Average(), 1);
+            var floor = HealthReferenceRanges.SpO2;
+            if (recentOxygen < floor.Low)
+            {
+                outsideRange.Add(new RangePlacement(
+                    null, "Blood oxygen", "%", recentOxygen,
+                    string.Create(CultureInfo.InvariantCulture, $"below the {floor.Low:0}% published floor ({floor.Source})")));
+            }
+        }
+
         return new BaselineMovements(
             through,
             baseline.PeriodDays,
@@ -261,7 +319,49 @@ public static class BaselineMovementCalculator
             // file happens to list first.
             [.. notable.OrderByDescending(m => Math.Abs(m.DeviationPercent))],
             steady,
-            unjudged);
+            unjudged,
+            outsideRange);
+    }
+
+    /// <summary>
+    /// Where a week's mean sits against its published normal range, worded, or null when inside it
+    /// or when the metric has none. Sleep and resting heart rate only: blood oxygen is not one of
+    /// the six this card judges, and breathing asleep, heart rate variability, steps and zone
+    /// minutes have no published range (<see cref="PublishedNormal"/>).
+    /// </summary>
+    private static string? PlacementFor(TrackedMetric kind, decimal recent, int? ageYears)
+    {
+        switch (kind)
+        {
+            case TrackedMetric.Sleep:
+                var floor = HealthReferenceRanges.RecommendedSleepFloorHours;
+                if (ageYears is { } age)
+                {
+                    var band = HealthReferenceRanges.Sleep(age);
+                    if (recent < band.Low || recent > band.High)
+                    {
+                        return string.Create(CultureInfo.InvariantCulture,
+                            $"{(recent < band.Low ? "below" : "above")} the {band.Low:0.#}-{band.High:0.#} hours recommended at their age ({band.Source})");
+                    }
+
+                    return null;
+                }
+
+                return recent < floor
+                    ? string.Create(CultureInfo.InvariantCulture,
+                        $"below the {floor:0.#} hours a night recommended for adults ({HealthReferenceRanges.SleepSource})")
+                    : null;
+
+            case TrackedMetric.RestingHeartRate:
+                var heart = HealthReferenceRanges.RestingHeartRate;
+                return recent < heart.Low || recent > heart.High
+                    ? string.Create(CultureInfo.InvariantCulture,
+                        $"{(recent < heart.Low ? "below" : "above")} the {heart.Low:0}-{heart.High:0} bpm published range ({heart.Source})")
+                    : null;
+
+            default:
+                return null;
+        }
     }
 
     /// <summary>
@@ -304,6 +404,15 @@ public static class BaselineMovementCalculator
                 $"- {m.Metric}: averaging {Figure(m.Recent)} {m.Unit} over {m.MeasuredDays} measured "
                 + $"day(s), against their usual {Figure(m.Usual)}. That is "
                 + $"{Math.Abs(m.DeviationPercent):0}% {direction} their usual.");
+        }
+
+        // Its own section, and whether or not the metric moved: a week outside the published range
+        // is worth attention even when it is this member's usual (decision 2026-09-25).
+        if (movements.OutsidePublishedRange.Count > 0)
+        {
+            lines.Add("Outside the published normal range this week, whatever their usual:");
+            foreach (var r in movements.OutsidePublishedRange)
+                lines.Add($"- {r.Metric}: averaging {Figure(r.Recent)} {r.Unit}, {r.Placement}.");
         }
 
         // Named rather than left out, so the model can say the rest is steady without counting
