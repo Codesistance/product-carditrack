@@ -1,5 +1,7 @@
+using System.Globalization;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
@@ -119,6 +121,7 @@ public partial class DashboardPage : ContentPage
         DisclosureBanner.LearnMoreRequested += OnDisclosureLearnMore;
         DisclosureBanner.DismissRequested += OnDisclosureDismiss;
         AlertsHeader.SizeChanged += (_, _) => SizeAlertCards();
+        NudgeHeader.SizeChanged += (_, _) => SizeNudgeRows();
 
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
@@ -1271,20 +1274,43 @@ public partial class DashboardPage : ContentPage
         try
         {
             var summary = await _api.GetNotificationSummaryAsync();
-            RenderNudges(summary);
+            RenderNudges(summary, summary.DashboardCards);
+
+            // The summary carries the top two. When more are waiting, the rest come from the
+            // inbox's own list so the row can scroll through all of them — after the two, which
+            // keep their places: the summary ranks by priority and the list is the inbox's order.
+            if (WaitingNudges(summary) > summary.DashboardCards.Count)
+            {
+                var open = await _api.GetNotificationsAsync(state: nameof(NotificationState.Open), owned: true);
+                var shown = summary.DashboardCards.Select(card => card.Id).ToHashSet();
+                RenderNudges(summary,
+                [
+                    .. summary.DashboardCards,
+                    .. open.Items.Where(n => n.Category != NotificationCategory.Safety && !shown.Contains(n.Id)),
+                ]);
+            }
         }
         catch (ApiException)
         {
-            SafetyBannerList.IsVisible = false;
-            CompleteThePictureCard.IsVisible = false;
-            Header.SetNudgeIndicator(false);
+            // The top two may already be on screen; losing the rest leaves them there rather than
+            // blanking a card that was fine a moment ago. Only a failed summary hides everything.
+            if (!CompleteThePictureCard.IsVisible)
+            {
+                SafetyBannerList.IsVisible = false;
+                Header.SetNudgeIndicator(false);
+            }
         }
     }
 
-    private void RenderNudges(NotificationSummaryResponse summary)
+    /// <summary>Open items for the "Complete the picture" card — everything but the safety banners.</summary>
+    private static int WaitingNudges(NotificationSummaryResponse summary) =>
+        Math.Max(0, summary.OpenCount - summary.SafetyBanners.Count);
+
+    private void RenderNudges(NotificationSummaryResponse summary, IReadOnlyList<NotificationResponse> cards)
     {
         SafetyBannerList.Clear();
         NudgeList.Clear();
+        SingleNudgeHost.Content = null;
 
         foreach (var banner in summary.SafetyBanners)
         {
@@ -1293,19 +1319,48 @@ public partial class DashboardPage : ContentPage
             SafetyBannerList.Add(row);
         }
 
-        foreach (var card in summary.DashboardCards)
+        // One item fills the card; two or more scroll sideways — see SizeNudgeRows.
+        foreach (var card in cards)
         {
             var row = new NudgeMiniRow(card);
             row.Tapped += OnNudgeTapped;
-            NudgeList.Add(row);
+            if (cards.Count == 1)
+                SingleNudgeHost.Content = row;
+            else
+                NudgeList.Add(row);
         }
+        SingleNudgeHost.IsVisible = cards.Count == 1;
+        NudgeScroller.IsVisible = cards.Count > 1;
+        SizeNudgeRows();
 
         SafetyBannerList.IsVisible = summary.SafetyBanners.Count > 0;
-        CompleteThePictureCard.IsVisible = summary.DashboardCards.Count > 0;
+        CompleteThePictureCard.IsVisible = cards.Count > 0;
         Header.SetNudgeIndicator(summary.OpenCount > 0);
 
-        // The link is only worth offering when there is more behind it than the two on screen.
-        CompleteThePictureLink.IsVisible = summary.OpenCount > summary.DashboardCards.Count;
+        // How many are waiting, on the title, so a caregiver knows there is more than the one in
+        // view before they swipe. Not on a lone item — "1" beside a single card is the card again.
+        var waiting = Math.Max(WaitingNudges(summary), cards.Count);
+        NudgeCountBadge.IsVisible = waiting > 1;
+        NudgeCountLabel.Text = waiting > 9 ? "9+" : waiting.ToString(CultureInfo.CurrentCulture);
+        SemanticProperties.SetDescription(NudgeCountBadge, $"{waiting} to complete");
+
+        // The link is only worth offering when there is more behind it than the row can show.
+        CompleteThePictureLink.IsVisible = WaitingNudges(summary) > cards.Count;
+    }
+
+    /// <summary>
+    /// Sizes the "Complete the picture" row's items to most of the card's content width, the
+    /// Recent Alerts carousel's rule, so the next item peeks in at the edge. Measured off the
+    /// heading, since the row itself runs edge to edge.
+    /// </summary>
+    private void SizeNudgeRows()
+    {
+        if (NudgeHeader.Width <= 0)
+            return;
+
+        var width = Math.Floor(NudgeHeader.Width * CarouselCardWidthFraction);
+        foreach (var row in NudgeList.Children.OfType<NudgeMiniRow>())
+            row.WidthRequest = width;
     }
 
     private async void OnNudgeTapped(object? sender, NotificationResponse notification) =>

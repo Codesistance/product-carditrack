@@ -135,16 +135,48 @@
 
                         <!-- "Complete the picture": the top two open nudges. Two, because a third
                              makes it a list, and a list is not a prompt. -->
+                        <!-- Every open item now, not the top two: a sideways row, each item a little
+                             narrower than the card so the next one shows at the edge and says the
+                             row scrolls, and a count on the title so "there are others" is said
+                             before anybody swipes. One item fills the card. The horizontal padding
+                             lives on the heading and the row's content rather than on the Border, as
+                             on the Recent Alerts card: Android clips a Border's content to its padded
+                             area, and the row has to slide out under the rounded edge. -->
                         <Border x:Name="CompleteThePictureCard"
                                 IsVisible="False"
-                                Style="{StaticResource ElevatedCard}">
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="0,14,0,17">
                             <VerticalStackLayout Spacing="12">
-                                <Grid ColumnDefinitions="*,Auto">
+                                <Grid x:Name="NudgeHeader"
+                                      ColumnDefinitions="Auto,Auto,*,Auto"
+                                      Margin="14,0,13,0">
                                     <Label Grid.Column="0"
                                            Text="Complete the picture"
-                                           Style="{StaticResource DashboardSectionTitle}"/>
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           VerticalOptions="Center"/>
+                                    <!-- The Key Metrics section's count badge, so a count on a
+                                         section title reads the same everywhere on the screen. -->
+                                    <Border x:Name="NudgeCountBadge"
+                                            Grid.Column="1"
+                                            WidthRequest="20" HeightRequest="20"
+                                            Margin="8,0,0,0"
+                                            Padding="0"
+                                            StrokeThickness="0"
+                                            BackgroundColor="{StaticResource CountBadgeNeutral}"
+                                            VerticalOptions="Center"
+                                            IsVisible="False">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10"/>
+                                        </Border.StrokeShape>
+                                        <Label x:Name="NudgeCountLabel"
+                                               FontFamily="QuicksandSemiBold"
+                                               FontSize="11"
+                                               TextColor="{StaticResource White}"
+                                               HorizontalTextAlignment="Center"
+                                               VerticalTextAlignment="Center"/>
+                                    </Border>
                                     <Label x:Name="CompleteThePictureLink"
-                                           Grid.Column="1"
+                                           Grid.Column="3"
                                            Text="See all"
                                            Style="{StaticResource SectionLink}">
                                         <Label.GestureRecognizers>
@@ -152,7 +184,13 @@
                                         </Label.GestureRecognizers>
                                     </Label>
                                 </Grid>
-                                <VerticalStackLayout x:Name="NudgeList" Spacing="10"/>
+                                <ContentView x:Name="SingleNudgeHost" IsVisible="False" Margin="14,0,13,0"/>
+                                <ScrollView x:Name="NudgeScroller"
+                                            Orientation="Horizontal"
+                                            HorizontalScrollBarVisibility="Never"
+                                            IsVisible="False">
+                                    <HorizontalStackLayout x:Name="NudgeList" Spacing="10" Padding="14,0,13,0"/>
+                                </ScrollView>
                             </VerticalStackLayout>
                         </Border>
 
