@@ -4,6 +4,7 @@ using CardiTrack.Shared;
 using CardiTrack.UnitTests.Mobile;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -13,7 +14,8 @@ public class Auth0ManagementClientTests
 {
     private const string TokenJson = """{"access_token":"mgmt-token","expires_in":3600}""";
 
-    private static (Auth0ManagementClient Client, FakeHttpMessageHandler Http) CreateSut()
+    private static (Auth0ManagementClient Client, FakeHttpMessageHandler Http) CreateSut(
+        ILogger<Auth0ManagementClient>? logger = null)
     {
         var http = new FakeHttpMessageHandler();
         var factory = Substitute.For<IHttpClientFactory>();
@@ -33,8 +35,39 @@ public class Auth0ManagementClientTests
             factory,
             new ConfigurationLoader(configuration),
             new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<Auth0ManagementClient>.Instance);
+            logger ?? NullLogger<Auth0ManagementClient>.Instance);
         return (client, http);
+    }
+
+    private const string BodySentinel = "provider-free-text-sentinel";
+
+    /// <summary>
+    /// A token or user body that fails to parse is reported by position only: the JSON path is
+    /// built from the body's property names and the reader's text quotes tokens, and a token body
+    /// can hold a live credential.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Resend_LogsParseFailuresByPositionOnly(bool tokenBodyIsMalformed)
+    {
+        var logger = Substitute.For<ILogger<Auth0ManagementClient>>();
+        var (client, http) = CreateSut(logger);
+        const string malformed = "{ \"" + BodySentinel + "\": tru }";
+        if (tokenBodyIsMalformed)
+            http.Enqueue(HttpStatusCode.OK, malformed);
+        else
+            http.Enqueue(HttpStatusCode.OK, TokenJson).Enqueue(HttpStatusCode.OK, malformed);
+
+        await client.TrySendVerificationEmailAsync("a@b.com");
+
+        var warnings = logger.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(ILogger.Log)
+                && (LogLevel)c.GetArguments()[0]! == LogLevel.Warning)
+            .Select(c => c.GetArguments()[2]!.ToString()!)
+            .ToList();
+        Assert.Contains(warnings, w => w.Contains("line 1, pos"));
+        Assert.All(warnings, w => Assert.DoesNotContain(BodySentinel, w));
     }
 
     [Fact]

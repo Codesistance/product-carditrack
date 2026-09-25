@@ -74,7 +74,8 @@ public class OAuthTokenRefreshService : IOAuthTokenRefreshService
         {
             var errorBody = await response.Content.ReadAsStringAsync();
             var message =
-                $"Token refresh returned {(int)response.StatusCode} for DeviceConnection {connection.Id}: {errorBody}";
+                $"Token refresh returned {(int)response.StatusCode} for DeviceConnection {connection.Id} " +
+                $"({OAuthErrorCode.Describe(errorBody)}).";
 
             if (IsGrantRejection(response.StatusCode, errorBody))
             {
@@ -95,7 +96,7 @@ public class OAuthTokenRefreshService : IOAuthTokenRefreshService
             // contain a live token fragment — report length + error locations, not content.
             throw new InvalidOperationException(
                 $"Token refresh response for DeviceConnection {connection.Id} was not valid JSON " +
-                $"({tokenBody.Length} chars): {string.Join("; ", jsonErrors)}");
+                $"({tokenBody.Length} chars) at {JsonError.PositionsOf(jsonErrors)}");
 
         var newAccessToken = root!.Value<string>("access_token")
             ?? throw new InvalidOperationException("Token response missing access_token.");
