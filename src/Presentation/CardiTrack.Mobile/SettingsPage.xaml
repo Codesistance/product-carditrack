@@ -334,7 +334,7 @@
                         Padding="18,16"
                         Margin="0,8,0,0">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="20"/>
+                        <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
                     </Border.StrokeShape>
                     <VerticalStackLayout Spacing="10">
                         <Label Text="Delete my account"

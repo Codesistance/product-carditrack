@@ -18,7 +18,7 @@
             StrokeThickness="0"
             Padding="4,0,0,0">
         <Border.StrokeShape>
-            <RoundRectangle CornerRadius="20"/>
+            <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
         </Border.StrokeShape>
         <Border.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnOpenTapped"/>
@@ -31,7 +31,7 @@
                 StrokeThickness="0"
                 Padding="15,14,14,14">
             <Border.StrokeShape>
-                <RoundRectangle CornerRadius="20"/>
+                <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
             </Border.StrokeShape>
 
             <Grid RowDefinitions="Auto,Auto,Auto,Auto"

@@ -100,7 +100,7 @@
                                 StrokeThickness="0"
                                 Padding="4,0,0,0">
                             <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="20"/>
+                                <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
                             </Border.StrokeShape>
                             <Border.Shadow>
                                 <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
@@ -110,7 +110,7 @@
                                 StrokeThickness="0"
                                 Padding="20">
                             <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="20"/>
+                                <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
                             </Border.StrokeShape>
                             <VerticalStackLayout Spacing="10">
                                 <!-- The day on one side, the one thing you can do with it on the

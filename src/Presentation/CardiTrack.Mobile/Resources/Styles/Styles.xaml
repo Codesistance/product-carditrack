@@ -527,12 +527,20 @@
         </Setter>
     </Style>
 
+    <!-- The corner of every standard card — the two styles below, and the cards that build their
+         own Border (the alert banner and list card, the journal and question cards) because they
+         stack a severity rail under the white face or need a stroke the styles do not carry.
+         One value so they cannot drift apart. Halved from 20 on 2026-09-25: at 20 a full-width
+         card read as a pill-ended sheet rather than as a card. Pills, chips, popups and chat
+         bubbles keep their own rounder corners — those are not cards. -->
+    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
+
     <Style x:Key="ElevatedCard" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
         <Setter Property="StrokeThickness" Value="0"/>
         <Setter Property="Padding" Value="14,14,13,17"/>
         <Setter Property="StrokeShape">
-            <RoundRectangle CornerRadius="20"/>
+            <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
         </Setter>
         <Setter Property="Shadow">
             <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
@@ -550,7 +558,7 @@
         <Setter Property="StrokeThickness" Value="1"/>
         <Setter Property="Padding" Value="14,14,13,17"/>
         <Setter Property="StrokeShape">
-            <RoundRectangle CornerRadius="20"/>
+            <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
         </Setter>
     </Style>
 

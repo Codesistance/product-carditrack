@@ -119,7 +119,7 @@
                                     StrokeThickness="0"
                                     Padding="16,14,14,16">
                                 <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="20"/>
+                                    <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
                                 </Border.StrokeShape>
                                 <Border.Shadow>
                                     <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.12" Radius="12" Offset="0,3"/>

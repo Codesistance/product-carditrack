@@ -117,7 +117,7 @@
                                 StrokeThickness="0"
                                 Padding="0">
                             <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="20"/>
+                                <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
                             </Border.StrokeShape>
                             <VerticalStackLayout Spacing="0">
 
