@@ -172,7 +172,8 @@ public class MemberChatService : IMemberChatService
     {
         var whose = string.IsNullOrWhiteSpace(firstName) ? "your family member's" : $"{firstName}'s";
         return $"That's not something I can help with here, I'm afraid. I'm glad to talk through {whose} "
-            + "sleep, activity, heart rate or alerts, or pull up the journal.";
+            + "sleep, activity, heart rate or alerts, or pull up the journal — and I can switch alerts on "
+            + "or off or set an alarm for you too.";
     }
 
     /// <summary>
@@ -2851,11 +2852,9 @@ public class MemberChatService : IMemberChatService
         {
             _count++;
 
-            if (step.Step == MemberChatStep.Planning.Step && !_readingPath)
-            {
+            var startsReadingPath = step.Step == MemberChatStep.Planning.Step && !_readingPath;
+            if (startsReadingPath)
                 _readingPath = true;
-                onReadingPath();
-            }
 
             if (step.Step == MemberChatStep.Rereading.Step)
                 _added++;
@@ -2867,6 +2866,12 @@ public class MemberChatService : IMemberChatService
                 : Math.Max(_count, _readingPath ? ReadingPathSteps + _added : _count);
 
             inner.Step(step.At(_count, total));
+
+            // After the step goes out, never before: generation that completes synchronously
+            // reports its lines at once, and they must not reach the stream ahead of the planning
+            // step that started them.
+            if (startsReadingPath)
+                onReadingPath();
         }
 
         public void Draft(MemberChatMessageResponse draft) => inner.Draft(draft);

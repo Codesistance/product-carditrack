@@ -1196,14 +1196,23 @@ public class MemberChatRoutedDispatchTests
         public List<MemberChatMessageResponse> Drafts { get; } = [];
         public List<IReadOnlyList<string>> WaitingLines { get; } = [];
 
+        /// <summary>Steps and waiting lines in the order they were reported.</summary>
+        public List<string> Sequence { get; } = [];
+
         public void Step(MemberChatStep step)
         {
             Keys.Add(step.Step);
             Numbers.Add((step.Index, step.Total));
+            Sequence.Add(step.Step);
         }
 
         public void Draft(MemberChatMessageResponse draft) => Drafts.Add(draft);
-        void IMemberChatSendProgress.WaitingLines(IReadOnlyList<string> lines) => WaitingLines.Add(lines);
+
+        void IMemberChatSendProgress.WaitingLines(IReadOnlyList<string> lines)
+        {
+            WaitingLines.Add(lines);
+            Sequence.Add("waiting");
+        }
     }
 
     private void WaitingLinesAre(params string[] lines) =>
@@ -1275,6 +1284,9 @@ public class MemberChatRoutedDispatchTests
 
         var lines = Assert.Single(sink.WaitingLines);
         Assert.Equal(["Looking at Moses's sleep this week…", "Comparing each night…"], lines);
+        // The substitute answers synchronously, so the lines are ready the moment they are asked
+        // for; they still go out after the planning step that started them (Copilot, #1265).
+        Assert.Equal(["understanding", "planning", "waiting"], sink.Sequence.Take(3));
         Assert.NotNull(prompt);
         Assert.DoesNotContain("Moses", prompt);
         Assert.Contains(NamePlaceholder.Token, prompt);
