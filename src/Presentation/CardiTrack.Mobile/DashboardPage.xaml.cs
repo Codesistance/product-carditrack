@@ -9,6 +9,7 @@ using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Diagnostics;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Members;
+using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
@@ -1420,6 +1421,20 @@ public partial class DashboardPage : ContentPage
         NudgeList.Clear();
         SingleNudgeHost.Content = null;
 
+        // Set-up progress as rings, one per member with something left to do. The reminders a ring
+        // stands for leave the rows, so one missing emergency contact is asked about once.
+        var rings = SetupProgressLine.For(summary.MemberSetup);
+        var ringed = rings.Select(r => r.CardiMemberId).ToHashSet();
+        bool StandsInARing(NotificationResponse n) =>
+            n.CardiMemberId is { } id && ringed.Contains(id) && SetupProgressLine.SetupRuleCodes.Contains(n.RuleCode);
+        var folded = cards.Count(StandsInARing);
+        cards = cards.Where(n => !StandsInARing(n)).ToList();
+
+        SetupRingList.Clear();
+        foreach (var ring in rings)
+            SetupRingList.Add(BuildSetupRing(ring));
+        SetupRingList.IsVisible = rings.Count > 0;
+
         foreach (var banner in summary.SafetyBanners)
         {
             var row = new NudgeMiniRow(banner, asSafetyBanner: true);
@@ -1442,18 +1457,82 @@ public partial class DashboardPage : ContentPage
         SizeNudgeRows();
 
         SafetyBannerList.IsVisible = summary.SafetyBanners.Count > 0;
-        CompleteThePictureCard.IsVisible = cards.Count > 0;
+        CompleteThePictureCard.IsVisible = cards.Count + rings.Count > 0;
         Header.SetNudgeIndicator(summary.OpenCount > 0);
 
         // How many are waiting, on the title, so a caregiver knows there is more than the one in
         // view before they swipe. Not on a lone item — "1" beside a single card is the card again.
-        var total = Math.Max(waiting ?? WaitingNudges(summary), cards.Count);
+        // Each ring counts once, however many of its member's reminders it folded in.
+        var rows = Math.Max((waiting ?? WaitingNudges(summary)) - folded, cards.Count);
+        var total = rows + rings.Count;
         NudgeCountBadge.IsVisible = total > 1;
         NudgeCountLabel.Text = total > 9 ? "9+" : total.ToString(CultureInfo.CurrentCulture);
         SemanticProperties.SetDescription(NudgeCountBadge, $"{total} to complete");
 
         // The link is only worth offering when there is more behind it than the row can show.
-        CompleteThePictureLink.IsVisible = total > cards.Count;
+        CompleteThePictureLink.IsVisible = rows > cards.Count;
+    }
+
+    /// <summary>A member's set-up ring, title and next step, opening that step on a tap.</summary>
+    private View BuildSetupRing(SetupProgressLine line)
+    {
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+
+        var row = new Grid
+        {
+            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto)],
+            ColumnSpacing = 12,
+            Padding = new Thickness(12, 10),
+        };
+        row.Add(new ProgressRing { Progress = line.Fraction, VerticalOptions = LayoutOptions.Center }, 0, 0);
+        row.Add(new VerticalStackLayout
+        {
+            Spacing = 2,
+            VerticalOptions = LayoutOptions.Center,
+            Children =
+            {
+                new Label { Text = line.Title, Style = (Style)resources["Body1SemiBoldDark"] },
+                new Label
+                {
+                    Text = line.Next,
+                    Style = (Style)resources["Body2"],
+                    LineBreakMode = LineBreakMode.TailTruncation,
+                },
+            },
+        }, 1, 0);
+        row.Add(new Image
+        {
+            Source = "icon_chevron.svg",
+            WidthRequest = 20,
+            HeightRequest = 20,
+            VerticalOptions = LayoutOptions.Center,
+        }, 2, 0);
+
+        var card = new Border
+        {
+            StrokeThickness = 0,
+            BackgroundColor = (Color)resources["InputBackground"],
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
+            Content = row,
+        };
+        SemanticProperties.SetDescription(card, $"{line.Title}. {line.Next}");
+        SemanticProperties.SetHint(card, "Double tap to do the next step");
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await OpenSetupStepAsync(line.NextStep);
+        card.GestureRecognizers.Add(tap);
+        return card;
+    }
+
+    /// <summary>
+    /// The step's own screen. The time zone is answered on the reminders page, which confirms the
+    /// phone's zone in a tap; a step whose screen this version does not have goes there too.
+    /// </summary>
+    private static async Task OpenSetupStepAsync(MemberSetupStep step)
+    {
+        var link = NudgeLinkParser.Parse(step.ActionDeepLink);
+        var destination = link.Kind == NudgeDestinationKind.TimeZone ? null : DeepLinkRouter.Resolve(link);
+        await Shell.Current.GoToAsync(destination ?? NotificationsPage.Route);
     }
 
     /// <summary>

@@ -41,15 +41,56 @@ public partial class BottomNavBar : ContentView
     private const double SelectedIconScale = 1.25;
 
     /// <summary>How much smaller the glyphs of the tabs not selected are drawn.</summary>
-    private const double UnselectedIconShrink = 2;
+    private const double UnselectedIconShrink = 3;
 
     private bool _navigating;
+
+    /// <summary>The tab this bar is drawing as selected right now — see <see cref="ApplySelection(NavTab, bool)"/>.</summary>
+    private NavTab _shown;
+
+    /// <summary>
+    /// This bar left its own tab for another and still shows that one. Put back when its page
+    /// next appears, not the moment the navigation returns: Shell's tab switch finishes drawing
+    /// after <c>GoToAsync</c> completes, and resetting then showed the pill jump back to where it
+    /// came from on the page still on screen before the new page covered it.
+    /// </summary>
+    private bool _resetOnReturn;
+
+    private Page? _page;
 
     public BottomNavBar()
     {
         InitializeComponent();
         ApplySelection();
-        TabsGrid.SizeChanged += (_, _) => SnapPill(Tab);
+        TabsGrid.SizeChanged += (_, _) => SnapPill(_shown);
+        Loaded += (_, _) =>
+        {
+            _page = FindPage();
+            if (_page is not null)
+                _page.Appearing += OnPageAppearing;
+        };
+        Unloaded += (_, _) =>
+        {
+            if (_page is not null)
+                _page.Appearing -= OnPageAppearing;
+            _page = null;
+        };
+    }
+
+    private Page? FindPage()
+    {
+        Element? cursor = Parent;
+        while (cursor is not null and not Page)
+            cursor = cursor.Parent;
+        return cursor as Page;
+    }
+
+    private void OnPageAppearing(object? sender, EventArgs e)
+    {
+        if (!_resetOnReturn)
+            return;
+        _resetOnReturn = false;
+        ApplySelection();
     }
 
     private Image IconFor(NavTab tab) => tab switch
@@ -82,6 +123,7 @@ public partial class BottomNavBar : ContentView
     /// </param>
     private void ApplySelection(NavTab shown, bool snapPill = true)
     {
+        _shown = shown;
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         var selectedColor = (Color)resources["PrimaryDark"];
         var unselectedColor = (Color)resources["MutedText"];
@@ -186,12 +228,22 @@ public partial class BottomNavBar : ContentView
                 await SlideToAsync(tab);
 
             await Shell.Current.GoToAsync(route);
+
+            // This bar stays on a page that is now hidden (Shell keeps tab pages). It is put back
+            // as its own tab when that page appears again (see _resetOnReturn), so coming back
+            // doesn't show another tab selected.
+            _resetOnReturn = _shown != Tab;
+        }
+        catch (Exception ex)
+        {
+            // The navigation never happened: the page is still this one, so its own tab goes
+            // straight back. Logged, not rethrown — this is async void, where a rethrow ends the
+            // app rather than reaching any caller.
+            ApplySelection();
+            Services.ScreenRefresh.LogFailure(ex, nameof(BottomNavBar), "while switching tab");
         }
         finally
         {
-            // This bar stays on a page that is now hidden (Shell keeps tab pages). Put it back
-            // as its own tab, so coming back to the page doesn't show another tab selected.
-            ApplySelection();
             _navigating = false;
         }
     }
