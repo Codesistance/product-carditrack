@@ -11,6 +11,9 @@ internal enum TrendLegendMark
 
     /// <summary>The zigzag break marks bounding a run of days with no reading.</summary>
     NoData,
+
+    /// <summary>The hollow diamond on a night the watch was worn through with no sleep.</summary>
+    Awake,
 }
 
 /// <summary>
@@ -47,12 +50,28 @@ internal sealed class TrendLegendSwatch : GraphicsView
             Invalidate();
         }
     }
+
+    /// <summary>
+    /// Whether the chart's band is the normal — which the chart draws more strongly, with the
+    /// baseline stepping back (see <see cref="TrendChartInk"/>). Both the band's and the
+    /// baseline's key follow it, so neither describes the chart's other look.
+    /// </summary>
+    public bool ReferenceIsNormal
+    {
+        set
+        {
+            _drawable.ReferenceIsNormal = value;
+            Invalidate();
+        }
+    }
 }
 
 internal sealed class TrendLegendSwatchDrawable(TrendLegendMark mark) : IDrawable
 {
     /// <summary>Null until the card this swatch belongs to has been bound to a metric.</summary>
     public Color? Ink { get; set; }
+
+    public bool ReferenceIsNormal { get; set; }
 
     public void Draw(ICanvas canvas, RectF dirtyRect)
     {
@@ -65,7 +84,7 @@ internal sealed class TrendLegendSwatchDrawable(TrendLegendMark mark) : IDrawabl
             // Named for what it is rather than the shorter "ink": the reference branch below has
             // its own, and a pattern variable stays in scope past the branch that declared it.
             canvas.StrokeColor = Ink is { } metricInk
-                ? TrendChartInk.BaselineIn(metricInk)
+                ? TrendChartInk.BaselineIn(metricInk, secondary: ReferenceIsNormal)
                 : TrendChartInk.BaselineFallback;
             canvas.StrokeSize = TrendChartInk.BaselineThickness;
             canvas.StrokeDashPattern = TrendChartInk.BaselineDashes;
@@ -97,17 +116,18 @@ internal sealed class TrendLegendSwatchDrawable(TrendLegendMark mark) : IDrawabl
             return;
         }
 
-        // The band at swatch scale is its fill between its two dashed edges — the same three
-        // strokes the chart draws, just with the whole 10dp standing in for the range.
-        var ink = TrendChartInk.Reference;
-        canvas.FillColor = ink.WithAlpha(TrendChartInk.ReferenceFillAlpha);
-        canvas.FillRectangle(dirtyRect);
+        if (mark == TrendLegendMark.Awake)
+        {
+            // The chart's own mark, a shade under its chart size so the stroke clears the 10dp.
+            TrendChartInk.DrawAwakeMark(
+                canvas, dirtyRect.Center, 3f, Ink ?? TrendChartInk.BaselineFallback);
+            return;
+        }
 
-        canvas.StrokeColor = ink.WithAlpha(TrendChartInk.ReferenceEdgeAlpha);
-        canvas.StrokeSize = 1f;
-        canvas.StrokeDashPattern = TrendChartInk.ReferenceEdgeDashes;
-        canvas.DrawLine(dirtyRect.Left, dirtyRect.Top + 0.5f, dirtyRect.Right, dirtyRect.Top + 0.5f);
-        canvas.DrawLine(dirtyRect.Left, dirtyRect.Bottom - 0.5f, dirtyRect.Right, dirtyRect.Bottom - 0.5f);
-        canvas.StrokeDashPattern = null;
+        // The band at swatch scale is its fill between its two edges — the same three strokes the
+        // chart draws, just with the whole 10dp standing in for the range.
+        TrendChartInk.DrawBand(
+            canvas, dirtyRect.Left, dirtyRect.Right, dirtyRect.Top + 0.5f, dirtyRect.Bottom - 0.5f,
+            ReferenceIsNormal);
     }
 }

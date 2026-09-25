@@ -62,6 +62,79 @@ public class AlertChartKeyTests
     }
 
     /// <summary>
+    /// The published-range alerts are about the band itself, so where it is the normal it is the
+    /// chart's primary mark and the key names it first, as the normal — not as a recommendation
+    /// trailing the member's usual.
+    /// </summary>
+    [Fact]
+    public void NamesTheBandFirst_AsTheNormal_WhenItIsTheNormal()
+    {
+        var nsf = Nsf(9m);
+        nsf.IsPublishedNormal = true;
+
+        Assert.Equal(
+            "Shaded: normal range 7–9 (NSF)  ·  Dashed: their usual 5.9",
+            AlertChartKey.For(Sleep(5.9m, nsf)));
+    }
+
+    /// <summary>
+    /// WHO's 12–20 is a rate at rest; breathing measured across hours of sleep is not that
+    /// measurement, so no band is drawn or named behind it whatever the response carried.
+    /// </summary>
+    [Fact]
+    public void NeverShadesOrNamesABand_BehindBreathingWhileAsleep()
+    {
+        var chart = new AlertChartResponse
+        {
+            Metric = "overnightBreathingRate",
+            Baseline = 14.2m,
+            Reference = new MetricReference { Low = 12m, High = 20m, Source = "WHO" },
+        };
+
+        Assert.Null(AlertChartKey.Reference(chart));
+        Assert.Equal("Dashed: their usual 14.2", AlertChartKey.For(chart));
+    }
+
+    /// <summary>
+    /// The alert chart's sleep points carry no night status yet, and a stored 0 is how the server
+    /// records an awake night — so a zero is drawn and named as one, and never headlined "0 hours".
+    /// </summary>
+    [Fact]
+    public void ReadsASleepZeroAsAnAwakeNight()
+    {
+        var chart = Sleep(6.1m, null);
+        chart.Value = 0m;
+        chart.Series =
+        [
+            new MetricPoint { Date = new DateOnly(2026, 9, 24), Value = 6.5m },
+            new MetricPoint { Date = new DateOnly(2026, 9, 25), Value = 0m },
+        ];
+
+        var series = AlertChartKey.Series(chart);
+
+        Assert.False(NightReading.IsAwake(series[0]));
+        Assert.True(NightReading.IsAwake(series[1]));
+        Assert.Null(chart.Series[1].NightStatus); // the response itself is left alone
+        Assert.Equal("Awake all night", AlertChartKey.Headline(chart));
+        Assert.Equal("Dashed: their usual 6.1  ·  Diamond: awake all night", AlertChartKey.For(chart));
+    }
+
+    [Fact]
+    public void LeavesZerosAlone_OnEveryChartButSleep()
+    {
+        var chart = new AlertChartResponse
+        {
+            Metric = "steps",
+            Unit = "steps",
+            Value = 0m,
+            Series = [new MetricPoint { Date = new DateOnly(2026, 9, 25), Value = 0m }],
+        };
+
+        Assert.Same(chart.Series, AlertChartKey.Series(chart));
+        Assert.Equal("0 steps", AlertChartKey.Headline(chart));
+    }
+
+    /// <summary>
     /// The fractional metrics keep their tenth; the whole-number metrics do not grow a false one.
     /// The hour-denominated stretch is the regression: its 2.4-hour usual rounded to a whole
     /// number put the key visibly at odds with the comparison card's "2.4 h" on the same screen.
@@ -71,6 +144,8 @@ public class AlertChartKeyTests
     [InlineData("longestSedentaryStretch", "3.8")]
     [InlineData("overnightBreathingRate", "3.8")]
     [InlineData("heartRateVariability", "3.8")]
+    // A whole number rounded 93.6% to "94" beside an alert saying the readings sat below 94%.
+    [InlineData("spo2", "3.8")]
     [InlineData("steps", "4")]
     [InlineData("restingHeartRate", "4")]
     [InlineData("elevatedZoneMinutes", "4")]

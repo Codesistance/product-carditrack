@@ -1,5 +1,7 @@
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Services;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Charts;
 
 namespace CardiTrack.Mobile.Controls;
@@ -29,8 +31,12 @@ public sealed class ChatSeriesChart : ContentView
     private readonly Label _baselineKey = new();
     private readonly Label _referenceKey = new();
     private readonly TrendLegendSwatch _baselineSwatch = new(TrendLegendMark.Baseline);
+    private readonly TrendLegendSwatch _referenceSwatch = new(TrendLegendMark.Reference);
+    private readonly TrendLegendSwatch _awakeSwatch = new(TrendLegendMark.Awake);
+    private readonly Label _awakeKey = new() { Text = NightReading.AwakeCallout };
     private readonly HorizontalStackLayout _baselineLegend;
     private readonly HorizontalStackLayout _referenceLegend;
+    private readonly HorizontalStackLayout _awakeLegend;
     private readonly Grid _legend;
 
     public ChatSeriesChart()
@@ -95,7 +101,7 @@ public sealed class ChatSeriesChart : ContentView
         // member's own usual and the published band — and neither carries its own label on a plot
         // this size, so the key names them and quotes the numbers behind them, exactly as
         // MetricTrendCard's legend does.
-        foreach (var key in new[] { _baselineKey, _referenceKey })
+        foreach (var key in new[] { _baselineKey, _referenceKey, _awakeKey })
         {
             key.FontSize = AnnotationFontSize;
             key.TextColor = muted;
@@ -103,14 +109,19 @@ public sealed class ChatSeriesChart : ContentView
             key.LineBreakMode = LineBreakMode.TailTruncation;
         }
         _baselineLegend = BuildLegendEntry(_baselineSwatch, _baselineKey);
-        _referenceLegend = BuildLegendEntry(new TrendLegendSwatch(TrendLegendMark.Reference), _referenceKey);
+        _referenceLegend = BuildLegendEntry(_referenceSwatch, _referenceKey);
+        // Its own row, as on MetricTrendCard: only a sleep series with an awake night has one.
+        _awakeLegend = BuildLegendEntry(_awakeSwatch, _awakeKey);
         _legend = new Grid
         {
             ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
+            RowDefinitions = [new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto)],
             ColumnSpacing = 12,
         };
         _legend.Add(_baselineLegend);
         _legend.Add(_referenceLegend, 1);
+        _legend.Add(_awakeLegend, 0, 1);
+        Grid.SetColumnSpan(_awakeLegend, 2);
 
         Content = new VerticalStackLayout
         {
@@ -151,8 +162,20 @@ public sealed class ChatSeriesChart : ContentView
         view._baselineKey.Text = item.BaselineText ?? string.Empty;
         view._referenceLegend.IsVisible = item.ReferenceText is not null;
         view._referenceKey.Text = item.ReferenceText ?? string.Empty;
-        view._legend.IsVisible = item.BaselineText is not null || item.ReferenceText is not null;
+        view._awakeSwatch.Ink = item.Ink;
+        view._awakeLegend.IsVisible = item.HasAwakeNight;
+
+        // Where the band is the normal it is drawn first and the usual second, and the key reads
+        // in that order and at those weights — see TrendChartInk.
+        var bandIsNormal = item.Reference is { IsPublishedNormal: true };
+        view._baselineSwatch.ReferenceIsNormal = bandIsNormal;
+        view._referenceSwatch.ReferenceIsNormal = bandIsNormal;
+        Grid.SetColumn(view._referenceLegend, bandIsNormal ? 0 : 1);
+        Grid.SetColumn(view._baselineLegend, bandIsNormal ? 1 : 0);
+
+        view._legend.IsVisible = item.BaselineText is not null || item.ReferenceText is not null || item.HasAwakeNight;
         view._legend.ColumnSpacing = item.BaselineText is not null && item.ReferenceText is not null ? 12 : 0;
+        view._legend.RowSpacing = item.HasAwakeNight ? 2 : 0;
 
         // The extent the chart actually plots over, not the readings' own min and max — those are
         // what TrendScale padded away from, and writing them here would put a number on the axis
@@ -227,8 +250,19 @@ public sealed class ChatChartItem
     /// Member Detail trends use, so the two surfaces name one range one way.</summary>
     public string? ReferenceText =>
         Reference is { } reference
-            ? $"Typical {AxisLabel((double)reference.Low)}–{AxisLabel((double)reference.High)} ({reference.Source})"
+            ? $"{ReferenceBands.Noun(reference)} {AxisLabel((double)reference.Low)}–"
+                + $"{AxisLabel((double)reference.High)} ({reference.Source})"
             : null;
+
+    /// <summary>Whether the series holds a night the watch was worn through with no sleep.</summary>
+    public bool HasAwakeNight => Points.Any(NightReading.IsAwake);
+
+    /// <summary>
+    /// A reading as the summary says it: <see cref="FormatValue"/>, except an awake night, which
+    /// is named in the server's words rather than read out as "0m".
+    /// </summary>
+    private string FormatPoint(MetricPoint point) =>
+        NightReading.IsAwake(point) ? ReadingFigures.AwakeNight : FormatValue((double)point.Value!.Value);
 
     /// <summary>The series name, kept for the unit the callout appends — the chart draws numbers,
     /// the series knows what they are.</summary>
@@ -263,18 +297,23 @@ public sealed class ChatChartItem
             if (reported.Count == 0)
                 return $"{Title}: no readings.";
 
-            var low = reported.Min(p => p.Value!.Value);
-            var high = reported.Max(p => p.Value!.Value);
+            var low = reported.MinBy(p => p.Value!.Value)!;
+            var high = reported.MaxBy(p => p.Value!.Value)!;
             var latest = reported[^1];
 
             // The comparisons reach a screen reader through the summary, as on MetricTrendCard:
             // the canvas is one opaque element, so a rule and a band it draws are invisible to
-            // anyone the plot itself is.
-            var comparisons = string.Join(". ", new[] { BaselineText, ReferenceText }.Where(t => t is not null));
+            // anyone the plot itself is. The normal first where the band is the normal.
+            var bandFirst = Reference is { IsPublishedNormal: true };
+            var comparisons = string.Join(". ", new[]
+            {
+                bandFirst ? ReferenceText : BaselineText,
+                bandFirst ? BaselineText : ReferenceText,
+            }.Where(t => t is not null));
 
             return $"{Title}, {reported.Count} readings from {Points[0].Date:MMM d} to {Points[^1].Date:MMM d}. "
-                + $"Ranging {FormatValue((double)low)} to {FormatValue((double)high)}. "
-                + $"Latest {FormatValue((double)latest.Value!.Value)} on {latest.Date:MMM d}."
+                + $"Ranging {FormatPoint(low)} to {FormatPoint(high)}. "
+                + $"Latest {FormatPoint(latest)} on {latest.Date:MMM d}."
                 + (comparisons.Length > 0 ? $" {comparisons}." : string.Empty);
         }
     }
@@ -292,9 +331,11 @@ public sealed class ChatChartItem
         // day so gaps draw as its shaded no-data runs rather than silently compressing time.
         // Indexer assignment rather than ToDictionary, and min/max rather than first/last, so a
         // reply with duplicated or unordered dates degrades to a drawable chart, not a crash.
-        var byDate = new Dictionary<DateOnly, double>();
+        // The night status travels with the value, so an awake night keeps its diamond and its
+        // name rather than arriving at the chart as a bare 0.
+        var byDate = new Dictionary<DateOnly, ChartPoint>();
         foreach (var point in series.Points)
-            byDate[point.Date] = point.Value;
+            byDate[point.Date] = point;
 
         var first = series.Points.Min(p => p.Date);
         var last = series.Points.Max(p => p.Date);
@@ -308,10 +349,12 @@ public sealed class ChatChartItem
         var points = new List<MetricPoint>();
         for (var date = first; date <= last; date = date.AddDays(1))
         {
+            var found = byDate.TryGetValue(date, out var point);
             points.Add(new MetricPoint
             {
                 Date = date,
-                Value = byDate.TryGetValue(date, out var value) ? (decimal)value : null,
+                Value = found ? (decimal)point!.Value : null,
+                NightStatus = found ? point!.Night : null,
             });
         }
 
@@ -320,6 +363,9 @@ public sealed class ChatChartItem
 
         var values = series.Points.Select(p => p.Value).ToList();
 
+        // Breathing while asleep never gets a band, whatever the reply carried — see ReferenceBands.
+        var reference = ReferenceBands.Drawable(series.Metric, series.Reference);
+
         // The scale admits the comparisons the reply carried, the same way the Member Detail
         // trends' does — the axis labels then name the extent the marks are actually drawn
         // against, not just the readings'.
@@ -327,12 +373,12 @@ public sealed class ChatChartItem
             values.Min(),
             values.Max(),
             series.Baseline,
-            series.Reference is { } reference ? (double)reference.Low : null,
-            series.Reference is { } high ? (double)high.High : null);
+            reference is not null ? (double)reference.Low : null,
+            reference is not null ? (double)reference.High : null);
 
         return new ChatChartItem(
             series.Metric, points, scale, InkFor(series.Metric), series.Metric,
-            series.Baseline is { } baseline ? (decimal)baseline : null, series.Reference);
+            series.Baseline is { } baseline ? (decimal)baseline : null, reference);
     }
 
     /// <summary>
@@ -376,28 +422,33 @@ internal static class ChatMetricFormat
     /// this is and repeating the unit on both ends costs width it cannot spare. Sleep keeps its
     /// h/m shaping regardless: that is the number's readable form, not its unit.
     /// </summary>
+    /// <remarks>
+    /// A sleep axis that runs down to zero — which it does whenever the window holds an awake
+    /// night — is labelled "0h" rather than "0m": the bound is a level on the axis, and "0m" is the
+    /// rendering of a night the app never prints.
+    /// </remarks>
     internal static string Bare(string metric, double value) => metric switch
     {
         "Steps" => $"{value:#,##0}",
         "Resting heart rate" => $"{value:0}",
-        "Sleep" or "Sleep (minutes)" => Duration(value),
+        "Sleep" or "Sleep (minutes)" => Minutes(value) == 0 ? "0h" : Duration(value),
         _ => value.ToString("0.#"),
     };
 
     /// <summary>
-    /// Mirrors <c>ReadingFigures.SleepFigure</c>, which the API uses for the same figure in
-    /// prose. Duplicated rather than shared because this assembly cannot reference Infrastructure,
-    /// and the two must not drift: a callout reading "8h 0m" beside a reply reading "8h" is the
-    /// same night described two ways in one bubble.
+    /// One reading of a reply series in prose — <see cref="Bare"/>, except an awake night, which is
+    /// named in the server's words (<see cref="ReadingFigures.AwakeNight"/>) rather than as a 0.
     /// </summary>
-    private static string Duration(double minutes)
-    {
-        var whole = (int)Math.Round(minutes);
-        return whole switch
-        {
-            < 60 => $"{whole}m",
-            _ when whole % 60 == 0 => $"{whole / 60}h",
-            _ => $"{whole / 60}h {whole % 60}m",
-        };
-    }
+    internal static string Point(string metric, ChartPoint point) =>
+        point.Night == NightSleepStatus.Awake ? ReadingFigures.AwakeNight : Bare(metric, point.Value);
+
+    /// <summary>
+    /// <see cref="ReadingFigures.SleepFigure"/> itself, which the API uses for the same figure in
+    /// prose — shared now that it lives in Application, which this assembly references, so a
+    /// callout reading "8h 0m" beside a reply reading "8h" cannot happen. Rounded away from zero,
+    /// as the server rounds a chart value before naming it (<c>ReadingWindowSummary</c>).
+    /// </summary>
+    private static string Duration(double minutes) => ReadingFigures.SleepFigure(Minutes(minutes));
+
+    private static int Minutes(double minutes) => (int)Math.Round(minutes, MidpointRounding.AwayFromZero);
 }

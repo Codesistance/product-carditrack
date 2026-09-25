@@ -12,8 +12,15 @@ namespace CardiTrack.Mobile.Core.Charts;
 /// <para>
 /// The chart draws a dashed rule and a shaded band without ever saying what they mean. The legend
 /// names them, but naming is not explaining — "Their usual day: 5,432" does not tell a
-/// non-clinical reader that their own normal matters more than the published one, or that a wrist
-/// wearable is not taking anyone's temperature.
+/// non-clinical reader which of the two to read a night against, or that a wrist wearable is not
+/// taking anyone's temperature.
+/// </para>
+/// <para>
+/// For sleep, resting heart rate and blood oxygen the published range is the normal (decision
+/// 2026-09-25, <see cref="MetricReference.IsPublishedNormal"/>): a reading outside it is worth a
+/// look even when it is usual for this member, and their usual is secondary context. The copy for
+/// those three says so, and calls the member's own figure "their usual" so that "normal" names one
+/// thing on the card.
 /// </para>
 /// <para>
 /// Both marks are optional, and the copy follows the chart rather than describing an idealised
@@ -29,20 +36,27 @@ public static class MetricExplanations
     /// <summary>
     /// Closes every explanation. CardiTrack is not a diagnostic tool, and a panel that has just
     /// spent a paragraph on clinical reference ranges is exactly where that has to be said rather
-    /// than assumed.
+    /// than assumed. "Readings worth a look" rather than "changes from someone's own normal": for
+    /// sleep, resting heart rate and blood oxygen the published range is now the normal, and a
+    /// panel that has just said so should not close by saying the opposite.
     /// </summary>
     private const string NotADiagnosis =
-        "CardiTrack watches for changes from someone's own normal. It doesn't diagnose.";
+        "CardiTrack watches for readings worth a look. It doesn't diagnose.";
 
     /// <summary>
     /// The line under the chart, and the panel behind the "i". <paramref name="memberFirstName"/>
     /// is who the chart is about — the copy names them ("Dad's own usual step count") rather than
     /// reaching for a label, and falls back to "their"/"them" when no name is on file.
     /// </summary>
+    /// <param name="window">
+    /// The points the chart on screen actually draws — a 7-day window is the tail of a longer
+    /// series. The panel only explains a mark that window carries; null reads the whole series.
+    /// </param>
     public static (string Footer, string Panel) For(
-        string name, DashboardMetric metric, string format, string? memberFirstName = null)
+        string name, DashboardMetric metric, string format, string? memberFirstName = null,
+        IReadOnlyList<MetricPoint>? window = null)
     {
-        var panel = Panel(name, metric, format, memberFirstName);
+        var panel = Panel(name, metric, format, memberFirstName, window ?? metric.Series);
         return (Footer(name, metric, format), $"{panel}\n\n{NotADiagnosis}");
     }
 
@@ -79,7 +93,8 @@ public static class MetricExplanations
         name switch
         {
             "Activity" => "their usual day",
-            "Heart Rate" => "their own normal",
+            // Not "their own normal": the published range is the normal for resting heart rate.
+            "Heart Rate" => "their usual",
             "Sleep" => "their usual night",
             "Skin Temp" => "their nightly normal",
             "Blood Oxygen" or "Breathing Rate" => null,
@@ -107,8 +122,17 @@ public static class MetricExplanations
             parts.Add($"Still learning {noun}.");
 
         if (metric.Reference is { } reference)
-            parts.Add($"Band {string.Format(format, reference.Low)}–{string.Format(format, reference.High)} "
-                      + $"({reference.Source}).");
+        {
+            var range = $"{string.Format(format, reference.Low)}–{string.Format(format, reference.High)} "
+                        + $"({reference.Source}).";
+
+            // Where the band is the normal it is named as such and named first, the order the
+            // chart now draws them in.
+            if (reference.IsPublishedNormal)
+                parts.Insert(0, $"Normal range {range}");
+            else
+                parts.Add($"Band {range}");
+        }
 
         return string.Join(" ", parts);
     }
@@ -117,7 +141,8 @@ public static class MetricExplanations
     /// The fuller account behind the "i". Each metric answers the same two questions — what the
     /// dashed rule is, and what the band is — in whichever form matches what is on the chart.
     /// </summary>
-    private static string Panel(string name, DashboardMetric metric, string format, string? who)
+    private static string Panel(
+        string name, DashboardMetric metric, string format, string? who, IReadOnlyList<MetricPoint> window)
     {
         var learned = metric.Baseline is not null;
 
@@ -133,28 +158,32 @@ public static class MetricExplanations
                   + "a step count to compare anyone against either, so there is no shaded band. Until "
                   + "their usual day is known, the shape of the line is the thing to read.",
 
-            "Heart Rate" => learned
-                ? $"The dashed line is {Who(who)} own resting heart rate, learned over time. "
-                  + $"The shaded band is the typical adult range{Published(metric, format, "bpm")}. "
-                  + "Their own normal is the more useful of the two: a resting rate that is steady "
-                  + "for them can sit outside the published band and be perfectly ordinary for them."
-                : $"CardiTrack is still learning {Who(who)} own resting heart rate, so there "
-                  + "is no dashed line on this chart yet. The shaded band is the typical adult range"
-                  + $"{Published(metric, format, "bpm")}. Once their own normal is known it becomes "
-                  + "the more useful of the two: a resting rate that is steady for them can sit "
-                  + "outside the published band and be perfectly ordinary for them.",
+            // The band first, because it is the normal (decision 2026-09-25) — this panel used to
+            // tell caregivers the opposite: that a rate outside it could be "perfectly ordinary".
+            "Heart Rate" => $"The shaded band is the normal adult resting heart rate"
+                + $"{Published(metric, format, "bpm")}. A resting rate outside it is worth a look, "
+                + $"even when it is usual for {WhoPlain(who)}. "
+                + (learned
+                    ? $"The dashed line is {Who(who)} usual resting rate, learned over time — it "
+                      + "shows whether a reading is new for them, not whether it is normal."
+                    : $"CardiTrack is still learning {Who(who)} usual resting rate, so there is no "
+                      + "dashed line on this chart yet. Once it is known, it will show whether a "
+                      + "reading is new for them."),
 
-            "Sleep" => learned
-                ? $"The dashed line is {Who(who)} own usual night. The shaded band is the "
-                  + $"nightly sleep recommended for their age group{Published(metric, format, "hours")} "
-                  + "— the recommendation drops by an hour from age 65, so it is drawn for their age "
-                  + "rather than as a single adult figure. This measures how long they slept, not how "
-                  + "well."
-                : $"CardiTrack is still learning {Who(who)} usual night, so there is no dashed "
-                  + "line on this chart yet. The shaded band is the nightly sleep recommended for "
-                  + $"their age group{Published(metric, format, "hours")} — the recommendation drops "
-                  + "by an hour from age 65, so it is drawn for their age rather than as a single "
-                  + "adult figure. This measures how long they slept, not how well.",
+            "Sleep" => "The shaded band is the nightly sleep recommended for their age group"
+                + $"{Published(metric, format, "hours")} — the recommendation drops by an hour from "
+                + "age 65, so it is drawn for their age rather than as a single adult figure. A night "
+                + $"outside it is worth a look, even when it is usual for {WhoPlain(who)}. "
+                + (learned
+                    ? $"The dashed line is {Who(who)} usual night, which shows whether a night is "
+                      + "new for them. "
+                    : $"CardiTrack is still learning {Who(who)} usual night, so there is no dashed "
+                      + "line on this chart yet. ")
+                + (window.Any(NightReading.IsAwake)
+                    ? "A diamond marks a night the watch was worn with no sleep recorded — "
+                      + "counted as awake all night. "
+                    : string.Empty)
+                + "This measures how long they slept, not how well.",
 
             "Skin Temp" => learned
                 ? "A wrist wearable measures skin temperature, not core body temperature — this is "
@@ -169,9 +198,9 @@ public static class MetricExplanations
                   + "population normal for a measurement this personal.",
 
             "Blood Oxygen" => "The shaded band is the normal blood oxygen range"
-                + $"{Published(metric, format, "%")}. CardiTrack has not learned a personal normal "
-                + "for blood oxygen, so this chart has no dashed line — the readings are shown "
-                + "against the published range alone.",
+                + $"{Published(metric, format, "%")}, and a reading below it is worth a look. "
+                + "CardiTrack has not learned a personal normal for blood oxygen, so this chart has "
+                + "no dashed line — the readings are shown against the published range alone.",
 
             "Breathing Rate" => "The shaded band is the normal adult breathing rate"
                 + $"{Published(metric, format, "breaths per minute")}. CardiTrack has not learned a "

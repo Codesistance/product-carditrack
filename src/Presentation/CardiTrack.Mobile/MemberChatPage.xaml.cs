@@ -1273,6 +1273,13 @@ public sealed class ChatTurnItem
     public bool HasCharts => Charts.Count > 0;
 
     /// <summary>
+    /// The chart carousel's height. A carousel cannot size itself to its items, so it is fixed to
+    /// what <see cref="ChatSeriesChart"/> stacks — and one row taller when a chart in it carries
+    /// the awake-night key on a line of its own, which the fixed height used to clip in half.
+    /// </summary>
+    public double ChartsHeight => Charts.Any(c => c.HasAwakeNight) ? 191 : 175;
+
+    /// <summary>
     /// Whether the chart carousel wraps around and shows its pager row (the dots with an arrow
     /// either side) — only when there is more than one chart to move between. A single-chart
     /// reply shows no pager at all: a lone dot would announce a carousel that cannot be swiped,
@@ -1523,14 +1530,14 @@ public sealed class ChatTurnItem
     /// stretch to describe and the reply states it in prose. So there is no one-point branch: an
     /// arrow always sits between two different readings, which is the only shape that ever meant
     /// anything. Values are spelled the way the charts spell them, so a night's sleep does not
-    /// read as "372" beneath a bubble that just called it six hours.
+    /// read as "372" beneath a bubble that just called it six hours — nor an awake night as "0m".
     /// </remarks>
     private static string Summarize(IReadOnlyList<ChartSeries> charts)
     {
         var parts = charts
             .Where(c => c.Points.Count > 1)
-            .Select(c => $"{c.Metric}: {ChatMetricFormat.Bare(c.Metric, c.Points[0].Value)} → "
-                + $"{ChatMetricFormat.Bare(c.Metric, c.Points[^1].Value)}");
+            .Select(c => $"{c.Metric}: {ChatMetricFormat.Point(c.Metric, c.Points[0])} → "
+                + $"{ChatMetricFormat.Point(c.Metric, c.Points[^1])}");
         return string.Join(" · ", parts);
     }
 }
