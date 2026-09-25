@@ -841,9 +841,14 @@ public static class AlertDetailComposer
             StatisticalAlertRules.DaytimeInactivityBlockRule
                 => DailyChart(
                     "longestSedentaryStretch", "Longest Still Stretch", "hours", ActivityDays, today, logs,
-                    l => l.LongestSedentaryStretchMinutes is { } m ? Math.Round(m / 60m, 1) : null,
+                    // Halves away from zero, as the comparison card below the chart rounds them
+                    // (SedentaryStretchComparison): 219 minutes is 3.65 h, and banker's rounding
+                    // here would headline 3.6 above a card that says 3.7.
+                    l => l.LongestSedentaryStretchMinutes is { } m
+                        ? Math.Round(m / 60m, 1, MidpointRounding.AwayFromZero)
+                        : null,
                     baseline?.AvgLongestSedentaryStretchMinutes is { } avg
-                        ? Math.Round(avg / 60m, 1)
+                        ? Math.Round(avg / 60m, 1, MidpointRounding.AwayFromZero)
                         : null,
                     headlineDate: aboutDate),
 

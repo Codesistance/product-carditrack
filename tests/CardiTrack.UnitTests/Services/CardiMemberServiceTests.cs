@@ -403,6 +403,30 @@ public class CardiMemberServiceTests
         Assert.Equal(own, only.LastSyncedAt);
     }
 
+    /// <summary>
+    /// Connected but never heard from: a device, and no time — which the Family tab reads as
+    /// "waiting for the first sync" rather than "no device connected".
+    /// </summary>
+    [Fact]
+    public async Task GetForUserInOrganization_ConnectedButNeverSynced_CountsTheDeviceWithNoTime()
+    {
+        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
+        _members.GetByOrganizationIdAsync(_organizationId).Returns([member]);
+        _links.GetByCardiMemberIdAsync(member.Id).Returns(
+        [
+            new UserCardiMember { UserId = _userId, CardiMemberId = member.Id, IsActive = true },
+        ]);
+        _devices.GetActiveByCardiMemberIdAsync(member.Id).Returns(
+        [
+            new DeviceConnection { CardiMemberId = member.Id, LastSyncDate = null },
+        ]);
+
+        var only = Assert.Single(await CreateSut().GetForUserInOrganizationAsync(_userId, _organizationId));
+
+        Assert.Null(only.LastSyncedAt);
+        Assert.Equal(1, only.ConnectedDeviceCount);
+    }
+
     // ── M1-13 detail ────────────────────────────────────────────────────────────
 
     private CardiMember SeedMember(
