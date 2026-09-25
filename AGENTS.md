@@ -32,8 +32,8 @@ local; `--platform both` sends Android to CI as well. Store pushes are a separat
 step: `deploy-mobile-dev.yml`, by tag, on `main`.
 
 ### Test everything: `scripts/agent/test-all.sh`
-Builds the server filter once (Release) and runs the unit and integration suites with
-`TESTCONTAINERS_RYUK_DISABLED=true`. Both need a Docker daemon. It says outright that
+Builds the server filter once (Release) and runs the unit and integration suites — with
+`TESTCONTAINERS_RYUK_DISABLED=true` on Linux (this VM), Ryuk on elsewhere. Both need a Docker daemon. It says outright that
 `CardiTrack.E2ETests` is empty and `CardiTrack.Mobile` has no test project — do not report
 those as green.
 

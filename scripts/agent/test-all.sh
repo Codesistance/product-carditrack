@@ -7,10 +7,12 @@
 #   - CardiTrack.E2ETests is an empty scaffold and CardiTrack.Mobile has no test
 #     project. Neither is run, and neither is reported as passing.
 #
-# TESTCONTAINERS_RYUK_DISABLED=true matches CI: the Ryuk reaper container cannot
-# run in most agent sandboxes. The suites remove their containers when a run
-# finishes; a run killed part-way leaves them behind, which only a throwaway VM
-# can afford — on a workstation, export TESTCONTAINERS_RYUK_DISABLED=false.
+# Ryuk, the reaper that removes a killed run's containers, cannot run in most
+# agent sandboxes, so on Linux (the sandboxes, and CI) it is off by default.
+# That is affordable only on a throwaway VM: the suites remove their containers
+# when a run finishes, but a run killed part-way leaves them behind. Elsewhere
+# (the Windows dev box, on Docker Desktop) it stays on. An exported
+# TESTCONTAINERS_RYUK_DISABLED wins either way.
 #
 # Usage: scripts/agent/test-all.sh [--unit | --integration]
 set -uo pipefail
@@ -27,7 +29,8 @@ case "${1:-}" in
 esac
 
 log() { printf '\033[0;36m[test-all]\033[0m %s\n' "$*"; }
-export TESTCONTAINERS_RYUK_DISABLED="${TESTCONTAINERS_RYUK_DISABLED:-true}"
+if [ "$(uname -s)" = "Linux" ]; then RYUK_DEFAULT=true; else RYUK_DEFAULT=false; fi
+export TESTCONTAINERS_RYUK_DISABLED="${TESTCONTAINERS_RYUK_DISABLED:-$RYUK_DEFAULT}"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 
 # services-up.sh adds a non-root user to the docker group, but a group joined
