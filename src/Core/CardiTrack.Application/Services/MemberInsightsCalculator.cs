@@ -108,10 +108,21 @@ public static class MemberInsightsCalculator
             value: latestSleep?.SleepMinutes is int sm ? Math.Round(sm / 60m, 1) : null,
             baselineValue: baseline?.AvgSleepMinutes is int abm ? Math.Round(abm / 60m, 1) : null,
             unit: "hours",
-            series: BuildSeries(byDate, today, l => l.SleepMinutes is int m ? Math.Round(m / 60m, 1) : (decimal?)null),
+            series: BuildSeries(
+                byDate,
+                today,
+                l => l.SleepMinutes is int m ? Math.Round(m / 60m, 1) : (decimal?)null,
+                night: l => l.NightStatus),
             // The only one of the four published ranges that is split by age; the rest are
             // published as single adult bands, which is all a CardiMember can be.
-            reference: HealthReferenceRanges.Sleep(ageYears));
+            reference: HealthReferenceRanges.Sleep(ageYears),
+            // The night as measured, not as the card rounds it — the reason CapAtRecommendedSleep
+            // takes minutes: 418 minutes is 6.97 hours, rounds to 7.0, and would otherwise clear
+            // a floor it is three minutes short of.
+            bandReading: latestSleep?.SleepMinutes is int exact ? exact / 60m : null);
+        // Which night the figure above is, so a client can say "awake all night" instead of
+        // printing the 0 an Awake night is stored as.
+        sleep.NightStatus = latestSleep?.NightStatus;
         // A night is rated on both of the things that can be wrong with it, taking the worse:
         // how well it was slept, and how much of it there was. Read off the same night as the
         // duration above, so the stars can never describe the quality of one night next to the
@@ -176,9 +187,10 @@ public static class MemberInsightsCalculator
 
         // No baseline concept exists for SpO2 yet — shown as a plain reading, not a trend, and
         // with no star rating either: there is nothing to rate it against but an invented normal.
-        // The published reference range is the one comparison these two metrics do have, and it is
-        // background for a chart rather than a judgement, so it neither colours the status nor
-        // earns them a rating.
+        // The published range is what normal means for it (decision 2026-09-25), so a reading
+        // outside WHO's 94–100 colours the status. One inside it stays "unknown" rather than
+        // turning green: inside the range is judged against the member's usual, and there is no
+        // usual here to judge it against.
         var latestSpO2 = LatestWith(newestFirst, l => l.SpO2Average);
         var spO2 = BuildMetric(
             value: latestSpO2?.SpO2Average,
@@ -187,7 +199,9 @@ public static class MemberInsightsCalculator
             series: BuildSeries(byDate, today, l => l.SpO2Average),
             reference: HealthReferenceRanges.SpO2);
 
-        // Breathing rate has no established-baseline concept yet either, same as SpO2 above.
+        // Breathing rate has no established-baseline concept yet either, same as SpO2 above. Its
+        // band stays background rather than the normal: WHO's 12–20 is a waking rate at rest, and
+        // only sleep, resting heart rate and blood oxygen have a range that is what normal means.
         var latestBreathing = LatestWith(newestFirst, l => l.BreathingRate);
         var breathingRate = BuildMetric(
             value: latestBreathing?.BreathingRate,
@@ -288,12 +302,12 @@ public static class MemberInsightsCalculator
     /// can see it, because "too long" has no meaning except in absolute terms.
     /// </para>
     /// <para>
-    /// This is the single, deliberate exception to <see cref="MetricReference"/> being
-    /// presentational only, and it is written to stay inside that rule's intent: the recommendation
-    /// can only ever lower a rating the member's own data already earned — never raise one, and
-    /// never create one where there was nothing to rate. An unusual night is still reported as an
-    /// unusual night, not named a disorder — CardiTrack is not a medical device — but it will not
-    /// be applauded either.
+    /// The recommendation can only ever lower a rating the member's own data already earned — never
+    /// raise one, and never create one where there was nothing to rate. The same range also decides
+    /// the card's status (see <see cref="MetricReference.IsPublishedNormal"/>), so a night outside
+    /// it is both capped here and coloured there. An unusual night is still reported as an unusual
+    /// night, not named a disorder — CardiTrack is not a medical device — but it will not be
+    /// applauded either.
     /// </para>
     /// </remarks>
     /// <param name="sleepMinutes">
@@ -354,8 +368,18 @@ public static class MemberInsightsCalculator
     /// </param>
     /// <param name="reference">
     /// The published typical-adult range to draw behind the series, or null for a metric no
-    /// standards body publishes one for — see <see cref="HealthReferenceRanges"/>. Presentational
-    /// only: the status below stays relative to this member's own baseline.
+    /// standards body publishes one for — see <see cref="HealthReferenceRanges"/>. Background for
+    /// the chart, unless it is marked <see cref="MetricReference.IsPublishedNormal"/> — sleep,
+    /// resting heart rate and blood oxygen (decision 2026-09-25). For those, a reading outside it
+    /// is worth attention even when it is this member's own usual: a person living poorly must not
+    /// look normal because their average is poor. The usual still says whether the reading is new
+    /// for them, so inside the range the status is the baseline comparison exactly as for every
+    /// other metric. Read off the range rather than passed alongside it, so the status and the
+    /// chart that draws the range as primary cannot disagree about which metrics it governs.
+    /// </param>
+    /// <param name="bandReading">
+    /// The reading to hold against the band when <paramref name="value"/> is rounded for display
+    /// and the rounding could carry it across an edge. Defaults to <paramref name="value"/>.
     /// </param>
     private static DashboardMetric BuildMetric(
         decimal? value,
@@ -363,11 +387,35 @@ public static class MemberInsightsCalculator
         string unit,
         List<MetricPoint> series,
         bool comparable = true,
-        MetricReference? reference = null)
+        MetricReference? reference = null,
+        decimal? bandReading = null)
     {
         decimal? changePercent = null;
         if (comparable && value is not null && baselineValue is > 0)
             changePercent = Math.Round((value.Value - baselineValue.Value) / baselineValue.Value * 100m, 1);
+
+        var status = changePercent is null
+            ? "unknown"
+            : Math.Abs(changePercent.Value) switch
+            {
+                <= YellowDeviationPercent => "green",
+                <= OrangeDeviationPercent => "yellow",
+                _ => "orange",
+            };
+
+        // Outside the published normal is at least "yellow" — worth a look, not a finding. The
+        // baseline comparison can still raise it to "orange" when the reading is also a long way
+        // from the member's usual; it can never lower it, which is the point: a usual that sits
+        // outside the range does not make a reading at that usual normal. Not straight to
+        // "orange", because a fit member's 58 bpm resting heart rate is below AHA's 60, and a
+        // "check in" for it would be the range crying wolf.
+        if (reference is { IsPublishedNormal: true }
+            && (bandReading ?? value) is { } reading
+            && MetricValence.IsOutside(reading, reference)
+            && status != "orange")
+        {
+            status = "yellow";
+        }
 
         return new DashboardMetric
         {
@@ -375,14 +423,7 @@ public static class MemberInsightsCalculator
             Baseline = baselineValue,
             ChangePercent = changePercent,
             Unit = unit,
-            Status = changePercent is null
-                ? "unknown"
-                : Math.Abs(changePercent.Value) switch
-                {
-                    <= YellowDeviationPercent => "green",
-                    <= OrangeDeviationPercent => "yellow",
-                    _ => "orange",
-                },
+            Status = status,
             Series = series,
             Reference = reference,
         };
@@ -406,17 +447,27 @@ public static class MemberInsightsCalculator
         target.OvernightBreathingRate.Series = source.OvernightBreathingRate.Series;
     }
 
+    /// <param name="night">
+    /// Sleep only: what is known about each day's night (<see cref="ActivityLog.NightStatus"/>),
+    /// so a client can tell an Awake night's 0 from a real reading and a Pending night's missing
+    /// value from one that never came. Null for every other metric, leaving the field unset.
+    /// </param>
     private static List<MetricPoint> BuildSeries(
-        Dictionary<DateOnly, ActivityLog> byDate, DateOnly today, Func<ActivityLog, decimal?> selector)
+        Dictionary<DateOnly, ActivityLog> byDate,
+        DateOnly today,
+        Func<ActivityLog, decimal?> selector,
+        Func<ActivityLog, NightSleepStatus?>? night = null)
     {
         var series = new List<MetricPoint>(SeriesDays);
         for (var offset = SeriesDays - 1; offset >= 0; offset--)
         {
             var date = today.AddDays(-offset);
+            var log = byDate.GetValueOrDefault(date);
             series.Add(new MetricPoint
             {
                 Date = date,
-                Value = byDate.TryGetValue(date, out var log) ? selector(log) : null,
+                Value = log is null ? null : selector(log),
+                NightStatus = log is null || night is null ? null : night(log),
             });
         }
         return series;

@@ -229,9 +229,10 @@ public class DashboardMetrics
     public DashboardMetric Temperature { get; set; } = new();
 
     /// <summary>Blood oxygen saturation. No established-baseline comparison exists for this
-    /// metric yet, so <see cref="DashboardMetric.Status"/> stays "unknown" — the value is shown
-    /// without a trend judgement, against the published range in
-    /// <see cref="DashboardMetric.Reference"/>.</summary>
+    /// metric yet, so inside the published range in <see cref="DashboardMetric.Reference"/>
+    /// <see cref="DashboardMetric.Status"/> stays "unknown" — there is no usual to judge it
+    /// against. Outside the range it is "yellow": the range is what normal means for blood
+    /// oxygen.</summary>
     public DashboardMetric SpO2 { get; set; } = new();
 
     /// <summary>Breathing (respiratory) rate. Same no-established-baseline caveat as SpO2.</summary>
@@ -306,11 +307,26 @@ public class DashboardMetric
 
     /// <summary>
     /// The published typical-adult range for this metric, for clients to draw behind the series
-    /// alongside <see cref="Baseline"/> — this member's own normal against the wider population's.
-    /// Null for metrics no standards body publishes a range for; see
+    /// alongside <see cref="Baseline"/>. For sleep, resting heart rate and blood oxygen it is what
+    /// normal means, and <see cref="Baseline"/> is secondary context — whether a reading is new
+    /// for this member. Null for metrics no standards body publishes a range for; see
     /// <see cref="CardiTrack.Application.Services.HealthReferenceRanges"/>.
     /// </summary>
     public MetricReference? Reference { get; set; }
+
+    /// <summary>
+    /// Sleep only: what is known about the night <see cref="Value"/> is from. An
+    /// <see cref="NightSleepStatus.Awake"/> night — the watch worn all night and no sleep
+    /// recorded — carries a <see cref="Value"/> of 0, and clients should say so rather than print
+    /// the 0. Null on every other metric, and on sleep when there is no reading or it predates
+    /// the classification.
+    /// </summary>
+    /// <remarks>
+    /// This is the night of the newest <em>reading</em>, which is not always last night: while last
+    /// night is still <see cref="NightSleepStatus.Pending"/> the card shows the night before. The
+    /// newest point of <see cref="Series"/> says whether last night has arrived.
+    /// </remarks>
+    public NightSleepStatus? NightStatus { get; set; }
 }
 
 /// <summary>
@@ -319,14 +335,15 @@ public class DashboardMetric
 /// </summary>
 /// <remarks>
 /// <para>
-/// Presentational only: it is deliberately not an input to <see cref="DashboardMetric.Status"/> or
-/// <see cref="DashboardMetric.QualityScore"/>, both of which stay relative to the member's own
-/// baseline. CardiTrack is not a medical device, and a reading outside a population range is
-/// context for a caregiver, not a finding.
+/// For sleep, resting heart rate and blood oxygen the range is what normal means (decision
+/// 2026-09-25): a reading outside it makes <see cref="DashboardMetric.Status"/> at least "yellow",
+/// even when it is the member's own usual, and inside it the status is judged against their
+/// baseline. For every other metric it is background for the chart and no input to either field.
+/// Outside a range is still worth a look rather than a finding — CardiTrack is not a medical
+/// device.
 /// </para>
 /// <para>
-/// The one exception is the sleep range, both ends of which cap the sleep
-/// <see cref="DashboardMetric.QualityScore"/> — see
+/// The sleep range also caps the sleep <see cref="DashboardMetric.QualityScore"/> at both ends — see
 /// <c>MemberInsightsCalculator.CapAtRecommendedSleep</c>. It can only lower a rating the member's
 /// own data already earned, because for sleep alone the member's own normal cannot be the whole
 /// of the rating: a habitually short sleeper's baseline says their short nights are fine, and
@@ -343,6 +360,17 @@ public class MetricReference
     /// come from one body and attributing them all to WHO would be wrong.
     /// </summary>
     public string Source { get; set; } = string.Empty;
+
+    /// <summary>
+    /// True when this range is what normal means for the metric — sleep, resting heart rate and
+    /// blood oxygen (decision 2026-09-25) — rather than background for the chart. A client draws
+    /// such a range as the primary reference and the member's usual as the secondary one, and
+    /// the server colours <see cref="DashboardMetric.Status"/> from it. False for the waking
+    /// breathing band (WHO's 12–20 is a rate at rest, not a normal for anything this app
+    /// measures overnight). Set once, in <see cref="Services.HealthReferenceRanges"/>, so every
+    /// route a range travels by carries the same answer.
+    /// </summary>
+    public bool IsPublishedNormal { get; set; }
 }
 
 public class MetricPoint
@@ -362,6 +390,16 @@ public class MetricPoint
     /// not partial just because the calendar day it is filed under has not ended.
     /// </remarks>
     public bool IsPartial { get; set; }
+
+    /// <summary>
+    /// Sleep series only: what is known about this day's night. Tells apart the three things a
+    /// null or zero <see cref="Value"/> can mean — <see cref="NightSleepStatus.Awake"/> (a 0 that
+    /// is a real night of no sleep), <see cref="NightSleepStatus.Pending"/> (not arrived yet, may
+    /// still come) and <see cref="NightSleepStatus.NoData"/> (nothing reached us). Null on every
+    /// other metric's points, on days with no row, and on nights recorded before the status
+    /// existed.
+    /// </summary>
+    public NightSleepStatus? NightStatus { get; set; }
 }
 
 public class DashboardAlertSummary

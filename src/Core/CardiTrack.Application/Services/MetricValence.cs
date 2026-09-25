@@ -1,4 +1,5 @@
 using System.Globalization;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Services;
@@ -50,6 +51,9 @@ public sealed record MovementGrading(MovementValence Valence, string Basis, Alar
 /// That split is the whole point of the file. <see cref="HealthReferenceRanges"/> publishes a band
 /// for resting heart rate (AHA) and sleep (NSF), and those two are graded by where the figure sits
 /// against it — a statement about a published range, attributable to the body that published it.
+/// The test itself, <see cref="IsOutside"/>, is shared with the Key Metrics cards, which apply it
+/// to a single reading for those two and for blood oxygen (decision 2026-09-25: for these three
+/// the published range is what normal means, and the member's own usual is context).
 /// </para>
 /// <para>
 /// No body publishes a band for the other four, and three of those absences are refusals rather
@@ -182,6 +186,24 @@ public static class MetricValence
     }
 
     /// <summary>
+    /// Whether a reading sits outside a published band — the one test both a movement's grading
+    /// (<see cref="AgainstBand"/>) and a Key Metrics card's status
+    /// (<c>MemberInsightsCalculator.BuildMetric</c>) apply, so "outside the published range" can
+    /// never mean one thing on a movement card and another on the tile above it.
+    /// </summary>
+    /// <remarks>
+    /// Both ends inclusive, as the bands are published: 60 bpm and 100 bpm are inside AHA's
+    /// 60–100, and 7 hours is inside the NSF's 7–9. Takes the band rather than a metric so it
+    /// reaches blood oxygen too, which has a published range (WHO 94–100) but no
+    /// <see cref="TrackedMetric"/> — a single reading on a card is graded, not a movement.
+    /// </remarks>
+    public static bool IsOutside(decimal reading, MetricReference band)
+    {
+        ArgumentNullException.ThrowIfNull(band);
+        return reading < band.Low || reading > band.High;
+    }
+
+    /// <summary>
     /// Graded by where the recent figure sits against a published band, and where it came from.
     /// </summary>
     /// <remarks>
@@ -195,8 +217,9 @@ public static class MetricValence
         MetricMovement movement, decimal low, decimal high, string unit, string source)
     {
         var band = $"the {Figure(low)}–{Figure(high)} {unit} published for adults ({source})";
-        var recentInside = movement.Recent >= low && movement.Recent <= high;
-        var usualInside = movement.Usual >= low && movement.Usual <= high;
+        var published = new MetricReference { Low = low, High = high, Source = source };
+        var recentInside = !IsOutside(movement.Recent, published);
+        var usualInside = !IsOutside(movement.Usual, published);
 
         if (!recentInside)
         {

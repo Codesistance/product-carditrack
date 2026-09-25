@@ -30,6 +30,11 @@ namespace CardiTrack.Application.Services;
 /// and narrowing them per member would be our own tailoring wearing the publisher's name. None of
 /// the four is published split by sex either.
 /// </para>
+/// <para>
+/// Three of the four are marked <see cref="MetricReference.IsPublishedNormal"/> — sleep, resting
+/// heart rate and blood oxygen, whose range is what normal means (decision 2026-09-25). The
+/// breathing band is not: it is a waking rate at rest, background for the daily chart only.
+/// </para>
 /// </remarks>
 public static class HealthReferenceRanges
 {
@@ -56,7 +61,8 @@ public static class HealthReferenceRanges
     /// adulthood: an individual's resting heart rate drifts with age and fitness, but the AHA
     /// publishes no age-split range to draw it against.
     /// </summary>
-    public static MetricReference RestingHeartRate => new() { Low = 60m, High = 100m, Source = "AHA" };
+    public static MetricReference RestingHeartRate =>
+        new() { Low = 60m, High = 100m, Source = "AHA", IsPublishedNormal = true };
 
     /// <summary>
     /// Recommended nightly sleep (National Sleep Foundation): 7–9 hours for adults, and 7–8 for
@@ -69,6 +75,7 @@ public static class HealthReferenceRanges
         Low = RecommendedSleepFloorHours,
         High = ageYears >= OlderAdultAge ? 8m : 9m,
         Source = SleepSource,
+        IsPublishedNormal = true,
     };
 
     /// <summary>
@@ -76,7 +83,8 @@ public static class HealthReferenceRanges
     /// puts 90–93% at hypoxaemia and below 90% at severe hypoxaemia). Not age-split: the guidance
     /// reads the same figures for an adult of any age.
     /// </summary>
-    public static MetricReference SpO2 => new() { Low = 94m, High = 100m, Source = "WHO" };
+    public static MetricReference SpO2 =>
+        new() { Low = 94m, High = 100m, Source = "WHO", IsPublishedNormal = true };
 
     /// <summary>
     /// Normal adult respiratory rate <em>at rest</em>, 12–20 breaths per minute (WHO Basic
