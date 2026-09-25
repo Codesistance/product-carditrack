@@ -179,6 +179,10 @@ public class MetricExplanationsTests
 
         Assert.Contains("A diamond marks a night the watch was worn with no sleep recorded", panel);
         Assert.DoesNotContain("diamond", plain);
+
+        // A window that has scrolled past the awake night draws no diamond, so the panel is silent.
+        var (_, outOfWindow) = MetricExplanations.For("Sleep", withAwake, "{0:0.#}", window: [withAwake.Series[0]]);
+        Assert.DoesNotContain("diamond", outOfWindow);
     }
 
     // ---- Every panel closes the same way ----

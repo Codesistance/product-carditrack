@@ -48,10 +48,15 @@ public static class MetricExplanations
     /// is who the chart is about — the copy names them ("Dad's own usual step count") rather than
     /// reaching for a label, and falls back to "their"/"them" when no name is on file.
     /// </summary>
+    /// <param name="window">
+    /// The points the chart on screen actually draws — a 7-day window is the tail of a longer
+    /// series. The panel only explains a mark that window carries; null reads the whole series.
+    /// </param>
     public static (string Footer, string Panel) For(
-        string name, DashboardMetric metric, string format, string? memberFirstName = null)
+        string name, DashboardMetric metric, string format, string? memberFirstName = null,
+        IReadOnlyList<MetricPoint>? window = null)
     {
-        var panel = Panel(name, metric, format, memberFirstName);
+        var panel = Panel(name, metric, format, memberFirstName, window ?? metric.Series);
         return (Footer(name, metric, format), $"{panel}\n\n{NotADiagnosis}");
     }
 
@@ -136,7 +141,8 @@ public static class MetricExplanations
     /// The fuller account behind the "i". Each metric answers the same two questions — what the
     /// dashed rule is, and what the band is — in whichever form matches what is on the chart.
     /// </summary>
-    private static string Panel(string name, DashboardMetric metric, string format, string? who)
+    private static string Panel(
+        string name, DashboardMetric metric, string format, string? who, IReadOnlyList<MetricPoint> window)
     {
         var learned = metric.Baseline is not null;
 
@@ -173,7 +179,7 @@ public static class MetricExplanations
                       + "new for them. "
                     : $"CardiTrack is still learning {Who(who)} usual night, so there is no dashed "
                       + "line on this chart yet. ")
-                + (metric.Series.Any(NightReading.IsAwake)
+                + (window.Any(NightReading.IsAwake)
                     ? "A diamond marks a night the watch was worn with no sleep recorded — "
                       + "counted as awake all night. "
                     : string.Empty)

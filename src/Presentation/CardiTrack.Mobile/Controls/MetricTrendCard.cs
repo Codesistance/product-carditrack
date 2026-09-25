@@ -478,7 +478,8 @@ public sealed class MetricTrendCard : ContentView
         _legend.ColumnSpacing = _baselineLegend.IsVisible && _referenceLegend.IsVisible ? 14 : 0;
         _legend.RowSpacing = hasGap || hasAwake ? 4 : 0;
 
-        var (footer, explanation) = MetricExplanations.For(_trend.Name, _trend.Metric, _trend.AxisFormat, _trend.MemberFirstName);
+        var (footer, explanation) = MetricExplanations.For(
+            _trend.Name, _trend.Metric, _trend.AxisFormat, _trend.MemberFirstName, points);
         _footer.Text = footer;
         _explanation = explanation;
 
