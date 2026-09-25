@@ -539,6 +539,8 @@ internal static partial class MedicalPromptBlocks
         anything is wrong. Asked about such a day, say plainly that no reading arrived for it.
         Never answer with a different day's figure in its place, and never say why it is missing:
         the causes cannot be told apart from this data.
+        A night marked "awake all night" is not a gap: the watch was worn through it and recorded
+        no sleep. Say plainly that they were awake that night, and count it as a night of no sleep.
         """;
 
     /// <summary>
@@ -891,7 +893,7 @@ internal static partial class MedicalPromptBlocks
         {
             var line = $"  {DayLabel(l.Date, today, sleepRecorded: l.SleepMinutes is not null)}: "
                 + $"steps={Figure(l.Steps)}, HR={Figure(l.RestingHeartRate)}, "
-                + $"sleep(night ending that morning)={ReadingFigures.SleepFigure(l.SleepMinutes)}";
+                + $"sleep(night ending that morning)={ReadingFigures.NightFigure(l.SleepMinutes, l.NightStatus)}";
 
             if (anyHrv)
                 line += $", HRVovernight={OvernightFigure(l.HeartRateVariabilityMs, "ms")}";
@@ -1056,6 +1058,12 @@ internal static partial class MedicalPromptBlocks
             ["sleep_efficiency_score"] = AsNumber(log.SleepEfficiency),
             ["active_zone_minutes"] = AsNumber(BaselineCalculator.ElevatedZoneMinutes(log)),
         };
+
+        // Named beside the figure rather than instead of it: an awake night's hours are 0 and are
+        // averaged as 0, and what the 0 means is the part a bare number cannot say. Only on the
+        // nights it describes — a "night": null on every other row is a key the model reads.
+        if (log.NightStatus is NightSleepStatus.Awake or NightSleepStatus.Pending)
+            obj["night"] = ReadingFigures.NightFigure(log.SleepMinutes, log.NightStatus);
 
         if (anyHrv)
             obj["overnight_hrv_ms"] = Rounded(log.HeartRateVariabilityMs);
@@ -1225,7 +1233,9 @@ internal static partial class MedicalPromptBlocks
         if (log.MaxHeartRate is { } max)
             parts.Add($"HR_max={max}");
 
-        if (log.SleepMinutes is { } sleep)
+        if (log.NightStatus == NightSleepStatus.Awake)
+            parts.Add($"sleep(night ending that morning)={ReadingFigures.AwakeNight}");
+        else if (log.SleepMinutes is { } sleep)
             parts.Add($"sleep(night ending that morning)={sleep}min");
 
         // "deep 60/light 200/rem 80", not "deep=60/light=200/rem=80": every other figure on the
@@ -1301,7 +1311,9 @@ internal static partial class MedicalPromptBlocks
     {
         var parts = new List<string>();
 
-        if (log.SleepMinutes is { } sleep)
+        if (log.NightStatus == NightSleepStatus.Awake)
+            parts.Add($"sleep(night ending that morning)={ReadingFigures.AwakeNight}");
+        else if (log.SleepMinutes is { } sleep)
             parts.Add($"sleep(night ending that morning)={sleep}min");
 
         var stages = new List<string>();

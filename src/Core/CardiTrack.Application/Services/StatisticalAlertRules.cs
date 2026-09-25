@@ -278,9 +278,15 @@ public static class StatisticalAlertRules
             ? $" and past the {recommended.High:0.#}-hour ceiling recommended at their age"
             : $"; the recommended range at their age is {recommended.Low:0.#} to {recommended.High:0.#} hours";
 
+        // An awake night is named as one: "0 hours" reads as a watch that measured nothing, and
+        // the status has established the opposite — worn through, no sleep recorded.
+        var night = lastNight.NightStatus == NightSleepStatus.Awake
+            ? $"{ReadingFigures.AwakeNight}, 0 hours"
+            : $"{hours:0.#} hours";
+
         return new StatisticalFinding(
             IrregularSleepRule, AlertType.Sleep,
-            $"Sleep on the night ending {Day(lastNight.Date)}: {hours:0.#} hours, "
+            $"Sleep on the night ending {Day(lastNight.Date)}: {night}, "
             + $"{(longer ? "more" : "less")} than the usual {usualHours:0.#}{band}. "
             + $"The yardstick is a night more than {DeviationFraction:P0} off their usual; a longer "
             + "night counts only past the recommended ceiling.",

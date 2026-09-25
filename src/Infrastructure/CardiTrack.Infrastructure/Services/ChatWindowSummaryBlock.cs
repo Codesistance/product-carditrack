@@ -76,9 +76,9 @@ internal static class ChatWindowSummaryBlock
 
         obj["average"] = Figure(summary.Metric, average);
         if (summary.Lowest is { } lowest)
-            obj["lowest"] = $"{Day(lowest.Day)}: {Figure(summary.Metric, lowest.Value)}";
+            obj["lowest"] = $"{Day(lowest.Day)}: {ReadingWindowSummaries.DayFigure(summary.Metric, lowest.Value)}";
         if (summary.Highest is { } highest)
-            obj["highest"] = $"{Day(highest.Day)}: {Figure(summary.Metric, highest.Value)}";
+            obj["highest"] = $"{Day(highest.Day)}: {ReadingWindowSummaries.DayFigure(summary.Metric, highest.Value)}";
 
         if (summary.Band is { } band)
         {

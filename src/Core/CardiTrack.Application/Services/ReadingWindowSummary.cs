@@ -192,6 +192,19 @@ public static class ReadingWindowSummaries
         _ => value.ToString(CultureInfo.InvariantCulture),
     };
 
+    /// <summary>
+    /// One day's figure, as <see cref="Figure"/> writes it — except a night of no sleep, which is
+    /// named as <see cref="ReadingFigures.AwakeNight"/>. Only a day's own figure: an average or a
+    /// difference of 0 is arithmetic, not a night.
+    /// </summary>
+    /// <remarks>
+    /// A 0 in the sleep series is a night with no sleep in it: the awake status writes one for a
+    /// night the watch was worn through with no session, and a session the provider scored at no
+    /// sleep at all says the same of the night it covers. Either way the value alone says which.
+    /// </remarks>
+    public static string DayFigure(ChartMetricKind metric, decimal value) =>
+        metric == ChartMetricKind.Sleep && value == 0 ? ReadingFigures.AwakeNight : Figure(metric, value);
+
     private static decimal? Value(ChartMetricKind metric, ActivityLog log) => metric switch
     {
         ChartMetricKind.Steps => log.Steps,
