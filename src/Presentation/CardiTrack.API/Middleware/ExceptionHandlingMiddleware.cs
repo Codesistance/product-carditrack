@@ -50,6 +50,12 @@ public class ExceptionHandlingMiddleware
             // A refused profile photo upload — likewise authored for end users.
             InvalidProfilePhotoException => (HttpStatusCode.BadRequest, exception.Message),
             ExportConsentException => (HttpStatusCode.BadRequest, exception.Message),
+            // A family rule refusing somebody already inside the family ("this plan covers 3
+            // CardiMembers"). The message is authored for them, and 422 is what the controllers
+            // that catch it themselves already return. Mapped here too so an endpoint that does
+            // not catch it — adding a CardiMember past the plan's limit did not — says why,
+            // rather than reporting a server fault that looks like an outage.
+            FamilyRuleException => (HttpStatusCode.UnprocessableEntity, exception.Message),
             _ => (HttpStatusCode.InternalServerError, "Something went wrong on our end. Please try again in a moment.")
         };
 
