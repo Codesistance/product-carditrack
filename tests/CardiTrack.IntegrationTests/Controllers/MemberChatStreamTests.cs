@@ -9,7 +9,10 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -112,6 +115,30 @@ public class MemberChatStreamTests
         var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, status.StatusCode);
         Assert.Equal(0, _body.Length);
+    }
+
+    [Fact]
+    public async Task APreStreamFailure_IsWrittenAsJson_NotRefusedAs406()
+    {
+        // Executed through MVC's own result pipeline, not just inspected: a content-type filter
+        // on the action would make these results unformattable and turn them into 406s.
+        SendDoes((_, _) => throw new ArgumentException("That question can't be answered here."));
+        var services = new ServiceCollection().AddLogging().AddControllers().Services.BuildServiceProvider();
+        var sut = CreateSut();
+        sut.HttpContext.RequestServices = services;
+        var action = new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor
+        {
+            FilterDescriptors = typeof(MemberChatController).GetMethod(nameof(MemberChatController.StreamMessage))!
+                .GetCustomAttributes(inherit: true).OfType<IFilterMetadata>()
+                .Select(f => new FilterDescriptor(f, FilterScope.Action)).ToList(),
+        };
+        Assert.DoesNotContain(action.FilterDescriptors, f => f.Filter is ProducesAttribute);
+
+        var result = await Stream(sut);
+        await result.ExecuteResultAsync(new ActionContext(sut.HttpContext, new RouteData(), action));
+
+        Assert.Equal(StatusCodes.Status400BadRequest, sut.Response.StatusCode);
+        Assert.StartsWith("application/json", sut.Response.ContentType, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -112,8 +112,10 @@ public class MemberChatController : BaseApiController
     /// </para>
     /// </remarks>
     [HttpPost("members/{cardiMemberId:guid}/messages/stream")]
-    [Produces("text/event-stream")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    // The event-stream type is declared on the 200 alone, never with [Produces]: that filter
+    // would stamp it on the JSON error results too, and with no formatter for it MVC would
+    // answer those 400/404/503s as 406 Not Acceptable. The writer sets it when the stream starts.
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK, ServerSentEventWriter.ContentType)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
