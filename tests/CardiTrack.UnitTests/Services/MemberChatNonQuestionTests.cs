@@ -41,10 +41,10 @@ public class MemberChatNonQuestionTests
     public void TheNudgeNamesTheMember_AndWhatToAskInstead()
     {
         Assert.Equal(
-            "I didn't catch a question there — ask me about Dad's sleep, activity, heart rate or alerts.",
+            "I didn't quite catch a question there. Ask me how Dad's sleep, activity or heart rate have been, what's behind an alert, or to pull up the journal — and I can switch alerts on or off or set an alarm for you too.",
             MemberChatReplies.NotAQuestionReply("Dad"));
         Assert.Equal(
-            "I didn't catch a question there — ask me about their sleep, activity, heart rate or alerts.",
+            "I didn't quite catch a question there. Ask me how their sleep, activity or heart rate have been, what's behind an alert, or to pull up the journal — and I can switch alerts on or off or set an alarm for you too.",
             MemberChatReplies.NotAQuestionReply(null));
     }
 }

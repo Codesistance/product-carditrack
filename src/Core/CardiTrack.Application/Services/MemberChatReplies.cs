@@ -75,12 +75,12 @@ public static partial class MemberChatReplies
         // substitution produces.
         var subject = string.IsNullOrWhiteSpace(firstName) ? "they're" : $"{firstName} is";
         var opening =
-            $"I can't see what {subject} doing right now — readings only reach me after their watch "
-            + "has recorded and synced them, so there's nothing live here to check.";
+            $"I can't see what {subject} doing right this minute — the watch only sends readings "
+            + "over once it has recorded and synced them, so there's nothing live for me to check.";
 
         return LatestFigures(recent, today) is not { } latest
-            ? opening + " I don't have any recent readings for them either."
-            : $"{opening} The most recent I have is {latest.When}: {latest.Figures}.";
+            ? opening + " Nothing recent has come through yet either."
+            : $"{opening} The latest I have is from {latest.When}: {latest.Figures}.";
     }
 
     /// <summary>
@@ -108,9 +108,9 @@ public static partial class MemberChatReplies
         var subject = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
 
         return LatestFigures(recent, today) is not { } latest
-            ? $"I don't have any recent readings for {subject} yet — they arrive once their watch "
-              + "has recorded and synced them."
-            : $"The most recent readings I have for {subject} are {latest.When}: {latest.Figures}.";
+            ? $"Nothing recent has come through for {subject} yet — readings show up here once the "
+              + "watch has recorded and synced them."
+            : $"Here's the latest for {subject}, from {latest.When}: {latest.Figures}.";
     }
 
     /// <summary>
@@ -246,7 +246,7 @@ public static partial class MemberChatReplies
     public static string MetricReadingReply(
         string? firstName, StatusMetric metric, IReadOnlyList<ActivityLog> recent, DateOnly today)
     {
-        var subject = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
+        var whose = string.IsNullOrWhiteSpace(firstName) ? "Their" : $"{firstName}'s";
         var name = MetricName(metric);
 
         var dated = recent
@@ -256,18 +256,20 @@ public static partial class MemberChatReplies
 
         if (dated.Count == 0)
         {
-            return $"I don't have a recent {name} reading for {subject} — readings arrive once their "
-                + "watch has recorded and synced them.";
+            // "their" mid-sentence, where the reading opener has it capitalised.
+            var owner = string.IsNullOrWhiteSpace(firstName) ? "their" : whose;
+            return $"Nothing recent has come through for {owner} {name} yet — it'll "
+                + "show up here once the watch has recorded and synced it.";
         }
 
         var latest = dated[^1];
-        var reply = $"The most recent {name} I have for {subject} is {Figure(metric, latest)}, "
+        var reply = $"{whose} latest {name} is {Figure(metric, latest)}, from "
             + When(metric, latest.Date, today);
 
         if (dated.Count > 1)
         {
             var previous = dated[^2];
-            reply += $"; {When(metric, previous.Date, today)} it was {Figure(metric, previous)}";
+            reply += $" — {When(metric, previous.Date, today)} it was {Figure(metric, previous)}";
         }
 
         return reply + ".";
@@ -470,12 +472,28 @@ public static partial class MemberChatReplies
         if (reply.Contains(marker, StringComparison.OrdinalIgnoreCase))
             return reply;
 
-        var label = SpanLabel(from, to, today);
-        var sentence = from == to
-            ? $"Those figures are for {label}."
-            : $"Those figures cover {label}.";
+        return $"{reply}\n\n{AttributionSentence(from, to, today)}";
+    }
 
-        return $"{reply}\n\n{sentence}";
+    /// <summary>
+    /// The day or stretch the figures came from, said the way a person would add it after an
+    /// answer. A span ending today still says today is not over — the partial-day warning
+    /// <see cref="DayLabel"/> exists to carry — in words rather than as "today so far" bolted to a
+    /// date range.
+    /// </summary>
+    private static string AttributionSentence(DateOnly from, DateOnly to, DateOnly today)
+    {
+        if (from == to)
+        {
+            return from == today
+                ? "That's going by today so far, so the numbers may still change."
+                : $"That's going by {DayLabel(from, today)}'s readings.";
+        }
+
+        var start = from.ToString("MMM d", CultureInfo.InvariantCulture);
+        return to == today
+            ? $"That's going by the readings from {start} up to today, which isn't over yet."
+            : $"That's going by the readings from {start} to {DayLabel(to, today)}.";
     }
 
     /// <summary>
@@ -561,7 +579,9 @@ public static partial class MemberChatReplies
         // "their" rather than an invented relationship word, for the reason LiveStatusReply's
         // subject line gives at length.
         var whose = string.IsNullOrWhiteSpace(firstName) ? "their" : $"{firstName}'s";
-        return $"I didn't catch a question there — ask me about {whose} sleep, activity, heart rate or alerts.";
+        return $"I didn't quite catch a question there. Ask me how {whose} sleep, activity or heart rate "
+            + "have been, what's behind an alert, or to pull up the journal — and I can switch alerts "
+            + "on or off or set an alarm for you too.";
     }
 
     /// <summary>

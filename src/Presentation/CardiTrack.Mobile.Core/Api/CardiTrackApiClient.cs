@@ -400,7 +400,8 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// </remarks>
     public async Task<MemberChatMessageResponse> StreamMemberChatMessageAsync(
         Guid cardiMemberId, MemberChatMessageRequest request, IProgress<MemberChatStep>? onStep,
-        IProgress<MemberChatMessageResponse>? onDraft = null, CancellationToken ct = default)
+        IProgress<MemberChatMessageResponse>? onDraft = null,
+        IProgress<IReadOnlyList<string>>? onWaitingLines = null, CancellationToken ct = default)
     {
         var path = $"api/v1/member-chat/members/{cardiMemberId}/messages/stream";
         using var whole = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -434,6 +435,14 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
                     case "step":
                         if (onStep is not null && JsonUtility.TryDeserialize<MemberChatStep>(sse.Data, out var step, out _))
                             onStep.Report(step!);
+                        break;
+                    case "waiting":
+                        // Lines written for this question, to rotate under a long step. Decoration:
+                        // an unreadable or empty event is skipped, never an error.
+                        if (onWaitingLines is not null
+                            && JsonUtility.TryDeserialize<MemberChatWaitingResponse>(sse.Data, out var waiting, out _)
+                            && waiting!.Sentences is { Count: > 0 } lines)
+                            onWaitingLines.Report(lines);
                         break;
                     case "answer":
                         // Unreadable is treated as absent — the "cut off" message below — rather

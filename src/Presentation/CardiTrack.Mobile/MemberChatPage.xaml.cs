@@ -6,6 +6,8 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Chat;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -63,6 +65,23 @@ public partial class MemberChatPage : ContentView
     private bool _isLoading;
     private bool _isSending;
 
+    /// <summary>
+    /// Holds the <see cref="AiChatNotice"/> scope of the caregiver who has seen the AI notice on
+    /// this phone. Per caregiver for the same reason as the telemetry notice; sign-out clears it.
+    /// </summary>
+    internal const string AiChatNoticeSeenKey = "AiChatNoticeSeenFor";
+
+    /// <summary>The AI notice while it is up, so the open and a quick first send share one popup.</summary>
+    private Task<bool>? _aiNotice;
+
+    /// <summary>How long a step has to be on screen before the waiting lines start under it — a
+    /// step that finishes sooner has already said enough, and a line that flashes past reads as
+    /// noise.</summary>
+    private static readonly TimeSpan WaitingLineDelay = TimeSpan.FromSeconds(3);
+
+    /// <summary>How long each waiting line stays before the next — long enough to read twice.</summary>
+    private static readonly TimeSpan WaitingLineRotation = TimeSpan.FromSeconds(4);
+
     /// <summary>The last thread load failed — so a return from history retries it rather than
     /// presenting the empty list the failure left behind as a conversation.</summary>
     private bool _threadLoadFailed;
@@ -90,6 +109,11 @@ public partial class MemberChatPage : ContentView
         // it's shown (see MemberChatLauncher), so construction time is the right time to load.
         _loadTask = LoadAsync();
 
+        // The AI notice is owed at the first interaction, and opening the sheet is it. Posted
+        // rather than shown from the constructor: the host adds this view to its tree only after
+        // constructing it.
+        Dispatcher.Dispatch(() => _ = EnsureAiNoticeSeenAsync());
+
         // Opening chat is the strongest signal there is that a clinical read is about to be
         // needed. The login-time warm-up (PostLoginRouter) has usually long lapsed by now — the
         // medical model scales to zero after idle, and a send that finds it cold waited over a
@@ -110,6 +134,47 @@ public partial class MemberChatPage : ContentView
             // ordinary, and a send that follows is what reports a real problem. Started
             // fire-and-forget, so the catch is also what keeps it from surfacing as an
             // unobserved task exception.
+        }
+    }
+
+    /// <summary>
+    /// Shows the AI notice if this caregiver has not seen it — once, however many callers ask
+    /// while it is up — and says whether they have now seen it. Never faults: a notice that could
+    /// not be shown is <c>false</c>, and the caller decides what that stops.
+    /// </summary>
+    private Task<bool> EnsureAiNoticeSeenAsync() =>
+        _aiNotice is { IsCompleted: false } showing ? showing : _aiNotice = ShowAiNoticeIfOwedAsync();
+
+    private async Task<bool> ShowAiNoticeIfOwedAsync()
+    {
+        try
+        {
+            var email = ServiceHelper.GetRequiredService<IAuthService>().CurrentUserEmail;
+            if (AiChatNotice.IsSeen(Preferences.Default.Get(AiChatNoticeSeenKey, string.Empty), email))
+                return true;
+
+            // PopupService attaches to the first window's page and returns without showing
+            // anything when there is none, so a notice asked for then is not one the caregiver
+            // saw: nothing is recorded, and the next open or send asks again.
+            if (Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page is null)
+                return false;
+
+            await ServiceHelper.GetRequiredService<IPopupService>()
+                .ShowInfoAsync(AiChatNotice.Message, AiChatNotice.Title, AiChatNotice.AcknowledgeText);
+
+            // Shown is seen: the notice has one answer, and closing it any other way has still
+            // put the words in front of the caregiver. With no signed-in identity there is
+            // nothing to remember it by, so it shows again next time — but it was seen now.
+            if (AiChatNotice.SeenValueFor(email) is { } seen)
+                Preferences.Default.Set(AiChatNoticeSeenKey, seen);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Fire-and-forget from the constructor: a notice that fails must not take the chat
+            // with it. A send asks again, and waits for it, since the key was never written.
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while showing the AI notice");
+            return false;
         }
     }
 
@@ -881,6 +946,19 @@ public partial class MemberChatPage : ContentView
 
         _isSending = true;
         SendButton.IsEnabled = false;
+
+        // Never a first message to the assistant without the notice: normally it was shown when
+        // the sheet opened, and this returns at once. If it could not be shown, the message is
+        // not sent — it goes back in the field, where one more tap tries the notice again.
+        if (!await EnsureAiNoticeSeenAsync())
+        {
+            if (string.IsNullOrWhiteSpace(MessageEditor.Text))
+                MessageEditor.Text = message;
+            _isSending = false;
+            SendButton.IsEnabled = true;
+            return;
+        }
+
         // The chips are a first-message affordance: once the conversation has started, what to
         // ask next comes from the reply, not from a generic list. The new-conversation action
         // steps aside too — ending a conversation mid-send would race the reply.
@@ -907,10 +985,11 @@ public partial class MemberChatPage : ContentView
         // on: the bot mark starts breathing immediately, and each step the server reports
         // replaces the line beside it as that step starts, so the wait says what is actually
         // happening. Progress<T> posts each report back to this (UI) thread.
-        PendingTextLabel.Text = SendingLine;
-        PendingPanel.IsVisible = true;
+        var pending = new PendingProgress(this);
+        pending.Start();
         ScrollToLatest();
-        var steps = new Progress<MemberChatStep>(step => PendingTextLabel.Text = step.Text);
+        var steps = new Progress<MemberChatStep>(pending.OnStep);
+        var waitingLines = new Progress<IReadOnlyList<string>>(pending.OnWaitingLines);
 
         // A reply the server goes on to check arrives first as a draft: shown at once, so the
         // caregiver reads it while the check runs, with the pending line beneath it still saying
@@ -925,6 +1004,7 @@ public partial class MemberChatPage : ContentView
             if (settled)
                 return;
             draft = d;
+            pending.OnDraft();
             draftItem = ChatTurnItem.FromReply(d, _memberFirstName);
             _turns.Add(draftItem);
             ScrollToLatest();
@@ -933,7 +1013,7 @@ public partial class MemberChatPage : ContentView
         try
         {
             var response = await _api.StreamMemberChatMessageAsync(
-                _memberId, new MemberChatMessageRequest { Message = message }, steps, drafts);
+                _memberId, new MemberChatMessageRequest { Message = message }, steps, drafts, waitingLines);
             settled = true;
             // The first send of a window is what creates the session, so this is where the
             // thread learns which conversation it is — the export action needs it named.
@@ -981,7 +1061,7 @@ public partial class MemberChatPage : ContentView
         finally
         {
             ScrollToLatest();
-            PendingPanel.IsVisible = false;
+            pending.Stop();
             _isSending = false;
             SendButton.IsEnabled = true;
             UpdateNewConversationAction();
@@ -991,6 +1071,130 @@ public partial class MemberChatPage : ContentView
     /// <summary>What the pending bubble says between the tap and the server's first step — the
     /// few seconds the pre-check takes, before the stream has anything to report.</summary>
     private const string SendingLine = "Reading your question…";
+
+    /// <summary>
+    /// The pending bubble for one send: the step the server is on, a bar of how far along it is
+    /// once the route is known, and — when a step has been on screen for
+    /// <see cref="WaitingLineDelay"/> — the lines written for this question, rotating beneath it
+    /// every <see cref="WaitingLineRotation"/>. All of it on the UI thread: the reports arrive
+    /// through <see cref="Progress{T}"/>, and the rotation is a dispatcher timer.
+    /// </summary>
+    private sealed class PendingProgress(MemberChatPage page)
+    {
+        private readonly IDispatcherTimer _timer = page.Dispatcher.CreateTimer();
+        private DateTime _stepShownAt;
+        private DateTime _lineShownAt;
+        private IReadOnlyList<string>? _lines;
+        private int _nextLine;
+        private int _barSegments;
+
+        /// <summary>A draft reply is on screen: the question is answered, and lines about what
+        /// is being looked at would now describe work that is done.</summary>
+        private bool _drafted;
+
+        public void Start()
+        {
+            page.PendingTextLabel.Text = SendingLine;
+            page.PendingDetailLabel.IsVisible = false;
+            page.PendingProgressRow.IsVisible = false;
+            page.PendingPanel.IsVisible = true;
+            _stepShownAt = DateTime.UtcNow;
+
+            _timer.Interval = TimeSpan.FromMilliseconds(500);
+            _timer.Tick += OnTick;
+            _timer.Start();
+        }
+
+        public void Stop()
+        {
+            _timer.Stop();
+            _timer.Tick -= OnTick;
+            page.PendingPanel.IsVisible = false;
+            page.PendingDetailLabel.IsVisible = false;
+            page.PendingProgressRow.IsVisible = false;
+        }
+
+        public void OnStep(MemberChatStep step)
+        {
+            page.PendingTextLabel.Text = step.Text;
+            // Each step starts clean and earns its lines again: a line left over from the last
+            // step would sit under a step it was not written for.
+            page.PendingDetailLabel.IsVisible = false;
+            _stepShownAt = DateTime.UtcNow;
+            ShowProgress(step.Index, step.Total);
+        }
+
+        public void OnWaitingLines(IReadOnlyList<string> lines)
+        {
+            _lines = lines;
+            _nextLine = 0;
+        }
+
+        public void OnDraft()
+        {
+            _drafted = true;
+            page.PendingDetailLabel.IsVisible = false;
+        }
+
+        private void OnTick(object? sender, EventArgs e)
+        {
+            if (_drafted || _lines is not { Count: > 0 } lines)
+                return;
+
+            var now = DateTime.UtcNow;
+            if (now - _stepShownAt < WaitingLineDelay)
+                return;
+            if (page.PendingDetailLabel.IsVisible && now - _lineShownAt < WaitingLineRotation)
+                return;
+
+            page.PendingDetailLabel.Text = lines[_nextLine];
+            page.PendingDetailLabel.IsVisible = true;
+            _nextLine = (_nextLine + 1) % lines.Count;
+            _lineShownAt = now;
+        }
+
+        /// <summary>
+        /// The bar and "Step n of N". Hidden until the server says how many steps there are —
+        /// the first step arrives before the route that decides it — and on any step it did not
+        /// number, so an older server leaves the bubble exactly as it was.
+        /// </summary>
+        private void ShowProgress(int? index, int? total)
+        {
+            if (index is not { } current || total is not { } count || count < 1)
+            {
+                page.PendingProgressRow.IsVisible = false;
+                return;
+            }
+
+            current = Math.Clamp(current, 1, count);
+            var bar = page.PendingStepBar;
+            if (_barSegments != count)
+            {
+                bar.Children.Clear();
+                bar.ColumnDefinitions.Clear();
+                for (var i = 0; i < count; i++)
+                {
+                    bar.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+                    var segment = new BoxView { CornerRadius = 2, HeightRequest = 4 };
+                    Grid.SetColumn(segment, i);
+                    bar.Children.Add(segment);
+                }
+
+                _barSegments = count;
+            }
+
+            var done = ResourceColor("Primary");
+            var todo = ResourceColor("ProgressTrack");
+            for (var i = 0; i < bar.Children.Count; i++)
+                ((BoxView)bar.Children[i]).Color = i < current ? done : todo;
+
+            page.PendingStepLabel.Text = $"Step {current} of {count}";
+            page.PendingProgressRow.IsVisible = true;
+        }
+
+        private static Color ResourceColor(string key) =>
+            (Color)Microsoft.Maui.Controls.Application.Current!.Resources[key];
+    }
 
     private void SetState(bool loading = false, bool loaded = false, bool error = false)
     {

@@ -310,12 +310,14 @@ public interface ICardiTrackApiClient
     /// <paramref name="onDraft"/>, to show at once; the result is the reply as saved. When the
     /// server sent no <c>answer.updated</c>, the result is the very instance handed to
     /// <paramref name="onDraft"/>, so a caller can tell a replaced draft by reference, whatever
-    /// part of it changed. Fails with the same
-    /// <see cref="ApiException"/> statuses and messages as the plain send.
+    /// part of it changed. On a long send, lines written for this question may arrive once, to
+    /// <paramref name="onWaitingLines"/>, for the pending bubble to rotate under a slow step.
+    /// Fails with the same <see cref="ApiException"/> statuses and messages as the plain send.
     /// </summary>
     Task<MemberChatMessageResponse> StreamMemberChatMessageAsync(
         Guid cardiMemberId, MemberChatMessageRequest request, IProgress<MemberChatStep>? onStep,
-        IProgress<MemberChatMessageResponse>? onDraft = null, CancellationToken ct = default);
+        IProgress<MemberChatMessageResponse>? onDraft = null,
+        IProgress<IReadOnlyList<string>>? onWaitingLines = null, CancellationToken ct = default);
 
     /// <summary>The caregiver's active chat session and its turns for this member, or null if
     /// none exists — what a relaunched app resumes from.</summary>

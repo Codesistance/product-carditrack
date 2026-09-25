@@ -285,6 +285,7 @@ public partial class SettingsPage : ContentPage
         Try(() => Preferences.Default.Remove("VerifyEmailNudgeDismissed"), "verify-email nudge");
         Try(() => Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey), "disclosure hint");
         Try(() => Preferences.Default.Remove(DashboardPage.TelemetryNoticeSeenKey), "telemetry notice");
+        Try(() => Preferences.Default.Remove(MemberChatPage.AiChatNoticeSeenKey), "AI chat notice");
         Try(() => Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey), "wizard resume flag");
         Try(DiagnosticsConsent.Clear, "diagnostics consent");
         await TryAsync(() => _drafts.ClearAsync(), "member draft");
@@ -618,6 +619,7 @@ public partial class SettingsPage : ContentPage
             // it was confirmed, and the next caregiver on this phone must be asked afresh.
             Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey);
             Preferences.Default.Remove(DashboardPage.TelemetryNoticeSeenKey);
+            Preferences.Default.Remove(MemberChatPage.AiChatNoticeSeenKey);
             Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
             // Holds a name, DOB and medical notes — must not survive into the next session.
             await _drafts.ClearAsync();

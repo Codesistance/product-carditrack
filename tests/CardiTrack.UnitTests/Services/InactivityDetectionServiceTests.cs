@@ -399,6 +399,92 @@ public class InactivityDetectionServiceTests
         await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
     }
 
+    /// <summary>
+    /// #1249. Resolution is about an episode already running, so none of the gates that decide
+    /// whether to <em>start</em> one may stand in front of it. This is the reported case: the
+    /// watch was reconnected in the evening, readings came back, and the alert stood all night
+    /// because 23:30 London is outside waking hours.
+    /// </summary>
+    [Fact]
+    public async Task ADeviceReportingAgain_ResolvesItsAlert_OutsideWakingHours()
+    {
+        var standing = DeviceSilenceAlert();
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([standing]);
+
+        var lateEvening = new DateTime(2026, 8, 10, 22, 30, 0, DateTimeKind.Utc);  // 23:30 London
+        SetupLastDataAt(lateEvening.AddMinutes(-10));
+
+        var raised = await CreateSut().DetectAsync(lateEvening, Rules);
+
+        Assert.Equal(0, raised);
+        Assert.True(standing.IsResolved);
+        await _unitOfWork.Received().SaveChangesAsync();
+    }
+
+    // The other half of the same gate: before wakingStart + threshold no alert may be raised,
+    // and a standing one must still be closeable.
+    [Fact]
+    public async Task ADeviceReportingAgain_ResolvesItsAlert_InTheEarlyMorning()
+    {
+        var standing = DeviceSilenceAlert();
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([standing]);
+
+        var earlyMorning = new DateTime(2026, 8, 10, 7, 0, 0, DateTimeKind.Utc);  // 08:00 London
+        SetupLastDataAt(earlyMorning.AddMinutes(-10));
+
+        var raised = await CreateSut().DetectAsync(earlyMorning, Rules);
+
+        Assert.Equal(0, raised);
+        Assert.True(standing.IsResolved);
+    }
+
+    // Turning the rule off says "stop telling me about this", not "leave the last one up for
+    // good". The episode has demonstrably ended, so it closes whatever the switch says.
+    [Fact]
+    public async Task ADeviceReportingAgain_ResolvesItsAlert_EvenWithTheRuleDisabled()
+    {
+        var standing = DeviceSilenceAlert();
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([standing]);
+        _alertPreferences.GetByCardiMemberIdAsync(_memberId).Returns(new AlertPreference
+        {
+            CardiMemberId = _memberId,
+            DisabledRules = """["device_silence"]""",
+        });
+        SetupLastDataAt(UtcNow.AddMinutes(-10));
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(0, raised);
+        Assert.True(standing.IsResolved);
+    }
+
+    // Still silent outside waking hours is still the cooldown: nothing resolves, nothing is
+    // raised, and nothing is written. The fix above must not turn a quiet night into a write.
+    [Fact]
+    public async Task AStillSilentDevice_OutsideWakingHours_ResolvesNothingAndWritesNothing()
+    {
+        var standing = DeviceSilenceAlert();
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([standing]);
+
+        var lateEvening = new DateTime(2026, 8, 10, 22, 30, 0, DateTimeKind.Utc);
+        SetupLastDataAt(lateEvening.AddHours(-3));
+
+        var raised = await CreateSut().DetectAsync(lateEvening, Rules);
+
+        Assert.Equal(0, raised);
+        Assert.False(standing.IsResolved);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    private Alert DeviceSilenceAlert() => new()
+    {
+        CardiMemberId = _memberId,
+        AlertType = AlertType.Inactivity,
+        IsResolved = false,
+        MetricValues = """{"rule":"device_silence","thresholdMinutes":120}""",
+    };
+
     [Fact]
     public async Task AResolvedInactivityAlert_DoesNotSuppress()
     {
