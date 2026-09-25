@@ -91,8 +91,10 @@ public class EnvironmentalEnrichmentService : IEnvironmentalEnrichmentService
             return 0;
         }
 
+        // A suspended device is out of every collection path, and reading its exercise sessions
+        // here would be collection by another name.
         var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(memberId))
-            .Where(c => c.IsActive && HasLocationScope(c))
+            .Where(c => c.IsActive && c.SuspendedAt is null && HasLocationScope(c))
             .ToList();
 
         var written = 0;
@@ -109,6 +111,11 @@ public class EnvironmentalEnrichmentService : IEnvironmentalEnrichmentService
     {
         var providerConfig = _providers.ConfigFor(connection.DeviceType);
         if (providerConfig is null)
+            return 0;
+
+        // The member's batch was read before this connection's turn; a suspension since then wins,
+        // as it does for the sync.
+        if (await _unitOfWork.DeviceConnections.IsSuspendedAsync(connection.Id))
             return 0;
 
         var accessToken = await _tokenRefresh.RefreshIfExpiredAsync(connection, providerConfig);

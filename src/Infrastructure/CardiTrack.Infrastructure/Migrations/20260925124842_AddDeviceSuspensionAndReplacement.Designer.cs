@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    [Migration("20260925172637_AddMedicalEntries")]
-    partial class AddMedicalEntries
+    [Migration("20260925124842_AddDeviceSuspensionAndReplacement")]
+    partial class AddDeviceSuspensionAndReplacement
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1143,6 +1143,12 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasColumnType("character varying(500)")
                         .HasDefaultValue("[]");
 
+                    b.Property<DateTime?>("SuspendedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("SuspendedByUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("SyncFrequencyMinutes")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -1210,6 +1216,9 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.Property<DateTime?>("OpenedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReplacesDeviceConnectionId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("ResolvedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1701,61 +1710,6 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasIndex("CardiMemberId", "HourStartUtc");
 
                     b.ToTable("GranularMetricHours", (string)null);
-                });
-
-            modelBuilder.Entity("CardiTrack.Domain.Entities.MedicalEntry", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("AddedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("AddedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("CardiMemberId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("ConfirmedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTime?>("RemovedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("RemovedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ReplacedByEntryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Text")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AddedByUserId");
-
-                    b.HasIndex("CardiMemberId");
-
-                    b.HasIndex("RemovedByUserId");
-
-                    b.ToTable("MedicalEntries", (string)null);
                 });
 
             modelBuilder.Entity("CardiTrack.Domain.Entities.MemberAdvise", b =>

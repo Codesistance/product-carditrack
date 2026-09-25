@@ -89,6 +89,7 @@ builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineReposito
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<IExportConsentRepository, ExportConsentRepository>();
 builder.Services.AddScoped<ICardiMemberCreationKeyRepository, CardiMemberCreationKeyRepository>();
+builder.Services.AddScoped<IPendingGrantRevocationRepository, PendingGrantRevocationRepository>();
 builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
 builder.Services.AddScoped<IMemberAdviseObservationRepository, MemberAdviseObservationRepository>();
 builder.Services.AddScoped<IMemberInsightRepository, MemberInsightRepository>();
@@ -117,6 +118,7 @@ builder.Services.AddScoped<IInactivityDetectionService, InactivityDetectionServi
 builder.Services.AddScoped<IMetricAlarmEngine, MetricAlarmEngine>();
 builder.Services.AddScoped<IQuietReassuranceService, QuietReassuranceService>();
 builder.Services.AddScoped<IDeviceAuthRecoveryService, DeviceAuthRecoveryService>();
+builder.Services.AddScoped<IGrantRevocationService, GrantRevocationService>();
 
 // The erasure cascades, which RetentionWorker is the only production caller of. Both are
 // destructive and irreversible, which is why they are registered in the one host whose job it is
@@ -171,6 +173,10 @@ builder.Services.AddWorker<QuestionnaireAlertWorker>(configuration, nameof(Quest
 // Self-heal: a connection the provider refused is out of the sync rotation for good, so it needs
 // a pass of its own to find out whether it can come back (DeviceAuthRecoveryService).
 builder.Services.AddWorker<DeviceAuthRecoveryWorker>(configuration, nameof(DeviceAuthRecoveryWorker));
+
+// Ends the grants of removed and replaced devices from the queue the device flows write in the
+// same transaction that discards their tokens, so a provider timeout cannot lose one.
+builder.Services.AddWorker<GrantRevocationWorker>(configuration, nameof(GrantRevocationWorker));
 
 // Threshold and waking hours share the detection worker's config section, like the audit sample.
 builder.Services.Configure<InactivityDetectionOptions>(

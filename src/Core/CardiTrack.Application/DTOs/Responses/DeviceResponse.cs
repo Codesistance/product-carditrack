@@ -2,7 +2,7 @@ namespace CardiTrack.Application.DTOs.Responses;
 
 /// <summary>
 /// One connected wearable, per the REST contract in docs/execution/backend/api/devices.md.
-/// Status is a lowercase string: active, disconnected, token_expired, pending.
+/// Status is a lowercase string: active, suspended, disconnected, token_expired, pending.
 /// </summary>
 public class DeviceResponse
 {
@@ -52,6 +52,26 @@ public class DeviceResponse
     /// <see cref="Services.HistoryRepullWindow.ShouldPresent"/> for the rule itself.
     /// </summary>
     public DeviceHistoryRepullResponse? HistoryRepull { get; set; }
+
+    /// <summary>
+    /// When a caregiver suspended this connection, or null while it collects. A suspended
+    /// connection reads <c>suspended</c> in <see cref="Status"/> whatever the state of its grant;
+    /// the grant's own state returns once it is resumed.
+    /// </summary>
+    public DateTime? SuspendedAt { get; set; }
+
+    /// <summary>
+    /// Set on a connect callback only: the account granted was one the member already had
+    /// connected, so that connection was refreshed rather than a second one stored.
+    /// </summary>
+    public bool AlreadyConnected { get; set; }
+
+    /// <summary>
+    /// Set on a connect callback only: the connection this device replaced, which has been
+    /// removed. Null when nothing was replaced — including a "replace" that came back on the
+    /// replaced device's own account, which simply reconnects it.
+    /// </summary>
+    public Guid? ReplacedDeviceId { get; set; }
 }
 
 public class DeviceListResponse

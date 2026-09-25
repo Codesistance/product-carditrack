@@ -49,6 +49,7 @@ public interface IUnitOfWork : IDisposable
     IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
     IDeviceConnectionInviteRepository DeviceConnectionInvites { get; }
     IMedicalEntryRepository MedicalEntries { get; }
+    IPendingGrantRevocationRepository PendingGrantRevocations { get; }
 
     Task<int> SaveChangesAsync();
 

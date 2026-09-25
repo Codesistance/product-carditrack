@@ -23,6 +23,7 @@ The 19 workers registered today (crons from `appsettings.json`):
 | `QuestionnaireAlertWorker` | `0 */5 * * * *` (every 5 min) | Raises the alert that carries a pending family question to the caregiver |
 | `QuietReassuranceWorker` | `0 30 8 * * *` (daily 08:30) | The reassurance pass — telling a family that a long quiet stretch is genuinely quiet |
 | `DeviceAuthRecoveryWorker` | `0 3-59/15 * * * *` (every 15 min, offset) | Retries provider-refused refresh tokens on a per-connection widening backoff |
+| `GrantRevocationWorker` | `30 * * * * *` (every minute) | Ends the provider grants of removed, replaced and refused device connections from the `PendingGrantRevocations` queue |
 | `DataCompletenessWorker` | `0 0 6 * * *` (daily 06:00) | Reconciles data-completeness nudges per caregiver against what each account supplies |
 | `NotificationDispatchWorker` | `*/30 * * * * *` (every 30 s) | The push spine's pump — claims due outbox rows, retries, escalates, expires |
 | `PushCanaryWorker` | `0 */15 * * * *` (every 15 min) | Sends a real Safety push to configured test devices and screams if the previous one never acked |
@@ -55,6 +56,7 @@ src/Worker/CardiTrack.Worker/
 │   ├── MetricAlarmWorker.cs                 # Caregiver-defined alarms (R2)
 │   ├── QuestionnaireExpiryWorker.cs         # Retires family questions past the day they asked about
 │   ├── DeviceAuthRecoveryWorker.cs          # Retries provider-refused refresh tokens (backoff)
+│   ├── GrantRevocationWorker.cs             # Ends queued provider grants (shared-grant check, backoff)
 │   ├── DataCompletenessWorker.cs            # Reconciles data-completeness nudges per caregiver
 │   ├── NotificationDispatchWorker.cs        # Push outbox pump: claim, retry, escalate, expire
 │   ├── PushCanaryWorker.cs                  # End-to-end push liveness canary (incl. PushCanaryOptions)
@@ -403,6 +405,15 @@ Retries the refresh token of device connections the provider has **refused**, so
 - Worker-hosted per CLAUDE.md: no AI call is involved, and DB polling belongs here.
 - Logs at Information only when it actually returns connections to service.
 
+### GrantRevocationWorker
+
+Ends provider grants from the `PendingGrantRevocations` queue (`GrantRevocationService`). The device flows write that queue in the same transaction that discards a connection's tokens. That covers a removed device, a replaced one, a removed member's devices, and a grant refused after the code exchange, so a provider timeout or a cancelled request cannot lose a revocation.
+
+- Runs **every minute** (`30 * * * * *`), so a removed device leaves the wearer's list of apps with access to their health data about as soon as an inline revocation would have.
+- Before each call it **re-checks that the grant is not shared**. Revoking a Google refresh token ends the grant for the whole account, so a row is dropped unrevoked if another live connection may read through the same account (`DeviceGrantSharing`; the rule is in [devices.md](../../execution/backend/api/devices.md)).
+- A failure or provider timeout is retried on a widening backoff (5 min, tripling, capped at a day). After 8 attempts the row is dropped and an **Error** is logged naming the connection. The token must not sit in the database indefinitely; by then the grant can only be ended from the wearer's provider account.
+- Worker-hosted per CLAUDE.md: no AI call is involved, and DB polling belongs here.
+
 ### DataCompletenessWorker
 
 Detects the gaps between what CardiTrack needs and what each account has supplied, and reconciles them against what the caregiver has already been told — the engine behind the in-app data-completeness nudges ([notification_engine.md](../../technical/notification_engine.md)).
@@ -556,6 +567,9 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
     },
     "DeviceAuthRecoveryWorker": {
       "CronExpression": "0 3-59/15 * * * *"
+    },
+    "GrantRevocationWorker": {
+      "CronExpression": "30 * * * * *"
     },
     "DataCompletenessWorker": {
       "CronExpression": "0 0 6 * * *"
