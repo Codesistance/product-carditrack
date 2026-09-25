@@ -416,6 +416,61 @@ public class MemberErasureCascadeTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Copilot review round 11 on #1290: erasure takes the device lock before the member row, the
+    /// order a removal takes them in — device lock, then an update of the member row. The other
+    /// way round, the removal's update would wait on erasure's row lock while erasure waited on the
+    /// removal's device lock, and Postgres would abort one of them as a deadlock.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_DoesNotDeadlockAgainstARemovalHoldingTheDeviceLock()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+
+        using var holder = _services.CreateScope();
+        var holderDb = holder.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        await using var held = await holderDb.Database.BeginTransactionAsync();
+        await DeviceMemberLock.AcquireAsync(holderDb.Database, memberId);
+
+        var erasure = EraseAsync(memberId);
+        var raced = await Task.WhenAny(erasure, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.NotSame(erasure, raced);
+
+        // What the removal does next under the device lock. Erasure holds no row lock while it
+        // waits, so this neither blocks nor is chosen as a deadlock victim.
+        await holderDb.Database
+            .ExecuteSqlInterpolatedAsync(
+                $"""UPDATE "CardiMembers" SET "IsActive" = false WHERE "Id" = {memberId}""")
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        await held.CommitAsync();
+
+        await erasure.WaitAsync(TimeSpan.FromSeconds(30));
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.CardiMembers.CountAsync(m => m.Id == memberId));
+    }
+
+    /// <summary>
+    /// Copilot review round 11 on #1290: a provider timeout while revoking is an unconfirmed
+    /// revocation, named in the report like any other — not an exception that aborts the erasure
+    /// and leaves the member's data behind.
+    /// </summary>
+    [Fact]
+    public async Task AProviderTimeoutWhileRevoking_IsNamedInTheReport_AndTheErasureStillFinishes()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>())
+            .Returns<Task<bool>>(_ => throw new TaskCanceledException("The provider timed out."));
+
+        var report = await EraseAsync(memberId);
+
+        Assert.NotEmpty(report.UnrevokedGrants);
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.CardiMembers.CountAsync(m => m.Id == memberId));
+        Assert.Equal(0, await db.DeviceConnections.CountAsync(c => c.CardiMemberId == memberId));
+    }
+
+    /// <summary>
     /// A grant already queued for the Worker — a device removed moments before the erasure — holds
     /// the only remaining copy of its token, and the queue is deleted with the member. So it is
     /// ended here like the live ones, not left for a Worker pass that would find the row gone.

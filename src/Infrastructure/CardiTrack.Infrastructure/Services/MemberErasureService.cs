@@ -61,6 +61,19 @@ public class MemberErasureService : IMemberErasureService
         await using var transaction = await _db.Database.BeginTransactionAsync(ct);
         try
         {
+            // The member's device lock first, which device connects, removals and suspensions take
+            // instead of the member row. Held from here through the deletes, so a device change
+            // either commits before this reads the connections — and is revoked and deleted with
+            // them — or waits, and then finds the member gone and stores nothing.
+            //
+            // First, before the row lock below, because that is the order every device change takes
+            // them in: the device lock, then the member row — a removal updates it, and a connect's
+            // insert takes a key-share lock on it through the foreign key. Taken the other way round
+            // here, erasure would hold the row while waiting for the device lock and such a change
+            // would hold the device lock while waiting for the row: a deadlock Postgres breaks by
+            // aborting one of them.
+            await DeviceMemberLock.AcquireAsync(_db.Database, cardiMemberId, ct);
+
             // Before every delete below, and that position is the whole point of it. An AI
             // generator reads the member, spends minutes in a model call, then writes a row naming
             // them — and no foreign key stops that row landing after this cascade has passed the
@@ -76,12 +89,6 @@ public class MemberErasureService : IMemberErasureService
             // is what collects them. That is today's behaviour and it stays.
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"""SELECT 1 FROM "CardiMembers" WHERE "Id" = {cardiMemberId} FOR UPDATE""", ct);
-
-            // And the member's device lock, which device connects, removals and suspensions take
-            // instead of the member row. Held from here through the deletes, so a device change
-            // either commits before this reads the connections — and is revoked and deleted with
-            // them — or waits, and then finds the member gone and stores nothing.
-            await DeviceMemberLock.AcquireAsync(_db.Database, cardiMemberId, ct);
 
             await RevokeDeviceGrantsAsync(cardiMemberId, unrevoked, ct);
 
@@ -300,7 +307,20 @@ public class MemberErasureService : IMemberErasureService
                 continue;
             }
 
-            if (!await _grantRevoker.TryRevokeAsync(grant, ct))
+            bool revoked;
+            try
+            {
+                revoked = await _grantRevoker.TryRevokeAsync(grant, ct);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // The provider timing out, not the caller cancelling: an unconfirmed revocation
+                // like any other, reported below. Let through, it would abort the erasure and
+                // leave the member's data in place, and a retry would meet the same provider.
+                revoked = false;
+            }
+
+            if (!revoked)
                 unrevoked.Add(grant.Id);
         }
 
