@@ -25,9 +25,15 @@ namespace CardiTrack.Application.Services;
 /// the same rule triggered on or after this day, resolved, deleted or standing, keeps the stretch
 /// quiet — so a range a member sits outside for weeks is one alert, not one a day.
 /// </param>
+/// <param name="StretchOpenEnded">
+/// The stretch ran back to the oldest reading supplied without a reset, so its real start is
+/// earlier than <paramref name="StretchStart"/> says. Any earlier alert of the same rule is then
+/// taken to be this stretch's — the conservative reading, because a window-bounded start would
+/// otherwise make a two-month stretch look new every time the window moved past its last alert.
+/// </param>
 public sealed record StatisticalFinding(
     string Rule, AlertType Type, string Observation, string MetricValues, DateOnly? NightOf = null,
-    DateOnly? StretchStart = null);
+    DateOnly? StretchStart = null, bool StretchOpenEnded = false);
 
 /// <summary>
 /// The R1 statistical rules (docs/execution/backend/api/alerts.md taxonomy) — pure functions
@@ -230,8 +236,13 @@ public static class StatisticalAlertRules
     public const int RangeTrendWeeks = 3;
     public const int RangeTrendMinDaysPerWeek = 4;
 
-    /// <summary>How far back the orchestrator has to read for the range rules' stretch and weekly averages.</summary>
-    public const int RangeLookbackDays = RangeTrendWeeks * 7;
+    /// <summary>
+    /// How far back the orchestrator reads for the range rules: long enough that a stretch's start
+    /// is normally found rather than cut off, and past the three weekly averages. A stretch that
+    /// still reaches the oldest day read is open-ended — see
+    /// <see cref="StatisticalFinding.StretchOpenEnded"/>.
+    /// </summary>
+    public const int RangeLookbackDays = 90;
 
     /// <summary>Yesterday's steps more than 30% below the baseline average.</summary>
     public static StatisticalFinding? ActivityDecline(PatternBaseline baseline, ActivityLog? yesterday)
@@ -905,6 +916,7 @@ public static class StatisticalAlertRules
         // range, or the readings run out. Unmeasured days neither extend nor end it.
         var stretchStart = outsideDays[0];
         var insideRun = 0;
+        var reset = false;
         var earliest = logsByDate.Keys.Min();
         for (var day = latest; day >= earliest; day = day.AddDays(-1))
         {
@@ -918,6 +930,7 @@ public static class StatisticalAlertRules
             }
             else if (++insideRun >= RangeStretchResetDays)
             {
+                reset = true;
                 break;
             }
         }
@@ -992,7 +1005,8 @@ public static class StatisticalAlertRules
                 weeklyAverages = weekly.Select(w => Math.Round(w, 1)).ToArray(),
                 worsening,
             }),
-            StretchStart: stretchStart);
+            StretchStart: stretchStart,
+            StretchOpenEnded: !reset);
     }
 
     /// <summary>

@@ -864,8 +864,12 @@ public static class AlertDetailComposer
     /// </summary>
     private static MetricReference? SleepReference(JsonElement metrics, CardiMember? member, DateOnly today)
     {
-        if (ReadDecimal(metrics, "recommendedLowHours") is { } low
-            && ReadDecimal(metrics, "recommendedHighHours") is { } high)
+        // irregular_sleep stores the band as recommended*Hours; sleep_outside_range as range*,
+        // the shape every published-range rule shares. Either way it is the band the night was
+        // judged against, which must win over the member's current age — a member who has since
+        // turned 65 would otherwise have a 7-9 judgement drawn against 7-8.
+        if ((ReadDecimal(metrics, "recommendedLowHours") ?? ReadDecimal(metrics, "rangeLow")) is { } low
+            && (ReadDecimal(metrics, "recommendedHighHours") ?? ReadDecimal(metrics, "rangeHigh")) is { } high)
         {
             return new MetricReference
             {

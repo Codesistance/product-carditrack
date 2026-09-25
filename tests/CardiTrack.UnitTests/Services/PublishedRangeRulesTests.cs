@@ -118,6 +118,23 @@ public class PublishedRangeRulesTests
         Assert.Contains("outside it since 2026-09-20", finding.Observation);
     }
 
+    /// <summary>
+    /// A stretch that runs back to the oldest reading with no reset has an unknown start — the flag
+    /// the orchestrator reads to treat any earlier alert of the rule as this stretch's. One that
+    /// found its reset is closed.
+    /// </summary>
+    [Fact]
+    public void AStretchWithNoResetInTheReadings_IsOpenEnded()
+    {
+        var open = StatisticalAlertRules.SleepOutsideRange(
+            Nights(300, 300, 300, 300, 300), Latest, ageYears: 80, baseline: null);
+        var closed = StatisticalAlertRules.SleepOutsideRange(
+            Nights(450, 450, 450, 300, 300, 300), Latest, ageYears: 80, baseline: null);
+
+        Assert.True(open!.StretchOpenEnded);
+        Assert.False(closed!.StretchOpenEnded);
+    }
+
     // ── worsening ───────────────────────────────────────────────────────────────────────
 
     [Fact]

@@ -104,13 +104,17 @@ public sealed record BaselineMovements(
 /// One metric's week against its published normal range: what it averaged, and the range it sat
 /// outside, already worded.
 /// </summary>
-/// <param name="Kind">Which metric.</param>
+/// <param name="Kind">
+/// Which of the six tracked metrics, or null for blood oxygen — placed against its range here
+/// although it is not one of the six this card judges movement for, because it has no learned usual
+/// to move from and its published floor is the whole yardstick.
+/// </param>
 /// <param name="Metric">The label a caregiver reads.</param>
 /// <param name="Unit">What <paramref name="Recent"/> is in.</param>
 /// <param name="Recent">The week's mean.</param>
 /// <param name="Placement">"below the 7-9 hours recommended at their age (NSF)" and the like.</param>
 public sealed record RangePlacement(
-    TrackedMetric Kind, string Metric, string Unit, decimal Recent, string Placement);
+    TrackedMetric? Kind, string Metric, string Unit, decimal Recent, string Placement);
 
 /// <summary>
 /// The deterministic half of "how are they doing": which of this member's metrics have moved away
@@ -288,6 +292,23 @@ public static class BaselineMovementCalculator
                 Math.Round(usual, 1),
                 Math.Round((recent - usual) / usual * 100m, 0),
                 readings.Count));
+        }
+
+        // Blood oxygen, outside the loop above because it is not one of the six: no usual is
+        // learned for it, so it can never have moved — and a week under WHO's floor is exactly the
+        // week the range-first decision exists for. The card's prompt carries no daily readings,
+        // so a finding not listed here is a finding the card can never make.
+        var oxygen = days.Select(l => l.SpO2Average).OfType<decimal>().ToList();
+        if (oxygen.Count >= MinimumMeasuredDays)
+        {
+            var recentOxygen = Math.Round(oxygen.Average(), 1);
+            var floor = HealthReferenceRanges.SpO2;
+            if (recentOxygen < floor.Low)
+            {
+                outsideRange.Add(new RangePlacement(
+                    null, "Blood oxygen", "%", recentOxygen,
+                    string.Create(CultureInfo.InvariantCulture, $"below the {floor.Low:0}% published floor ({floor.Source})")));
+            }
         }
 
         return new BaselineMovements(

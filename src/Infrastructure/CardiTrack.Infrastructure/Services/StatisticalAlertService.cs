@@ -404,11 +404,13 @@ public class StatisticalAlertService : IStatisticalAlertService
         // costs one two-day indexed range read per pass rather than a 28-day one, and gets told
         // when their watch finds atrial fibrillation.
         //
-        // Widened again for the published-range rules, which read a stretch and three weekly
-        // averages — with or without a baseline.
+        // Widened again for the published-range rules, which look back far enough to find where a
+        // stretch began, and read three weekly averages — with or without a baseline.
         var windowStart = baseline is null
             ? (anyRangeRule ? localToday.AddDays(-StatisticalAlertRules.RangeLookbackDays) : yesterday)
-            : localToday.AddDays(-Math.Max(7 * StatisticalAlertRules.TrendWeeks, StatisticalAlertRules.RangeLookbackDays));
+            : localToday.AddDays(-(anyRangeRule
+                ? Math.Max(7 * StatisticalAlertRules.TrendWeeks, StatisticalAlertRules.RangeLookbackDays)
+                : 7 * StatisticalAlertRules.TrendWeeks));
 
         var logsByDate = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
                 memberId, windowStart, localToday))
@@ -595,9 +597,12 @@ public class StatisticalAlertService : IStatisticalAlertService
             // or after the day the stretch began — standing, resolved or deleted — has already told
             // the family about it. Without this a member who sits outside a range for a month is
             // paged every day the caregiver clears the last one (decision 2026-09-25).
+            // A stretch whose start the readings do not reach is taken to include every earlier
+            // alert of the rule (StatisticalFinding.StretchOpenEnded).
             if (finding.StretchStart is { } stretchStart
                 && history.Any(a => AlertRuleMarkers.HasRule(a, finding.Rule)
-                    && DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)) >= stretchStart))
+                    && (finding.StretchOpenEnded
+                        || DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)) >= stretchStart)))
             {
                 continue;
             }

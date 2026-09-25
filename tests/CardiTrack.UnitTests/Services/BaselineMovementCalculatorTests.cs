@@ -330,6 +330,27 @@ public class BaselineMovementCalculatorTests
             BaselineMovementCalculator.Render(movements));
     }
 
+    /// <summary>
+    /// Blood oxygen has no learned usual and is not one of the six this card judges movement for —
+    /// and a week under WHO's 94% is still said. The card's prompt carries no daily readings, so a
+    /// finding not listed here is one the card could never make.
+    /// </summary>
+    [Fact]
+    public void AWeekOfOxygenBelowTheFloor_IsPlaced_WithoutAUsual()
+    {
+        var logs = Enumerable.Range(0, BaselineMovementCalculator.RecentDays)
+            .Select(offset => new ActivityLog { CardiMemberId = _memberId, Date = Through.AddDays(-offset), SpO2Average = 92.4m })
+            .ToList();
+
+        var movements = BaselineMovementCalculator.Compute(logs, new PatternBaseline { PeriodDays = 30 }, Through)!;
+
+        var oxygen = Assert.Single(movements.OutsidePublishedRange);
+        Assert.Null(oxygen.Kind);
+        Assert.Equal("below the 94% published floor (WHO)", oxygen.Placement);
+        Assert.True(movements.HasAnythingToSay);
+        Assert.Contains("- Blood oxygen: averaging 92.4 %, below the 94% published floor (WHO).", BaselineMovementCalculator.Render(movements));
+    }
+
     /// <summary>A resting heart rate steady at 58 is outside AHA's 60–100 on the low side.</summary>
     [Fact]
     public void ARestingHeartRateBelowTheRange_IsPlacedToo()
