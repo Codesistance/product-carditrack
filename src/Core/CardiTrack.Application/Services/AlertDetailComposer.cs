@@ -833,6 +833,8 @@ public static class AlertDetailComposer
                 Low = low,
                 High = high,
                 Source = HealthReferenceRanges.SleepSource,
+                // The stored figures are the same NSF band HealthReferenceRanges.Sleep returns.
+                IsPublishedNormal = true,
             };
         }
 

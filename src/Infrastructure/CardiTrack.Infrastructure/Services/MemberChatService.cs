@@ -2631,7 +2631,7 @@ public class MemberChatService : IMemberChatService
             // minutes for the same reason — comparisons travel in the unit the points are in.
             charts.Add(new ChartSeries("Sleep", data.RecentActivity
                 .Where(l => l.SleepMinutes.HasValue)
-                .Select(l => new ChartPoint(l.Date, l.SleepMinutes!.Value))
+                .Select(l => new ChartPoint(l.Date, l.SleepMinutes!.Value, l.NightStatus))
                 .ToList(),
                 Baseline: (double?)baseline?.AvgSleepMinutes,
                 Reference: sleepBand is null
@@ -2641,6 +2641,7 @@ public class MemberChatService : IMemberChatService
                         Low = sleepBand.Low * 60,
                         High = sleepBand.High * 60,
                         Source = sleepBand.Source,
+                        IsPublishedNormal = sleepBand.IsPublishedNormal,
                     }));
         }
         if (Wanted(ChartMetricKind.HeartRateVariability))

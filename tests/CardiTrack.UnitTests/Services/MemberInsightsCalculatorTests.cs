@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -192,9 +193,9 @@ public class MemberInsightsCalculatorTests
             new PatternBaseline { AvgSleepMinutes = 270 });
 
         Assert.Equal(2, metrics.Sleep.QualityScore);
-        // And the pill still reads the member against themselves, which is why the two are allowed
-        // to differ here: this night was normal *for them*, and it was still not enough sleep.
-        Assert.Equal("green", metrics.Sleep.Status);
+        // And the pill agrees now: the published range is what normal means for sleep, so a night
+        // normal *for them* but under the NSF's 7 hours is still worth a look.
+        Assert.Equal("yellow", metrics.Sleep.Status);
     }
 
     [Fact]
@@ -442,17 +443,165 @@ public class MemberInsightsCalculatorTests
         Assert.Null(metrics.Temperature.Reference);
     }
 
+    // ── The published range is the normal (DashboardMetric.Status) ──────────────
+    //
+    // Decision 2026-09-25: for sleep, resting heart rate and blood oxygen, a reading outside the
+    // published range is worth attention whatever the member's usual — a person living poorly must
+    // not look normal because their average is poor. Inside it, the usual says whether the reading
+    // is new for them, as it does for every other metric.
+
     [Fact]
-    public void A_reading_outside_the_published_range_is_still_judged_against_the_member()
+    public void A_reading_inside_the_published_range_is_judged_against_the_member()
     {
-        // 96 bpm is inside 60–100 and 40% above this member's own normal. The status follows the
-        // member, not the population: the range is drawn as context, never read as a verdict.
+        // 96 bpm is inside 60–100 and 41% above this member's own normal. Inside the range the
+        // usual still decides: the reading is new for them, so it is worth a look.
         var metrics = Build(
             new ActivityLog { Date = Yesterday, RestingHeartRate = 96 },
             new PatternBaseline { AvgRestingHeartRate = 68 });
 
         Assert.Equal("yellow", metrics.RestingHeartRate.Status);
         Assert.Equal(60m, metrics.RestingHeartRate.Reference!.Low);
+    }
+
+    [Fact]
+    public void A_reading_outside_the_published_range_is_worth_attention_even_at_the_members_usual()
+    {
+        // 104 bpm, exactly this member's usual — the baseline comparison alone says green. It is
+        // above AHA's 60–100, and a usual outside the range does not make the reading normal.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, RestingHeartRate = 104 },
+            new PatternBaseline { AvgRestingHeartRate = 104 });
+
+        Assert.Equal("yellow", metrics.RestingHeartRate.Status);
+    }
+
+    [Fact]
+    public void Outside_the_range_is_a_floor_the_baseline_can_raise_but_not_lower()
+    {
+        // 110 bpm against a usual of 70 is 57% off it: orange on the baseline alone, and being
+        // outside the range too does not soften that to the range's yellow.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, RestingHeartRate = 110 },
+            new PatternBaseline { AvgRestingHeartRate = 70 });
+
+        Assert.Equal("orange", metrics.RestingHeartRate.Status);
+    }
+
+    [Fact]
+    public void A_fit_members_low_resting_heart_rate_is_unusual_not_check_in()
+    {
+        // 58 bpm is below AHA's 60 and is this member's usual. Worth a look, not a "check in":
+        // outside the range is yellow unless the member's own usual says it is further off.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, RestingHeartRate = 58 },
+            new PatternBaseline { AvgRestingHeartRate = 58 });
+
+        Assert.Equal("yellow", metrics.RestingHeartRate.Status);
+    }
+
+    [Fact]
+    public void Blood_oxygen_outside_the_range_is_worth_attention_with_no_baseline_at_all()
+    {
+        var low = Build(new ActivityLog { Date = Yesterday, SpO2Average = 92m });
+        var settled = Build(new ActivityLog { Date = Yesterday, SpO2Average = 97m });
+
+        Assert.Equal("yellow", low.SpO2.Status);
+        // Inside the range is judged against the usual, and there is no usual for blood oxygen —
+        // so it stays unjudged rather than being called green on the range alone.
+        Assert.Equal("unknown", settled.SpO2.Status);
+    }
+
+    [Fact]
+    public void The_sleep_range_is_read_off_the_night_as_measured_not_as_the_card_rounds_it()
+    {
+        // 418 minutes shows as "7 hours" and is 6 hours 58 — short of the NSF's 7-hour floor, and
+        // it is this member's usual. 420 minutes is on the floor, inside the range.
+        var shortOfIt = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 418 },
+            new PatternBaseline { AvgSleepMinutes = 418 });
+        var onIt = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 420 },
+            new PatternBaseline { AvgSleepMinutes = 420 });
+
+        Assert.Equal(7m, shortOfIt.Sleep.Value);
+        Assert.Equal("yellow", shortOfIt.Sleep.Status);
+        Assert.Equal("green", onIt.Sleep.Status);
+    }
+
+    [Fact]
+    public void Only_sleep_heart_rate_and_blood_oxygen_ranges_are_marked_as_the_normal()
+    {
+        // The flag a client reads to draw the range as the primary reference — set on the range
+        // itself, so the chart and the status above it cannot disagree about which metrics it is.
+        var metrics = Build(new ActivityLog
+        {
+            Date = Yesterday,
+            RestingHeartRate = 68,
+            SleepMinutes = 450,
+            SpO2Average = 96m,
+            BreathingRate = 14.2m,
+        });
+
+        Assert.True(metrics.RestingHeartRate.Reference!.IsPublishedNormal);
+        Assert.True(metrics.Sleep.Reference!.IsPublishedNormal);
+        Assert.True(metrics.SpO2.Reference!.IsPublishedNormal);
+        Assert.False(metrics.BreathingRate.Reference!.IsPublishedNormal);
+    }
+
+    [Fact]
+    public void Breathing_rate_outside_WHOs_band_is_not_judged_on_it()
+    {
+        // WHO's 12–20 is a waking rate at rest, drawn behind the daily chart as background only:
+        // breathing has no published range that is what normal means.
+        var metrics = Build(new ActivityLog { Date = Yesterday, BreathingRate = 24m });
+
+        Assert.Equal("unknown", metrics.BreathingRate.Status);
+    }
+
+    // ── Night status (DashboardMetric.NightStatus, MetricPoint.NightStatus) ─────
+
+    [Fact]
+    public void An_awake_night_is_carried_with_its_status_and_is_worth_attention()
+    {
+        // Watch worn all night, no sleep recorded: stored as 0 minutes. The card carries the
+        // status so a client can say so rather than print "0", and 0 is outside the range.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 0, NightStatus = NightSleepStatus.Awake });
+
+        Assert.Equal(0m, metrics.Sleep.Value);
+        Assert.Equal(NightSleepStatus.Awake, metrics.Sleep.NightStatus);
+        Assert.Equal("yellow", metrics.Sleep.Status);
+    }
+
+    [Fact]
+    public void The_sleep_series_says_what_is_known_about_each_night_and_no_other_series_does()
+    {
+        var twoDaysAgo = Yesterday.AddDays(-1);
+        var metrics = MemberInsightsCalculator.BuildMetrics(
+            [
+                new ActivityLog { Date = twoDaysAgo, SleepMinutes = 0, RestingHeartRate = 64, NightStatus = NightSleepStatus.Awake },
+                new ActivityLog { Date = Yesterday, SleepMinutes = 430, NightStatus = NightSleepStatus.Slept },
+                new ActivityLog { Date = Today, Steps = 900, NightStatus = NightSleepStatus.Pending },
+            ],
+            baseline: null,
+            Today,
+            ageYears: 72);
+
+        var sleep = metrics.Sleep.Series.ToDictionary(p => p.Date);
+        Assert.Equal(NightSleepStatus.Awake, sleep[twoDaysAgo].NightStatus);
+        Assert.Equal(0m, sleep[twoDaysAgo].Value);
+        Assert.Equal(NightSleepStatus.Slept, sleep[Yesterday].NightStatus);
+        // Not arrived yet: no figure, and the status says it may still come.
+        Assert.Equal(NightSleepStatus.Pending, sleep[Today].NightStatus);
+        Assert.Null(sleep[Today].Value);
+        // A day with no row at all has nothing to say about its night.
+        Assert.Null(sleep[Today.AddDays(-5)].NightStatus);
+
+        // The card is last night's reading, not the pending one.
+        Assert.Equal(NightSleepStatus.Slept, metrics.Sleep.NightStatus);
+
+        Assert.All(metrics.RestingHeartRate.Series, p => Assert.Null(p.NightStatus));
+        Assert.Null(metrics.RestingHeartRate.NightStatus);
     }
 
     private static (decimal Low, decimal High, string Source) Range(DashboardMetric metric) =>

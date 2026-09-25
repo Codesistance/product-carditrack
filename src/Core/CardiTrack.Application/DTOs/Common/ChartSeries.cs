@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.DTOs.Common;
 
@@ -6,7 +7,14 @@ namespace CardiTrack.Application.DTOs.Common;
 /// One point of a chart series. A typed projection of already-fetched member data — never
 /// model-generated. See <c>MemberChatService.BuildCharts</c>.
 /// </summary>
-public sealed record ChartPoint(DateOnly Date, double Value);
+/// <param name="Night">
+/// Sleep series only: what is known about the night, so a client can draw an
+/// <see cref="NightSleepStatus.Awake"/> night's 0 as "awake all night" rather than as a reading of
+/// "0m". Only nights with a figure reach the series, so in practice this is Slept or Awake.
+/// Optional with a default, like <see cref="ChartSeries.Baseline"/>, so turns persisted before the
+/// field existed deserialise to points without it.
+/// </param>
+public sealed record ChartPoint(DateOnly Date, double Value, NightSleepStatus? Night = null);
 
 /// <summary>
 /// One reply series with the comparisons the answer was read against, so the chart can plot them

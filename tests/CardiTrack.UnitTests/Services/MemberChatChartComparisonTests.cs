@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 
 namespace CardiTrack.UnitTests.Services;
@@ -91,6 +92,8 @@ public class MemberChatChartComparisonTests
         var sleep = Series(charts, "Sleep").Reference;
         Assert.NotNull(sleep);
         Assert.Equal((low, high, HealthReferenceRanges.SleepSource), (sleep.Low, sleep.High, sleep.Source));
+        // Converting to minutes must not drop what the band is: the normal, not background.
+        Assert.True(sleep.IsPublishedNormal);
     }
 
     /// <summary>No member row means no age, and the sleep chart then draws no band rather than a
@@ -112,5 +115,41 @@ public class MemberChatChartComparisonTests
 
         Assert.Equal(5, charts.Count);
         Assert.All(charts, c => Assert.Null(c.Baseline));
+    }
+
+    /// <summary>An Awake night is stored as 0 minutes; the point carries the status so the chat
+    /// chart can say "awake all night" rather than "0m". Only the sleep series carries one.</summary>
+    [Fact]
+    public void SleepPoints_CarryTheNightStatus_SoAnAwakeZeroIsNotReadAsAReading()
+    {
+        var data = new FetchedMemberData
+        {
+            RecentActivity =
+            [
+                new ActivityLog { Date = new DateOnly(2026, 8, 22), SleepMinutes = 0, RestingHeartRate = 66, NightStatus = NightSleepStatus.Awake },
+                new ActivityLog { Date = new DateOnly(2026, 8, 23), SleepMinutes = 400, RestingHeartRate = 62, NightStatus = NightSleepStatus.Slept },
+            ],
+        };
+
+        var charts = MemberChatService.BuildCharts(data, metrics: null, ageYears: 70);
+
+        var sleep = Series(charts, "Sleep").Points;
+        Assert.Equal(NightSleepStatus.Awake, sleep.Single(p => p.Value == 0).Night);
+        Assert.Equal(NightSleepStatus.Slept, sleep.Single(p => p.Value == 400).Night);
+        Assert.All(Series(charts, "Resting heart rate").Points, p => Assert.Null(p.Night));
+    }
+
+    /// <summary>Chat turns persist their charts as JSON. A turn stored before points carried a
+    /// night status must still load — to a point without one, not to an error.</summary>
+    [Fact]
+    public void AChartStoredBeforeNightStatus_StillDeserialises()
+    {
+        const string stored = """[{"Metric":"Sleep","Points":[{"Date":"2026-08-23","Value":400}],"Baseline":430,"Reference":null}]""";
+
+        var charts = System.Text.Json.JsonSerializer.Deserialize<List<ChartSeries>>(stored)!;
+
+        var point = Assert.Single(Assert.Single(charts).Points);
+        Assert.Equal(400, point.Value);
+        Assert.Null(point.Night);
     }
 }
