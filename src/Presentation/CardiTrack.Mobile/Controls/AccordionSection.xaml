@@ -34,7 +34,7 @@
                     BackgroundColor="Transparent"
                     Padding="12,6">
                 <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="14"/>
+                    <RoundRectangle CornerRadius="7"/>
                 </Border.StrokeShape>
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" HeightRequest="44">
                 <Grid.GestureRecognizers>

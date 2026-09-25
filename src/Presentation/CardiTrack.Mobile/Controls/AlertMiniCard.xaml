@@ -24,7 +24,7 @@
             StrokeThickness="0"
             Padding="4,0,0,0">
         <Border.StrokeShape>
-            <RoundRectangle CornerRadius="12"/>
+            <RoundRectangle CornerRadius="6"/>
         </Border.StrokeShape>
         <Border.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnTapped"/>
@@ -34,7 +34,7 @@
                 StrokeThickness="0"
                 Padding="12,10,10,12">
             <Border.StrokeShape>
-                <RoundRectangle CornerRadius="12"/>
+                <RoundRectangle CornerRadius="6"/>
             </Border.StrokeShape>
 
             <!-- Only the title sits beside the tile. The message and the timestamp run the full
