@@ -271,6 +271,20 @@ Two mechanisms, because naming the gap without bounding what may be said about i
 
 Derived from the catalogue rather than listed, so a rung added later with daily readings in its datasets cannot reach a caregiver without the rule (`DataGapPromptTests`).
 
+### A stretch of days: coverage first, arithmetic in code
+
+Asked *"how did he sleep this week?"* (2026-09-25, dev), chat answered twice with an average of about 2h 22m a night, under a chart of the same fetch whose nights ran 4h 18m to 7h. Nothing computed the week's average: the clinical read was handed seven daily rows and left to add them up, on a 4B model quantised to four bits. The answer check could not catch it (it is not shown the readings, DPIA A20), and no copy guard read numbers.
+
+- **Coverage is checked before any clinical read.** When the planner names the readings a question is about and the window spans more than one day, each needs four of every seven days to carry it: the Weekbook's bar, scaled and rounded up (`ReadingWindowSummaries.RequiredDays`). When every reading asked about falls short, `MemberChatReplies.TooFewReadingsReply` answers in code. It gives how many days arrived against how many there were, then the days that did, newest first, so a last-night question the planner sized at a week still reads its answer first. MedGemma is not called.
+- **The arithmetic is done in code.** `ChatWindowSummaryBlock` adds a computed summary beneath the readings on every rung that reads them. For each reading it gives the days that carried it, the average, the lowest and highest day, the published range where one exists, and the member's usual, with the distance to each already subtracted. Breathing asleep gets no published range, because WHO's 12–20 is a waking rate (`HealthReferenceRanges.NoOvernightBreathingBand`). The block tells the model to quote these figures and never to average the rows itself. A reading short of the bar is written with `"average": null` and a reason, not left out. So is a reading the question asked about that no day carried. Overnight readings (sleep, HRV, breathing asleep) count today's row, because that night is finished by the morning. Steps and resting heart rate leave today out, because the day is still in progress.
+- **A backstop on the reply.** `RewriteCopyGuards.StatesASleepFigureTheDataDoesNot` reads every duration in a sentence about sleep and requires it to sit within 15 minutes, or a tenth of the figure, of one the fetch supports. The words beside each duration decide what kind of figure it is and what it is checked against:
+  - a **difference** ("55 minutes less than usual") against the distances between the figures below;
+  - a **reference** ("his usual 5h 45m", "the recommended 7 hours") against the usual and the member's own NSF band edges (7–8h from 65);
+  - an **average** ("averaged 4h 48m", "4h 48m a night") against the computed averages only. A thin week has none, so a thin week's "average" fails even when it happens to sit on the usual or a band edge;
+  - any other **length** against all of them.
+
+  The kinds are kept apart because they overlap: that week's average sat about 2h 13m under the 7-hour floor, and one pooled list would have let 2h 22m through as a difference. A reply that fails is withheld (`CouldNotAnswerReply`), like every other guard on this path.
+
 ### `status` — observation, no model call
 
 **Answers.** "How many steps today?" · "How did he sleep last night?" · "When did his watch last sync?" · "Is he asleep right now?"
@@ -623,6 +637,7 @@ A revert would not buy what it appears to. Reverting the code does not revert th
 | A prompt rule forbidding a claim does not hold | "Yes, Dad is asleep now", from a nightly sleep total | `claimClass`, and the rungs that assemble in code |
 | A stored reply re-entering a prompt carries the real name | Name reached the rewrite slot one turn later | History redaction + the assembly-level slot guard |
 | Null is not zero | "steps=, HR=71, sleep=min" on a day the watch missed one | Registry `nullMeaning` |
+| A small model asked to average a week gets it wrong | A 2h 22m weekly sleep average over nights of 4h 18m–7h | Coverage gate, `ChatWindowSummaryBlock`, the sleep-figure guard |
 | A night's sleep belongs to the morning it ended on | Misdated twice — a digest, then chat | Registry temporal attribution |
 | The query plan must be unable to name a subject | Security review at member-chat launch | Routing contract: dataset kinds only |
 | An unknown enum name must be dropped, never coerced | `"999"` parsed to a recognised source | Router and registry parsing |

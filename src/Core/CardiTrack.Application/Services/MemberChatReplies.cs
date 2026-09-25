@@ -275,6 +275,61 @@ public static partial class MemberChatReplies
         return reply + ".";
     }
 
+    /// <summary>
+    /// The answer to a question about a stretch of days when none of the readings it asked about
+    /// reached us on enough of them to average — said in code, and without asking the clinical
+    /// model to find a pattern in what is mostly absence.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each reading gets how many of the window's days carried it against how many there were,
+    /// then the days that did, newest first. Newest first because the planner sizes most windows
+    /// at a week whatever was asked: "how did he sleep last night?" can arrive here over seven
+    /// nights, and the figure that answers it has to be the first one read, not the last.
+    /// </para>
+    /// <para>
+    /// The wording is about arrival — "reached us" — for the reason
+    /// <c>MedicalPromptBlocks.DataGapRule</c> gives: a watch left off and a phone that never synced
+    /// look the same from here, and saying which it was would be a guess.
+    /// </para>
+    /// </remarks>
+    public static string TooFewReadingsReply(IReadOnlyList<ReadingWindowSummary> summaries, DateOnly from, DateOnly today)
+    {
+        var paragraphs = summaries.Select(s => TooFewReadingsParagraph(s, from, today));
+        return string.Join("\n\n", paragraphs);
+    }
+
+    private static string TooFewReadingsParagraph(ReadingWindowSummary summary, DateOnly from, DateOnly today)
+    {
+        var overnight = ReadingWindowSummaries.IsOvernight(summary.Metric);
+        var unit = overnight ? "nights" : "days";
+        var name = ReadingWindowSummaries.Name(summary.Metric);
+        var to = from.AddDays(summary.DaysConsidered - 1);
+        var stretch = $"the {summary.DaysConsidered} {unit} from {from.ToString("MMM d", CultureInfo.InvariantCulture)} "
+            + $"to {to.ToString("MMM d", CultureInfo.InvariantCulture)}";
+
+        if (summary.Readings.Count == 0)
+            return $"No {name} reading has reached us for {stretch}, so there is nothing to go on for that stretch.";
+
+        var days = summary.Readings
+            .OrderByDescending(r => r.Day)
+            .Select(r => $"{(overnight ? NightLabel(r.Day, today) : DayLabel(r.Day, today))} "
+                + ReadingWindowSummaries.Figure(summary.Metric, r.Value));
+
+        return $"Only {summary.Readings.Count} of {stretch} have a {name} reading that reached us — "
+            + $"too few to give an average for that stretch. The {unit} that did: {string.Join(", ", days)}.";
+    }
+
+    /// <summary>
+    /// A night by the morning it ended on, short enough for a list — the spelling
+    /// <see cref="When"/> uses in a sentence, without its "the night ending".
+    /// </summary>
+    private static string NightLabel(DateOnly date, DateOnly today) => date == today
+        ? "last night"
+        : date == today.AddDays(-1)
+            ? "the night before"
+            : date.ToString("MMM d", CultureInfo.InvariantCulture);
+
     /// <summary>The metric as a caregiver reads it — spelled once here, so a figure and its
     /// name cannot drift apart between replies.</summary>
     private static string MetricName(StatusMetric metric) => metric switch
