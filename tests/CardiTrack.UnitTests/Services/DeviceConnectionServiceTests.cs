@@ -1006,23 +1006,24 @@ public class DeviceConnectionServiceTests
     /// app showed the device as disconnected.
     /// </summary>
     [Fact]
-    public async Task Disconnect_RevokesTheGrant_WhileTheTokenIsStillThere()
+    public async Task Disconnect_RevokesTheGrant_WithTheTokenItHeld()
     {
+        // Revoked after the commit, from a copy taken before the tokens were discarded — so the
+        // provider still gets the refresh token that ends the grant.
         var connection = SeedConnection(isPrimary: true);
         _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
 
-        string? refreshTokenAtRevocation = null;
-        _grantRevoker.TryRevokeAsync(connection, Arg.Any<CancellationToken>())
-            .Returns(_ =>
-            {
-                refreshTokenAtRevocation = connection.RefreshToken;
-                return true;
-            });
-
         await CreateSut().DisconnectAsync(_userId, _memberId, connection.Id);
 
-        await _grantRevoker.Received(1).TryRevokeAsync(connection, Arg.Any<CancellationToken>());
-        Assert.NotNull(refreshTokenAtRevocation);
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.Id == connection.Id && c.RefreshToken == "enc(refresh)"),
+            Arg.Any<CancellationToken>());
+        Assert.Null(connection.RefreshToken);
+        Received.InOrder(() =>
+        {
+            _unitOfWork.CommitTransactionAsync();
+            _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>());
+        });
     }
 
     /// <summary>
@@ -1658,5 +1659,130 @@ public class DeviceConnectionServiceTests
         Assert.Equal("suspended", device.Status);
         Assert.Equal(suspended.SuspendedAt, device.SuspendedAt);
         Assert.Null(device.NextSyncAt);
+    }
+
+    // Copilot review on #1290: an identity is best-effort, so a sibling whose account was never
+    // captured may share the grant — and revocation is grant-wide.
+
+    [Theory]
+    [InlineData("ACCOUNT_A", null)]
+    [InlineData(null, "ACCOUNT_B")]
+    [InlineData(null, null)]
+    public async Task Disconnect_KeepsTheGrant_WhenASiblingOnTheSameApiMightShareIt(
+        string? removedAccount, string? siblingAccount)
+    {
+        var removed = SeedConnection(isPrimary: true);
+        removed.HealthUserId = removedAccount;
+        var sibling = SeedConnection(deviceType: DeviceType.GooglePixelWatch);
+        sibling.HealthUserId = siblingAccount;
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([removed, sibling]);
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, removed.Id);
+
+        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
+        Assert.False(removed.IsActive);
+        Assert.Null(removed.RefreshToken);
+    }
+
+    [Fact]
+    public async Task Disconnect_RevokesTheGrant_WhenTheSiblingIsKnownToBeAnotherAccount()
+    {
+        var removed = SeedAccount("ACCOUNT_A", isPrimary: true);
+        var sibling = SeedAccount("ACCOUNT_B");
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([removed, sibling]);
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, removed.Id);
+
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.Id == removed.Id), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CompleteConnection_Replace_LeavesTheOldGrant_WhenASiblingsAccountIsUnknown()
+    {
+        var old = SeedAccount("ACCOUNT_A", isPrimary: true);
+        var sibling = SeedConnection();
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([old, sibling]);
+        GrantIsForAccount("ACCOUNT_B");
+        GrantReturns();
+
+        await ConnectAsync(CreateSut(), FitbitRequest(ConnectDeviceRequest.ModeReplace, old.Id));
+
+        Assert.False(old.IsActive);
+        await _grantRevoker.DidNotReceiveWithAnyArgs().TryRevokeAsync(default!, default);
+    }
+
+    // Copilot review on #1290: the rules over a member's devices (one primary, one connection per
+    // account, never the last collecting device suspended) are each a read of the whole set then a
+    // write, so every change takes the member's device lock before it reads.
+
+    public static TheoryData<string> DeviceSetChanges =>
+        ["connect", "disconnect", "primary", "suspend", "resume"];
+
+    [Theory]
+    [MemberData(nameof(DeviceSetChanges))]
+    public async Task EveryDeviceSetChange_LocksTheMembersDevices_BeforeReadingThem(string change)
+    {
+        var primary = SeedAccount("ACCOUNT_A", isPrimary: true);
+        var other = SeedAccount("ACCOUNT_B");
+        if (change == "resume")
+            other.SuspendedAt = DateTime.UtcNow;
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([primary, other]);
+        GrantIsForAccount("ACCOUNT_C");
+        GrantReturns();
+        var sut = CreateSut();
+
+        // Initiation reads the member's devices too, but changes nothing, so it takes no lock;
+        // only what follows it is under test.
+        var initiation = change == "connect"
+            ? await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest())
+            : null;
+        _unitOfWork.DeviceConnections.ClearReceivedCalls();
+
+        switch (change)
+        {
+            case "connect":
+                await sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
+                {
+                    Code = "code",
+                    State = initiation!.State,
+                    CodeVerifier = initiation.CodeVerifier,
+                });
+                break;
+            case "disconnect":
+                await sut.DisconnectAsync(_userId, _memberId, other.Id);
+                break;
+            case "primary":
+                await sut.SetPrimaryAsync(_userId, _memberId, other.Id);
+                break;
+            case "suspend":
+                await sut.SuspendAsync(_userId, _memberId, primary.Id);
+                break;
+            case "resume":
+                await sut.ResumeAsync(_userId, _memberId, other.Id);
+                break;
+        }
+
+        Received.InOrder(() =>
+        {
+            _unitOfWork.BeginTransactionAsync();
+            _unitOfWork.DeviceConnections.LockMemberDevicesAsync(_memberId, Arg.Any<CancellationToken>());
+            _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId);
+            _unitOfWork.SaveChangesAsync();
+            _unitOfWork.CommitTransactionAsync();
+        });
+    }
+
+    [Fact]
+    public async Task Suspend_RollsBack_WhenItIsRefused()
+    {
+        var only = SeedConnection(isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([only]);
+
+        await Assert.ThrowsAsync<DeviceConnectionException>(() =>
+            CreateSut().SuspendAsync(_userId, _memberId, only.Id));
+
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
     }
 }

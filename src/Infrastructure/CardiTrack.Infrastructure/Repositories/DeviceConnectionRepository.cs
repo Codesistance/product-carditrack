@@ -338,6 +338,18 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
                             && dc.ConnectionStatus != ConnectionStatus.Disconnected);
     }
 
+    public async Task LockMemberDevicesAsync(Guid cardiMemberId, CancellationToken ct = default)
+    {
+        // An advisory lock rather than FOR UPDATE on the member row: that row is also what the
+        // member write guard (FOR KEY SHARE) and erasure (FOR UPDATE) coordinate on, and a device
+        // change has no business queuing behind either. Transaction-scoped, so it cannot outlive
+        // the change it guards. The key is namespaced so it cannot collide with another feature's
+        // advisory lock on the same id.
+        var key = $"device-connections:{cardiMemberId}";
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({key}, 0))", ct);
+    }
+
     private IQueryable<DeviceConnection> WhereMemberAllowsCollection(
         IQueryable<DeviceConnection> connections, DateTime now) =>
         connections

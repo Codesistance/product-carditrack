@@ -431,6 +431,49 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.False(await repo.AnyOtherActiveWithHealthUserIdAsync(connection.Id, account));
     }
 
+    // ── LockMemberDevicesAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LockMemberDevicesAsync_HoldsASecondChangeForTheSameMember_UntilTheFirstCommits()
+    {
+        using var first = fixture.CreateScope();
+        using var second = fixture.CreateScope();
+        var firstUow = first.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var secondUow = second.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var memberId = Guid.NewGuid();
+
+        await firstUow.BeginTransactionAsync();
+        await firstUow.DeviceConnections.LockMemberDevicesAsync(memberId);
+
+        await secondUow.BeginTransactionAsync();
+        var waiting = secondUow.DeviceConnections.LockMemberDevicesAsync(memberId);
+        var raced = await Task.WhenAny(waiting, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.NotSame(waiting, raced);
+
+        await firstUow.CommitTransactionAsync();
+        await waiting.WaitAsync(TimeSpan.FromSeconds(10));
+        await secondUow.CommitTransactionAsync();
+    }
+
+    [Fact]
+    public async Task LockMemberDevicesAsync_DoesNotHoldChangesForAnotherMember()
+    {
+        using var first = fixture.CreateScope();
+        using var second = fixture.CreateScope();
+        var firstUow = first.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var secondUow = second.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+        await firstUow.BeginTransactionAsync();
+        await firstUow.DeviceConnections.LockMemberDevicesAsync(Guid.NewGuid());
+
+        await secondUow.BeginTransactionAsync();
+        await secondUow.DeviceConnections.LockMemberDevicesAsync(Guid.NewGuid())
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        await secondUow.CommitTransactionAsync();
+        await firstUow.CommitTransactionAsync();
+    }
+
     // ── UpdateTokenAsync ─────────────────────────────────────────────────────────
 
     [Fact]

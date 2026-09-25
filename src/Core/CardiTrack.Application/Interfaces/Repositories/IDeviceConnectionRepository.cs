@@ -111,4 +111,18 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// </summary>
     Task<bool> AnyOtherActiveWithHealthUserIdAsync(Guid excludingId, string healthUserId);
 
+    /// <summary>
+    /// Serializes changes to one member's set of devices until the current transaction ends.
+    /// Must be called inside a transaction, before the member's connections are read.
+    /// </summary>
+    /// <remarks>
+    /// The rules over a member's devices span rows, not one row: one primary, one connection per
+    /// provider account, never the last collecting device suspended. Each is a read of the whole
+    /// set followed by a write. Two such changes interleaving can each pass their check and
+    /// together break the rule — two replacements each promoting their new device, two
+    /// suspensions each seeing the other device still collecting. Holding this across read and
+    /// write makes the second change read what the first committed.
+    /// </remarks>
+    Task LockMemberDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
+
 }
