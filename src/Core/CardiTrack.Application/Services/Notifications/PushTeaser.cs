@@ -10,12 +10,22 @@ public static class PushTeaser
 {
     public const string AppName = "CardiTrack";
 
+    /// <param name="nudgeRuleCode">
+    /// The rule behind a nudge-sourced push (<c>NotificationDelivery.NudgeRuleCode</c>). Only the
+    /// rules whose generic teaser would mislead get their own; the rest keep the category's.
+    /// </param>
     public static (string Title, string Body) For(
         DeliveryCategory category,
         AlertSeverity? severity = null,
-        AlertType? alertType = null) =>
+        AlertType? alertType = null,
+        string? nudgeRuleCode = null) =>
         category switch
         {
+            // A refused grant is Safety class because monitoring is down, but "Urgent" oversells
+            // it and says nothing about the fix: nobody needs checking on, a device needs signing
+            // in again. Still PHI-free — no name and no device, just the kind of problem.
+            DeliveryCategory.Safety when nudgeRuleCode == Rules.DeviceAuthBrokenRule.Code =>
+                ("Device needs reconnecting", "Open CardiTrack to sign it in again so readings keep coming through."),
             DeliveryCategory.Safety => (AppName, "Urgent — open CardiTrack now"),
             DeliveryCategory.Health => Health(severity, alertType),
             DeliveryCategory.Questionnaire => (AppName, "A question is waiting — open CardiTrack"),

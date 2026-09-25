@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +30,7 @@ public class InactivityDetectionServiceTests
     private readonly IAlertPreferenceRepository _alertPreferences = Substitute.For<IAlertPreferenceRepository>();
     private readonly IDeviceConnectionRepository _connections = Substitute.For<IDeviceConnectionRepository>();
     private readonly IDeviceSyncService _deviceSync = Substitute.For<IDeviceSyncService>();
+    private readonly INotificationGapResolver _gapResolver = Substitute.For<INotificationGapResolver>();
 
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -141,25 +143,218 @@ public class InactivityDetectionServiceTests
             .BuildServiceProvider();
 
     private InactivityDetectionService CreateSut() =>
-        new(_unitOfWork, Substitute.For<IDispatchService>(), BuildServices(),
+        new(_unitOfWork, Substitute.For<IDispatchService>(), _gapResolver, BuildServices(),
             NullLogger<InactivityDetectionService>.Instance);
 
     /// <summary>
     /// Gives the member a connected device, so the pre-alert probe has something to pull. Without
     /// one there is nothing to ask, and detection falls straight through to the alert.
     /// </summary>
-    private DeviceConnection SetupConnectedDevice()
+    private DeviceConnection SetupConnectedDevice() => SetupDevices(ConnectionStatus.Connected)[0];
+
+    /// <summary>One device per status given, all belonging to the member.</summary>
+    private List<DeviceConnection> SetupDevices(params ConnectionStatus[] statuses)
     {
-        var connection = new DeviceConnection
+        var connections = statuses.Select(status => new DeviceConnection
         {
             Id = Guid.NewGuid(),
             CardiMemberId = _memberId,
             DeviceType = DeviceType.Fitbit,
-            ConnectionStatus = ConnectionStatus.Connected,
+            ConnectionStatus = status,
             IsActive = true,
-        };
-        _connections.GetActiveByCardiMemberIdAsync(_memberId).Returns([connection]);
-        return connection;
+        }).ToList();
+        _connections.GetActiveByCardiMemberIdAsync(_memberId).Returns(connections);
+        return connections;
+    }
+
+    // ------------------------------------------------ a refused grant is "needs reconnecting"
+
+    /// <summary>
+    /// The reported case: the token expired, the watch went dark, and the caregiver was told it had
+    /// gone quiet and might need charging. The same moment now asks for the reconnect nudge instead.
+    /// </summary>
+    [Theory]
+    [InlineData(ConnectionStatus.TokenExpired)]
+    [InlineData(ConnectionStatus.AuthError)]
+    public async Task ASilentMemberWhoseGrantWasRefused_GetsTheReconnectNudge_NotTheSilenceAlert(
+        ConnectionStatus broken)
+    {
+        SetupDevices(broken);
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _gapResolver.Received(1).ResolveForCardiMemberAsync(_memberId, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// No probe for a refused grant: every pull is another request for a token the provider has
+    /// already said no to, and the auth-recovery worker retries those on its own backoff.
+    /// </summary>
+    [Fact]
+    public async Task ARefusedGrant_IsNotProbed()
+    {
+        SetupDevices(ConnectionStatus.TokenExpired);
+
+        await CreateSut().DetectAsync(UtcNow, Rules);
+
+        await _deviceSync.DidNotReceiveWithAnyArgs().SyncCardiMemberAsync(default!, default);
+    }
+
+    /// <summary>
+    /// The probe's own refresh can be the one refused — the token lapsed between the scheduled pull
+    /// and this one. That is the answer to "why is it quiet?", and the silence alert is not.
+    /// </summary>
+    [Fact]
+    public async Task AProbeWhoseRefreshIsRefused_GetsTheReconnectNudge_NotTheSilenceAlert()
+    {
+        var connection = SetupConnectedDevice();
+        _deviceSync
+            .When(s => s.SyncCardiMemberAsync(Arg.Any<DeviceConnection>(), Arg.Any<SyncScope>()))
+            .Do(_ => throw new DeviceGrantRejectedException(
+                connection.Id, System.Net.HttpStatusCode.BadRequest, "invalid_grant"));
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _gapResolver.Received(1).ResolveForCardiMemberAsync(_memberId, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// With one device refused and another merely quiet, nothing can say which one the silence
+    /// belongs to, and the reconnect is the one action certain to be needed.
+    /// </summary>
+    [Fact]
+    public async Task OneRefusedDeviceBesideAQuietOne_StillAsksForTheReconnect()
+    {
+        SetupDevices(ConnectionStatus.Connected, ConnectionStatus.TokenExpired);
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _gapResolver.Received(1).ResolveForCardiMemberAsync(_memberId, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A suspended device is out of collection; its grant has nothing to say about the silence.</summary>
+    [Fact]
+    public async Task ARefusedButSuspendedDevice_LeavesTheSilenceAlertToTheOtherOne()
+    {
+        var devices = SetupDevices(ConnectionStatus.Connected, ConnectionStatus.TokenExpired);
+        devices[1].SuspendedAt = UtcNow.AddDays(-1);
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Any<Alert>());
+        await _gapResolver.DidNotReceiveWithAnyArgs().ResolveForCardiMemberAsync(default);
+    }
+
+    /// <summary>
+    /// The reconnect nudge is Safety class and pierces quiet hours, so it waits for the moment a
+    /// silence alert would be allowed — a token lapsing at night must not wake the household.
+    /// </summary>
+    [Fact]
+    public async Task ARefusedGrant_OutsideWakingHours_AsksForNothingYet()
+    {
+        SetupDevices(ConnectionStatus.TokenExpired);
+        var lateEvening = new DateTime(2026, 8, 10, 22, 30, 0, DateTimeKind.Utc);  // 23:30 London
+        SetupLastDataAt(lateEvening.AddHours(-3));
+
+        var raised = await CreateSut().DetectAsync(lateEvening, Rules);
+
+        Assert.Equal(0, raised);
+        await _gapResolver.DidNotReceiveWithAnyArgs().ResolveForCardiMemberAsync(default);
+    }
+
+    /// <summary>
+    /// And only once the member is actually dark — the same threshold the silence alert waits for,
+    /// which is also what gives the auth-recovery probe its first retries before anyone is told.
+    /// </summary>
+    [Fact]
+    public async Task ARefusedGrant_WhileReadingsAreStillArriving_AsksForNothingYet()
+    {
+        SetupDevices(ConnectionStatus.TokenExpired);
+        SetupLastDataAt(UtcNow.AddMinutes(-30));
+
+        await CreateSut().DetectAsync(UtcNow, Rules);
+
+        await _gapResolver.DidNotReceiveWithAnyArgs().ResolveForCardiMemberAsync(default);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    /// <summary>
+    /// Turning the device-silence rule off does not turn off the reconnect: that is a Safety
+    /// nudge, and a caregiver cannot mute "we can no longer see them".
+    /// </summary>
+    [Fact]
+    public async Task ARefusedGrant_AsksForTheReconnect_EvenWithTheSilenceRuleDisabled()
+    {
+        SetupDevices(ConnectionStatus.TokenExpired);
+        _alertPreferences.GetByCardiMemberIdAsync(_memberId).Returns(new AlertPreference
+        {
+            CardiMemberId = _memberId,
+            DisabledRules = """["device_silence"]""",
+        });
+
+        await CreateSut().DetectAsync(UtcNow, Rules);
+
+        await _gapResolver.Received(1).ResolveForCardiMemberAsync(_memberId, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A silence alert raised before the grant broke — the watch sat unworn, then its token lapsed
+    /// — is telling the family to charge a watch that needs signing in. It closes, and the reconnect
+    /// nudge takes its place.
+    /// </summary>
+    [Fact]
+    public async Task AStandingSilenceAlert_ClosesWhenTheGrantIsFoundRefused()
+    {
+        var standing = DeviceSilenceAlert();
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([standing]);
+        SetupDevices(ConnectionStatus.TokenExpired);
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(0, raised);
+        Assert.True(standing.IsResolved);
+        await _unitOfWork.Received().SaveChangesAsync();
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _gapResolver.Received(1).ResolveForCardiMemberAsync(_memberId, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Closing it is not gated on the clock, like every other way an episode ends (#1249). Asking
+    /// for the reconnect is — that one pushes.
+    /// </summary>
+    [Fact]
+    public async Task AStandingSilenceAlert_ClosesOnARefusedGrant_EvenOutsideWakingHours()
+    {
+        var standing = DeviceSilenceAlert();
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([standing]);
+        SetupDevices(ConnectionStatus.TokenExpired);
+        var lateEvening = new DateTime(2026, 8, 10, 22, 30, 0, DateTimeKind.Utc);
+        SetupLastDataAt(lateEvening.AddHours(-3));
+
+        await CreateSut().DetectAsync(lateEvening, Rules);
+
+        Assert.True(standing.IsResolved);
+        await _gapResolver.DidNotReceiveWithAnyArgs().ResolveForCardiMemberAsync(default);
+    }
+
+    /// <summary>Once reconnected, silence is silence again and is reported as it always was.</summary>
+    [Fact]
+    public async Task AReconnectedDeviceThatIsStillSilent_GetsTheSilenceAlertAsBefore()
+    {
+        SetupDevices(ConnectionStatus.Connected);
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a => a.Title == "Device has gone quiet"));
+        await _gapResolver.DidNotReceiveWithAnyArgs().ResolveForCardiMemberAsync(default);
     }
 
     /// <summary>

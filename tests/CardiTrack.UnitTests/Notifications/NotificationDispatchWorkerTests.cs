@@ -247,6 +247,22 @@ public class NotificationDispatchWorkerTests
     }
 
     [Fact]
+    public async Task PushSweep_CarriesTheRuleCode_SoTheLockScreenCanSayWhatHappened()
+    {
+        // Without it every Safety nudge reads "Urgent — open CardiTrack now", a device that only
+        // needs signing in again included.
+        var notification = PendingNudge();
+        notification.RuleCode = "DEVICE_AUTH_BROKEN";
+        StagePending(notification);
+
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        await _dispatch.Received(1).EnqueueAsync(
+            Arg.Is<EnqueueRequest>(r => r.NudgeRuleCode == "DEVICE_AUTH_BROKEN"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task PushSweep_FailureDoesNotStopTheRestOfTheTick()
     {
         _notifications.GetPendingPushAsync(

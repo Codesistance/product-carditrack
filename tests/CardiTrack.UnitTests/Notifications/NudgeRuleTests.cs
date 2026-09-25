@@ -57,6 +57,28 @@ public class NudgeRuleTests
         Assert.False(new DeviceAuthBrokenRule().Evaluate(context).HasGap);
     }
 
+    [Theory]
+    [InlineData(DeviceType.Fitbit, "Fitbit")]
+    [InlineData(DeviceType.GooglePixelWatch, "Google Pixel Watch")]
+    // "Pop's Other needs reconnecting" is not a sentence.
+    [InlineData(DeviceType.Other, "device")]
+    public void DeviceAuthBroken_NamesTheKindOfDeviceThatNeedsReconnecting(DeviceType deviceType, string expected)
+    {
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.Connection(ConnectionStatus.TokenExpired) with
+            {
+                DeviceType = deviceType
+            })
+            .Build();
+
+        var verdict = new DeviceAuthBrokenRule().Evaluate(context);
+
+        Assert.Equal(expected, verdict.TemplateData[DeviceAuthBrokenRule.DeviceKey]);
+        // Straight to the member's devices, where the reconnect button is.
+        Assert.Equal("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/devices",
+            verdict.ActionDeepLink);
+    }
+
     [Fact]
     public void DeviceAuthBroken_IsSafetyClassAndCannotBeMuted()
     {
@@ -369,6 +391,40 @@ public class NudgeRuleTests
             .Build();
 
         Assert.False(new DeviceStaleLongRule().Evaluate(context).HasGap);
+    }
+
+    [Theory]
+    [InlineData(ConnectionStatus.TokenExpired)]
+    [InlineData(ConnectionStatus.AuthError)]
+    public void DeviceStaleLong_StandsDownForTheMemberWhileAnyDeviceNeedsReconnecting(ConnectionStatus broken)
+    {
+        // A second device, connected and itself two days stale. Nothing can say whether the silence
+        // is that one or the refused one, and "hasn't synced, try a charge" beside "needs
+        // reconnecting" sends the caregiver to fix the wrong thing first. The reconnect speaks alone.
+        var context = new NudgeContextBuilder()
+            .WithConnections(
+                NudgeContextBuilder.Connection(broken, lastSync: NudgeContextBuilder.Now.AddDays(-9)),
+                NudgeContextBuilder.Connection(lastSync: NudgeContextBuilder.Now.AddDays(-3)) with
+                {
+                    Id = Guid.Parse("55555555-5555-5555-5555-555555555555")
+                })
+            .Build();
+
+        Assert.False(new DeviceStaleLongRule().Evaluate(context).HasGap);
+        Assert.True(new DeviceAuthBrokenRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void DeviceStaleLong_ResumesOnceTheGrantIsRestored()
+    {
+        // Reconnected, but still nothing for two days: now it genuinely is a quiet watch.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.Connection(
+                ConnectionStatus.Connected, lastSync: NudgeContextBuilder.Now.AddDays(-3)))
+            .Build();
+
+        Assert.True(new DeviceStaleLongRule().Evaluate(context).HasGap);
+        Assert.False(new DeviceAuthBrokenRule().Evaluate(context).HasGap);
     }
 
     [Fact]

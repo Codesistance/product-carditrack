@@ -282,23 +282,42 @@ public class NudgeReconcilerTests
         Assert.Equal(NudgeReconciler.MaxNewPerUserPerRun, plan.ToInsert.Count);
     }
 
-    [Fact]
-    public void NewRowsAreRankedSoTheCapDropsTheLeastImportant()
+    /// <summary>
+    /// Four gaps for one caregiver: a broken grant (Safety/Critical) and empty medical notes (Low)
+    /// on one member, a watch silent for nine days (High) on a second, and a default time zone
+    /// (High) on the account. The silent watch is on its own member because a member with a broken
+    /// grant never also gets the stale nudge — the reconnect speaks for that member alone.
+    /// </summary>
+    private static NudgeContext[] FourGapsOneSlotShort()
     {
-        // Four gaps, one slot short: a broken grant (Safety/Critical), a watch silent for nine days
-        // (High), a default time zone (High) and empty medical notes (Low). Which three survive has
-        // to be decided by priority — ranking the survivors afterwards would be too late, since by
-        // then whichever rules happened to evaluate first would already hold the slots.
         var member = new NudgeContextBuilder()
-            .WithConnections(
-                NudgeContextBuilder.Connection(ConnectionStatus.AuthError),
-                NudgeContextBuilder.Connection(lastSync: Now.AddDays(-9)))
+            .WithConnections(NudgeContextBuilder.Connection(ConnectionStatus.AuthError))
             .NoMedicalNotes()
             .Build();
 
+        var quiet = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.Connection(lastSync: Now.AddDays(-9)) with
+            {
+                Id = Guid.Parse("66666666-6666-6666-6666-666666666666")
+            })
+            .Build();
+        var quietMember = quiet with
+        {
+            Member = quiet.Member! with { Id = Guid.Parse("77777777-7777-7777-7777-777777777777") }
+        };
+
         var account = new NudgeContextBuilder().AccountLevel().TimeZone("UTC").Build();
 
-        var plan = NudgeReconciler.Reconcile([member, account], []);
+        return [member, quietMember, account];
+    }
+
+    [Fact]
+    public void NewRowsAreRankedSoTheCapDropsTheLeastImportant()
+    {
+        // Four gaps, one slot short (see FourGapsOneSlotShort). Which three survive has to be
+        // decided by priority — ranking the survivors afterwards would be too late, since by then
+        // whichever rules happened to evaluate first would already hold the slots.
+        var plan = NudgeReconciler.Reconcile(FourGapsOneSlotShort(), []);
 
         Assert.Equal(NudgeReconciler.MaxNewPerUserPerRun, plan.ToInsert.Count);
         Assert.Equal(NotificationPriority.Critical, plan.ToInsert[0].Priority);
@@ -315,22 +334,15 @@ public class NudgeReconcilerTests
     {
         // The cap limits how much lands on someone in one morning. A row they are already looking
         // at going stale — a counter frozen at "4/30" — would be the cap making the inbox wrong.
-        var member = new NudgeContextBuilder()
-            .WithConnections(
-                NudgeContextBuilder.Connection(ConnectionStatus.AuthError),
-                NudgeContextBuilder.Connection(lastSync: Now.AddDays(-9)))
-            .NoMedicalNotes()
-            .Build();
-
-        var account = new NudgeContextBuilder().AccountLevel().TimeZone("UTC").Build();
+        var contexts = FourGapsOneSlotShort();
 
         // Two earlier runs to get past the cap: the first takes three, the second picks up the
         // straggler. By today all four are stored.
-        var firstRun = NudgeReconciler.Reconcile([member, account], []).ToInsert;
-        var secondRun = NudgeReconciler.Reconcile([member, account], firstRun).ToInsert;
+        var firstRun = NudgeReconciler.Reconcile(contexts, []).ToInsert;
+        var secondRun = NudgeReconciler.Reconcile(contexts, firstRun).ToInsert;
         List<Notification> stored = [.. firstRun, .. secondRun];
 
-        var plan = NudgeReconciler.Reconcile([member, account], stored);
+        var plan = NudgeReconciler.Reconcile(contexts, stored);
 
         Assert.Empty(plan.ToInsert);
         Assert.Equal(4, plan.ToUpdate.Count);
@@ -431,5 +443,75 @@ public class NudgeReconcilerTests
         Assert.NotEqual(baseline, NudgeFingerprint.Compute("RULE", Guid.Empty, Guid.NewGuid(), ""));
         Assert.NotEqual(baseline, NudgeFingerprint.Compute("RULE", Guid.Empty, Guid.Empty, "x"));
         Assert.Equal(baseline, NudgeFingerprint.Compute("RULE", Guid.Empty, Guid.Empty, ""));
+    }
+
+    // ------------------------------------------------ "gone quiet" hands over to "needs reconnecting"
+
+    private static IReadOnlyList<INudgeRule> DeviceRules => [new DeviceAuthBrokenRule(), new DeviceStaleLongRule()];
+
+    private static NudgeContext QuietWatch(ConnectionStatus status) => new NudgeContextBuilder()
+        .WithConnections(NudgeContextBuilder.Connection(status, lastSync: Now.AddDays(-3)))
+        .Build();
+
+    [Fact]
+    public void AQuietWatchWithItsGrantIntact_IsToldItHasGoneQuiet()
+    {
+        var plan = NudgeReconciler.Reconcile([QuietWatch(ConnectionStatus.Connected)], [], DeviceRules);
+
+        Assert.Equal(DeviceStaleLongRule.Code, Assert.Single(plan.ToInsert).RuleCode);
+    }
+
+    [Fact]
+    public void AQuietWatchWhoseGrantWasRefused_IsToldItNeedsReconnecting_AndNothingElse()
+    {
+        var plan = NudgeReconciler.Reconcile([QuietWatch(ConnectionStatus.TokenExpired)], [], DeviceRules);
+
+        var inserted = Assert.Single(plan.ToInsert);
+        Assert.Equal(DeviceAuthBrokenRule.Code, inserted.RuleCode);
+        Assert.Equal(NotificationCategory.Safety, inserted.Category);
+        Assert.Equal("nudge.DEVICE_AUTH_BROKEN.expired.title", inserted.TitleKey);
+        Assert.Contains("\"device\":\"Fitbit\"", inserted.TemplateData);
+    }
+
+    [Fact]
+    public void AGoneQuietNudgeAlreadyOpen_ClosesWhenTheReconnectOneOpens()
+    {
+        var stored = NudgeReconciler.Reconcile([QuietWatch(ConnectionStatus.Connected)], [], DeviceRules).ToInsert;
+        var stale = Assert.Single(stored);
+
+        // Same watch, still quiet — and now its token has been refused.
+        var plan = NudgeReconciler.Reconcile([QuietWatch(ConnectionStatus.TokenExpired)], stored, DeviceRules);
+
+        Assert.Equal(DeviceAuthBrokenRule.Code, Assert.Single(plan.ToInsert).RuleCode);
+        var closed = Assert.Single(plan.ToUpdate);
+        Assert.Same(stale, closed);
+        Assert.Equal(NotificationState.Resolved, closed.State);
+    }
+
+    [Fact]
+    public void Reconnecting_ResolvesTheReconnectNudge()
+    {
+        var stored = NudgeReconciler.Reconcile([QuietWatch(ConnectionStatus.TokenExpired)], [], DeviceRules).ToInsert;
+        var reconnect = Assert.Single(stored);
+
+        // Signed in again and syncing.
+        var plan = NudgeReconciler.Reconcile([new NudgeContextBuilder().Build()], stored, DeviceRules);
+
+        Assert.Empty(plan.ToInsert);
+        var resolved = Assert.Single(plan.ToUpdate);
+        Assert.Same(reconnect, resolved);
+        Assert.Equal(NotificationState.Resolved, resolved.State);
+        Assert.Equal(NotificationResolutionReason.GapClosed, resolved.ResolutionReason);
+    }
+
+    [Fact]
+    public void ReconnectedButStillQuiet_FallsBackToTheGoneQuietNudge()
+    {
+        var stored = NudgeReconciler.Reconcile([QuietWatch(ConnectionStatus.TokenExpired)], [], DeviceRules).ToInsert;
+
+        var plan = NudgeReconciler.Reconcile([QuietWatch(ConnectionStatus.Connected)], stored, DeviceRules);
+
+        Assert.Equal(DeviceStaleLongRule.Code, Assert.Single(plan.ToInsert).RuleCode);
+        Assert.Equal(NotificationState.Resolved, Assert.Single(plan.ToUpdate).State);
     }
 }

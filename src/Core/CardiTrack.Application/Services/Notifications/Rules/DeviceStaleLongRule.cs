@@ -1,4 +1,5 @@
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 
 namespace CardiTrack.Application.Services.Notifications.Rules;
 
@@ -52,9 +53,17 @@ public sealed class DeviceStaleLongRule : INudgeRule
             return NudgeVerdict.NoGap;
 
         // A broken grant is a different, louder gap. Reporting both would have the caregiver fix
-        // the battery on a watch whose real problem is that we lost permission to read it.
-        //
-        // SyncError is not one of those: the grant is intact and the provider simply failed to
+        // the battery on a watch whose real problem is that we lost permission to read it — so
+        // while any of the member's devices needs reconnecting, this rule stands down for the
+        // member, not only for that connection. With one device refused and another quiet,
+        // nothing here can tell which the silence belongs to, and the device-silence alert makes
+        // the same call (InactivityDetectionService). A stale nudge already open resolves on the
+        // evaluation that sees the refusal — the same one that opens DEVICE_AUTH_BROKEN in its
+        // place — and once the grant is restored, staleness is judged as normal again.
+        if (context.Connections.Any(c => c.Status.NeedsReconnect()))
+            return NudgeVerdict.NoGap;
+
+        // SyncError is not a broken grant: the grant is intact and the provider simply failed to
         // answer. Testing for Connected alone excluded it, so a watch stuck failing for days
         // raised nothing here at all — a silent hole between this rule and DEVICE_AUTH_BROKEN,
         // which only covers TokenExpired and AuthError. The staleness test below is what decides

@@ -46,6 +46,15 @@ public class NotificationDelivery : BaseEntity
     /// </summary>
     public AlertType? AlertType { get; set; }
 
+    /// <summary>
+    /// The nudge rule behind a <see cref="DeliverySourceType.Notification"/> push (for example
+    /// <c>DEVICE_AUTH_BROKEN</c>), null for every other source. The <see cref="AlertType"/> of the
+    /// nudge side: it lets the push teaser say what happened ("Device needs reconnecting") without
+    /// loading the <see cref="Notification"/> row at send time, and a rule code carries no name or
+    /// reading, so it is as safe on the lock screen as the alert kind is.
+    /// </summary>
+    public string? NudgeRuleCode { get; set; }
+
     public DeliveryChannel Channel { get; set; }
     public DeliveryState State { get; set; } = DeliveryState.Pending;
 

@@ -206,7 +206,10 @@ public class NotificationDispatchWorker : CronBackgroundService
                     DedupKey: $"nudge:{notification.Fingerprint}:{utcNow:yyyyMMddHHmmss}",
                     // Per gap, not per arming: on the device, a second warning about the same flat
                     // battery should replace the first rather than stack beneath it.
-                    CollapseKey: $"nudge-{notification.Fingerprint}"), ct);
+                    CollapseKey: $"nudge-{notification.Fingerprint}",
+                    // What the lock screen says. Without it every one of these reads "Urgent —
+                    // open CardiTrack now", including a device that only needs signing in again.
+                    NudgeRuleCode: notification.RuleCode), ct);
 
                 // Null means the dispatcher declined it — the recipient has asked for their
                 // account to be deleted, so no outbox row was written. Counting it would have
@@ -415,7 +418,8 @@ public class NotificationDispatchWorker : CronBackgroundService
                 DedupKey: $"{original.DedupKey}:escalated:{userId}",
                 CollapseKey: original.CollapseKey,
                 AlertType: original.AlertType,
-                IsEscalation: true), ct);
+                IsEscalation: true,
+                NudgeRuleCode: original.NudgeRuleCode), ct);
         }
     }
 

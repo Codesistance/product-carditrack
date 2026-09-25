@@ -1,4 +1,5 @@
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 
 namespace CardiTrack.Application.Services.Notifications.Rules;
 
@@ -39,8 +40,7 @@ public sealed class DeviceBatteryLowRule : INudgeRule
         // A broken grant outranks a flat battery, exactly as DeviceStaleLongRule defers to it:
         // told both, a caregiver would charge a watch whose real problem is that we lost
         // permission to read it, then find the data still missing.
-        var hasBrokenGrant = context.Connections
-            .Any(c => c.Status is ConnectionStatus.TokenExpired or ConnectionStatus.AuthError);
+        var hasBrokenGrant = context.Connections.Any(c => c.Status.NeedsReconnect());
 
         if (hasBrokenGrant)
             return NudgeVerdict.NoGap;

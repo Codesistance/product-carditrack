@@ -312,7 +312,8 @@ public class FcmNotificationChannel : INotificationChannel
 
     private static FirebaseAdmin.Messaging.Notification BuildTeaser(NotificationDelivery delivery)
     {
-        var (title, body) = PushTeaser.For(delivery.Category, delivery.Severity, delivery.AlertType);
+        var (title, body) = PushTeaser.For(
+            delivery.Category, delivery.Severity, delivery.AlertType, delivery.NudgeRuleCode);
         return new FirebaseAdmin.Messaging.Notification { Title = title, Body = body };
     }
 }

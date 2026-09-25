@@ -110,6 +110,39 @@ public class FcmPayloadPrivacyTests
     }
 
     /// <summary>
+    /// A refused grant is Safety class, but "Urgent" would send a caregiver to check on someone who
+    /// is fine. The lock screen says what the fix is — still with no name and no device on it.
+    /// </summary>
+    [Fact]
+    public void SafetyNotification_ForADeviceThatNeedsReconnecting_SaysSo_WithoutNamingAnyone()
+    {
+        var delivery = Delivery(DeliveryCategory.Safety);
+        delivery.NudgeRuleCode = "DEVICE_AUTH_BROKEN";
+
+        var message = CreateSut().BuildMessage(delivery, Token());
+
+        Assert.Equal("Device needs reconnecting", message.Notification.Title);
+        Assert.Equal(
+            "Open CardiTrack to sign it in again so readings keep coming through.", message.Notification.Body);
+        Assert.DoesNotContain("Urgent", message.Notification.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Fitbit", message.Notification.Title + message.Notification.Body, StringComparison.Ordinal);
+    }
+
+    /// <summary>Every other Safety push keeps the category's teaser — the rule code only ever narrows it.</summary>
+    [Theory]
+    [InlineData("DEVICE_BATTERY_LOW")]
+    [InlineData(null)]
+    public void SafetyNotification_ForAnyOtherRule_KeepsTheUrgentTeaser(string? ruleCode)
+    {
+        var delivery = Delivery(DeliveryCategory.Safety);
+        delivery.NudgeRuleCode = ruleCode;
+
+        var message = CreateSut().BuildMessage(delivery, Token());
+
+        Assert.Equal("Urgent — open CardiTrack now", message.Notification.Body);
+    }
+
+    /// <summary>
     /// The teaser has to be worth opening as well as content-free. A body that names no app and
     /// asks for nothing ("Tap to view") passed every privacy assertion above and still told a
     /// caregiver nothing on a lock screen — so the shape is pinned, not just the exact strings.
