@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**97 icons**, **34 distinct colours**, **3 referenced nowhere**.
+**105 icons**, **35 distinct colours**, **3 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -23,7 +23,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 
 | Colour | Icons | Also known as |
 | --- | --- | --- |
-| `#FFFFFF` | 28 | White |
+| `#FFFFFF` | 35 | White |
 | `#153D66` | 24 | icons.json brand outer stroke |
 | `#3175B9` | 19 | icons.json brand and activity fill, steel blue |
 | `#939DAA` | 14 | MutedText |
@@ -45,6 +45,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#34A853` | 1 | — |
 | `#3E8AC7` | 1 | MetricBreathingInk |
 | `#4285F4` | 1 | — |
+| `#5A3300` | 1 | — |
 | `#7C6FDC` | 1 | MetricSleepInk |
 | `#9FEBFF` | 1 | — |
 | `#B9F1FF` | 1 | — |
@@ -168,12 +169,20 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
 | `icon_book_cog.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
+| `icon_btn_close.svg` | `#FFFFFF` | ActionLook, AppPasswordPage, ContactEditPopupPage, MedicalNotesEditPopupPage, QuestionCard |
+| `icon_btn_connect.svg` | `#FFFFFF` | ActionLook, NoDevicePopupPage |
+| `icon_btn_delete.svg` | `#FFFFFF` | ActionLook, AlertDetailPage |
+| `icon_btn_edit.svg` | `#FFFFFF` | ActionLook |
+| `icon_btn_later.svg` | `#FFFFFF` | ActionLook, NoDevicePopupPage |
+| `icon_btn_plus.svg` | `#FFFFFF` | ActionLook |
+| `icon_btn_save.svg` | `#FFFFFF` | ActionLook, ContactEditPopupPage, MedicalNotesEditPopupPage, QuestionCard |
+| `icon_btn_undo.svg` | `#5A3300` | ActionLook, AlertDetailPage |
 | `icon_calendar.svg` | `#939DAA` | DateField, DeviceCard |
 | `icon_callout.svg` | `#3175B9` `#153D66` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_chatbot.svg` | `#36C09B` `#1884DC` `#174E86` `#9FEBFF` `#B9F1FF` `#123A5F` `#FFFFFF` | ChatBotLauncher, MemberChatPage, PendingBotIndicator |
 | `icon_chatbot_mono.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_check_disc.svg` | `#3175B9` `#153D66` `#FFFFFF` | BaselineLearningPage, FindingsList |
-| `icon_check_white.svg` | `#FFFFFF` | AlertDetailPage, ChoiceSheetPage |
+| `icon_check_white.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, AppPasswordPage, ChoiceSheetPage |
 | `icon_clipboard.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, InviteWaitPage |
 | `icon_clipboard_ink.svg` | `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_device_off.svg` | `#C42F2F` | StatusHeroCard |

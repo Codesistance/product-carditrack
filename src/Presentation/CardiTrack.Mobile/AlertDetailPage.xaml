@@ -481,29 +481,29 @@
                         <!-- The bottom margin clears the floating chat button: without it the row's
                              last button — Remove — sat under the button at the end of the scroll. -->
                         <Grid x:Name="ActionRow" ColumnSpacing="8" Margin="0,4,0,72">
+                            <!-- The action buttons (Styles.xaml ActionButton*): the colour is the
+                                 meaning — blue does the thing, amber takes it back, red removes.
+                                 Acknowledge carries no icon: on a red alert it reads "I'm on my
+                                 way", which needs the third of the row it has. -->
                             <Button x:Name="AcknowledgeButton"
-                                    Style="{StaticResource PrimaryGradientButton}"
-                                    FontSize="14"
+                                    Style="{StaticResource ActionButtonBlue}"
                                     Padding="6,0"
                                     Clicked="OnAcknowledgeClicked"/>
                             <Button x:Name="CloseButton"
                                     Text="Close"
-                                    Style="{StaticResource SecondaryOutlineButton}"
-                                    FontSize="14"
-                                    Padding="6,0"
+                                    Style="{StaticResource ActionButtonBlue}"
+                                    ImageSource="icon_check_white.svg"
                                     Clicked="OnCloseClicked"/>
                             <Button x:Name="UndoAcknowledgeButton"
                                     Text="Undo"
-                                    Style="{StaticResource SecondaryOutlineButton}"
-                                    FontSize="14"
-                                    Padding="6,0"
+                                    Style="{StaticResource ActionButtonAmber}"
+                                    ImageSource="icon_btn_undo.svg"
                                     IsVisible="False"
                                     Clicked="OnUndoAcknowledgeClicked"/>
                             <Button x:Name="RemoveButton"
                                     Text="Remove"
-                                    Style="{StaticResource DangerOutlineButton}"
-                                    FontSize="14"
-                                    Padding="6,0"
+                                    Style="{StaticResource ActionButtonRed}"
+                                    ImageSource="icon_btn_delete.svg"
                                     Clicked="OnDeleteAlertTapped"/>
                         </Grid>
 

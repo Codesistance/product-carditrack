@@ -490,11 +490,9 @@ public partial class AlertDetailPage : ContentPage
         // sequence, one caregiver says they are on it and then says what happened — and goes when
         // it is resolved, which is what closed means.
         CloseButton.IsVisible = alert.Status != "resolved";
-        // One filled button on the screen at a time: acknowledge while nobody has, close once
-        // somebody has — the next real step either way.
-        CloseButton.Style = (Style)Microsoft.Maui.Controls.Application.Current!.Resources[
-            acknowledged ? "PrimaryGradientButton" : "SecondaryOutlineButton"];
 
+        // Order says what comes next: acknowledge first while nobody has, close first once
+        // somebody has — the next real step either way.
         PackActionRow(acknowledged);
 
         if (!handled)

@@ -79,19 +79,18 @@
                            IsVisible="False"/>
                 </VerticalStackLayout>
 
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Margin="0,24,0,0">
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,24,0,0">
                     <Button x:Name="CancelBtn"
                             Grid.Column="0"
                             Text="Cancel"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            FontSize="16"
-                            Padding="12,0"
+                            Style="{StaticResource ActionButtonDark}"
+                            ImageSource="icon_btn_close.svg"
                             Clicked="OnCancelClicked"/>
                     <Button x:Name="SaveBtn"
                             Grid.Column="1"
                             Text="Save"
-                            Style="{StaticResource PrimaryGradientButton}"
-                            Padding="12,0"
+                            Style="{StaticResource ActionButtonBlue}"
+                            ImageSource="icon_btn_save.svg"
                             Clicked="OnSaveClicked"/>
                 </Grid>
             </VerticalStackLayout>

@@ -42,18 +42,18 @@
                        Style="{StaticResource Body2}"
                        HorizontalTextAlignment="Center"/>
 
-                <!-- Filled: connecting is this member's next step, not an optional aside. -->
-                <Button Text="Connect a device"
-                        Style="{StaticResource PrimaryGradientButton}"
-                        Margin="0,14,0,0"
-                        Clicked="OnConnectClicked"/>
-                <Button Text="Not now"
-                        BackgroundColor="Transparent"
-                        TextColor="{StaticResource MutedText}"
-                        FontFamily="QuicksandSemiBold"
-                        FontSize="16"
-                        HeightRequest="44"
-                        Clicked="OnNotNowClicked"/>
+                <!-- Later on the left, the way out; Connect on the right, the step forward. -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,14,0,8">
+                    <Button Text="Later"
+                            Style="{StaticResource ActionButtonDark}"
+                            ImageSource="icon_btn_later.svg"
+                            Clicked="OnLaterClicked"/>
+                    <Button Grid.Column="1"
+                            Text="Connect"
+                            Style="{StaticResource ActionButtonBlue}"
+                            ImageSource="icon_btn_connect.svg"
+                            Clicked="OnConnectClicked"/>
+                </Grid>
             </VerticalStackLayout>
         </Border>
     </Grid>

@@ -5,7 +5,7 @@ namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
 /// The no-device card (Figma M1-09 D) as a modal: illustration, "No device connected", the
-/// member's line, and Connect. Completes <see cref="Result"/> with true when Connect was tapped,
+/// member's line, Later and Connect. Completes <see cref="Result"/> with true when Connect was tapped,
 /// false when dismissed — the page runs the connect flow, so this popup never navigates.
 /// </summary>
 /// <remarks>
@@ -65,7 +65,7 @@ public partial class NoDevicePopupPage : ContentPage
 
     private async void OnScrimTapped(object? sender, TappedEventArgs e) => await CloseAsync(false);
 
-    private async void OnNotNowClicked(object? sender, EventArgs e) => await CloseAsync(false);
+    private async void OnLaterClicked(object? sender, EventArgs e) => await CloseAsync(false);
 
     private async void OnConnectClicked(object? sender, EventArgs e) => await CloseAsync(true);
 

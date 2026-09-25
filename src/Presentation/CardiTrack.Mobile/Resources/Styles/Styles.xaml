@@ -414,6 +414,59 @@
          links Forgot Password uses, but stays a Button so a screen reader still announces a
          button and the target stays 44 points. Verify Email spelled these setters out
          inline, which is how it drifted from the screens either side of it. -->
+    <!-- ── Action buttons ──
+         The app's compact button: 40 tall, 14pt, an icon and one word, corners at the card
+         radius. Replacing the 52-tall full-width pills in popups, dialogs and action rows, which
+         were the biggest thing on every screen they sat on. The colour is the meaning — see the
+         ActionBrush block in Colors.xaml — so a row of them reads at a glance: Cancel dark, the
+         step forward blue, Yes green, No and Delete red, Undo amber. Set side by side in a Grid
+         of equal columns, the way out on the left and the step forward on the right. The icon
+         goes in ImageSource (the icon_btn_* set, white; amber's is dark). -->
+    <Style x:Key="ActionButton" TargetType="Button">
+        <Setter Property="TextColor" Value="{StaticResource White}"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="CornerRadius" Value="10"/>
+        <Setter Property="HeightRequest" Value="40"/>
+        <Setter Property="MinimumWidthRequest" Value="44"/>
+        <Setter Property="Padding" Value="12,0"/>
+        <Setter Property="BorderWidth" Value="0"/>
+        <Setter Property="ContentLayout" Value="Left,6"/>
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.85"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+    <Style x:Key="ActionButtonBlue" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+        <Setter Property="Background" Value="{StaticResource ActionBlueBrush}"/>
+    </Style>
+    <Style x:Key="ActionButtonGreen" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+        <Setter Property="Background" Value="{StaticResource ActionGreenBrush}"/>
+    </Style>
+    <Style x:Key="ActionButtonRed" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+        <Setter Property="Background" Value="{StaticResource ActionRedBrush}"/>
+    </Style>
+    <Style x:Key="ActionButtonDark" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+        <Setter Property="Background" Value="{StaticResource ActionDarkBrush}"/>
+    </Style>
+    <Style x:Key="ActionButtonAmber" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+        <Setter Property="Background" Value="{StaticResource ActionAmberBrush}"/>
+        <Setter Property="TextColor" Value="{StaticResource ActionAmberInk}"/>
+    </Style>
+
     <Style x:Key="QuietActionLink" TargetType="Button">
         <Setter Property="BackgroundColor" Value="Transparent"/>
         <Setter Property="TextColor" Value="{StaticResource Primary}"/>

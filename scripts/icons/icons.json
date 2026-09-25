@@ -275,6 +275,16 @@
     "BodyText",
     "White"
    ]
+  },
+  "onAmber": {
+   "title": "On the amber Undo button",
+   "style": "linear",
+   "slots": [
+    "#5A3300"
+   ],
+   "tokens": [
+    "ActionAmberInk"
+   ]
   }
  },
  "icons": [
@@ -844,6 +854,62 @@
    "group": "ink",
    "size": 24,
    "solid": true
+  },
+  {
+   "file": "icon_btn_close.svg",
+   "source": "iconpark",
+   "name": "close",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_delete.svg",
+   "source": "iconpark",
+   "name": "delete",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_save.svg",
+   "source": "iconpark",
+   "name": "save",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_plus.svg",
+   "source": "iconpark",
+   "name": "plus",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_edit.svg",
+   "source": "iconpark",
+   "name": "edit",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_connect.svg",
+   "source": "iconpark",
+   "name": "iwatch",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_later.svg",
+   "source": "iconpark",
+   "name": "time",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_btn_undo.svg",
+   "source": "iconpark",
+   "name": "undo",
+   "group": "onAmber",
+   "size": 24
   }
  ]
 }
