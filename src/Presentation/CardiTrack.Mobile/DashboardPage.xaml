@@ -353,7 +353,10 @@
                         <VerticalStackLayout x:Name="AlertsSection" Spacing="20" IsVisible="False">
                             <Grid ColumnDefinitions="*,Auto">
                                 <Label Grid.Column="0" Text="Recent Alerts" Style="{StaticResource Heading2}"/>
-                                <Label Grid.Column="1"
+                                <!-- Text set in code: it carries the count when the strip holds
+                                     fewer alerts than are waiting (see ApplyAlerts). -->
+                                <Label x:Name="ViewAllAlertsLink"
+                                       Grid.Column="1"
                                        Text="View All"
                                        Style="{StaticResource SectionLink}">
                                     <Label.GestureRecognizers>
@@ -361,7 +364,14 @@
                                     </Label.GestureRecognizers>
                                 </Label>
                             </Grid>
-                            <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                            <!-- One alert fills the row; a carousel of one is half a row of card
+                                 beside half a row of nothing. Two or more scroll, each card a
+                                 little narrower than the row so the next one shows at the edge
+                                 and says there is more to swipe to. -->
+                            <ContentView x:Name="SingleAlertHost" IsVisible="False" Padding="0,0,0,6"/>
+                            <ScrollView x:Name="AlertsScroller"
+                                        Orientation="Horizontal"
+                                        HorizontalScrollBarVisibility="Never">
                                 <HorizontalStackLayout x:Name="AlertsStack" Spacing="11" Padding="0,0,0,6"/>
                             </ScrollView>
                         </VerticalStackLayout>

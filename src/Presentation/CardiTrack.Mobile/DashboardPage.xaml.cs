@@ -68,6 +68,9 @@ public partial class DashboardPage : ContentPage
     /// <summary>Columns in the Key Metrics grid; see <see cref="LayoutMetricCards"/>.</summary>
     private const int MetricsPerRow = 2;
 
+    /// <summary>Share of the row each Recent Alerts card takes in the carousel; see <see cref="SizeAlertCards"/>.</summary>
+    private const double CarouselCardWidthFraction = 0.85;
+
     private readonly ICardiTrackApiClient _api;
     private readonly IAuthService _authService;
     private readonly IPopupService _popups;
@@ -115,6 +118,7 @@ public partial class DashboardPage : ContentPage
         Header.BellTapped += OnBellClicked;
         DisclosureBanner.LearnMoreRequested += OnDisclosureLearnMore;
         DisclosureBanner.DismissRequested += OnDisclosureDismiss;
+        AlertsSection.SizeChanged += (_, _) => SizeAlertCards();
 
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
@@ -755,16 +759,61 @@ public partial class DashboardPage : ContentPage
         // the screen contradicting itself. The server withholds Reassurance whenever anything is
         // unresolved, so this is belt-and-braces rather than the only guard.
         ApplyReassurance(data, firstName);
+        ApplyAlerts(data);
+    }
 
+    /// <summary>
+    /// The Recent Alerts strip. A lone alert gets the whole row; two or more go into the
+    /// carousel, sized by <see cref="SizeAlertCards"/> so the next card peeks in at the edge.
+    /// </summary>
+    /// <remarks>
+    /// "View All" carries the count only when the strip is short of it. The strip and
+    /// <see cref="DashboardResponse.UnreadAlertCount"/> are the same set — unacknowledged,
+    /// unresolved — but the server caps the strip, so a count equal to the cards on screen
+    /// would only be restating them.
+    /// </remarks>
+    private void ApplyAlerts(DashboardResponse data)
+    {
+        SingleAlertHost.Content = null;
         AlertsStack.Clear();
-        AlertsSection.IsVisible = data.RecentAlerts.Count > 0;
-        foreach (var alert in data.RecentAlerts)
+
+        var alerts = data.RecentAlerts;
+        AlertsSection.IsVisible = alerts.Count > 0;
+        SingleAlertHost.IsVisible = alerts.Count == 1;
+        AlertsScroller.IsVisible = alerts.Count > 1;
+
+        ViewAllAlertsLink.Text = data.UnreadAlertCount > alerts.Count
+            ? $"View All ({data.UnreadAlertCount})"
+            : "View All";
+
+        foreach (var alert in alerts)
         {
             var card = new AlertMiniCard();
             card.Apply(alert);
             card.AlertTapped += OnAlertTapped;
-            AlertsStack.Add(card);
+
+            if (alerts.Count == 1)
+                SingleAlertHost.Content = card;
+            else
+                AlertsStack.Add(card);
         }
+
+        SizeAlertCards();
+    }
+
+    /// <summary>
+    /// Sizes the carousel's cards off the row they scroll in: most of its width, so one card is
+    /// read at a time and the edge of the next says the row scrolls. Re-run whenever the section
+    /// is resized, since the first <see cref="ApplyAlerts"/> can land before it has been measured.
+    /// </summary>
+    private void SizeAlertCards()
+    {
+        if (AlertsSection.Width <= 0)
+            return;
+
+        var width = Math.Floor(AlertsSection.Width * CarouselCardWidthFraction);
+        foreach (var card in AlertsStack.Children.OfType<AlertMiniCard>())
+            card.WidthRequest = width;
     }
 
     /// <summary>
