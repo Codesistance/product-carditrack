@@ -82,8 +82,8 @@ public class DeviceSyncService : IDeviceSyncService
         // can reach the pull on the following day: two independent reads would then decide "no
         // repair pass needed" against the old day and fetch against the new one, skipping that
         // day's backfill entirely — and the next pull, now stamped with the new day, would not
-        // make it up. The success stamp below takes this same instant for the same reason.
-        var (zone, today, readAtUtc) = await MemberTodayAsync(connection);
+        // make it up. The success stamp below is held to this same day for the same reason.
+        var (zone, today) = await MemberTodayAsync(connection);
 
         // The trailing repair days are re-fetched once a member-local day, not on every pull. They
         // exist to catch a provider revising a *finished* day, which happens on the order of hours
@@ -121,14 +121,8 @@ public class DeviceSyncService : IDeviceSyncService
             // and the connection would not come due again until the next interval. This also
             // clears a SyncError left by an earlier run: the window just landed, so whatever
             // the provider was doing then, the connection is working now.
-            //
-            // Stamped with the instant `today` was read from, not the time the window finished
-            // landing. The repair gate above reads this stamp's local date as "the day the last
-            // pull was for", and a pull that starts before the member's midnight and lands after
-            // it would otherwise record the new day: the next pull would then skip the repair
-            // pass for the day that just closed, leaving it to a later pass's lookback. It is also
-            // the truer "last synced" — nothing fetched is newer than the moment the pull began.
-            await _deviceConnections.MarkSyncSucceededAsync(connection.Id, readAtUtc);
+            await _deviceConnections.MarkSyncSucceededAsync(
+                connection.Id, SuccessStamp(_clock.GetUtcNow().UtcDateTime, today, zone));
 
             // The worker-cadence extras run after the routine window succeeded, never inside its
             // success envelope: both are enrichment, and a transient failure in either must not
@@ -163,7 +157,7 @@ public class DeviceSyncService : IDeviceSyncService
         // No LastSyncDate stamp and no SyncError transition: see IDeviceSyncService.AuditSyncAsync.
         // Any revision this turns up still lands in the raw row and is merged, so the audit
         // repairs history as a side effect of measuring it.
-        var (_, today, _) = await MemberTodayAsync(connection);
+        var (_, today) = await MemberTodayAsync(connection);
         await PullWindowAsync(connection, accessToken, lookbackDays, today);
     }
 
@@ -189,12 +183,43 @@ public class DeviceSyncService : IDeviceSyncService
     /// a database failure never parks the connection in <see cref="ConnectionStatus.SyncError"/>.
     /// </para>
     /// </remarks>
-    private async Task<(TimeZoneInfo Zone, DateOnly Today, DateTime ReadAtUtc)> MemberTodayAsync(
-        DeviceConnection connection)
+    private async Task<(TimeZoneInfo Zone, DateOnly Today)> MemberTodayAsync(DeviceConnection connection)
     {
         var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, connection.CardiMemberId);
-        var readAtUtc = _clock.GetUtcNow().UtcDateTime;
-        return (zone, LocalDate(readAtUtc, zone), readAtUtc);
+        return (zone, LocalDate(_clock.GetUtcNow().UtcDateTime, zone));
+    }
+
+    /// <summary>
+    /// The <c>LastSyncDate</c> a successful pull records: when it finished, unless it finished
+    /// after the member's midnight, in which case the last second of the day it was for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The stamp does two jobs. Scheduling reads it as "when the last pull finished" —
+    /// <c>GetDueForSyncAsync</c> counts <c>SyncFrequencyMinutes</c> from it — so it stays the
+    /// completion time; the pull's start would make a long repair pull due again the moment it
+    /// lands. The repair gate in <see cref="SyncCardiMemberAsync"/> reads its local date as "the
+    /// day the last pull was for", and a pull that starts before the member's midnight and lands
+    /// after it would record the new day on completion time alone: the next pull would then skip
+    /// the repair pass for the day that had just closed, leaving it to a later pass's lookback.
+    /// </para>
+    /// <para>
+    /// Clamping serves both. It only moves a stamp that crossed midnight, and then by no more than
+    /// the pull took. The last whole second rather than the last tick, because the column keeps
+    /// microseconds and a sub-microsecond value can round up into the next day — the exact case
+    /// this exists to prevent. A local 23:59:59 that does not exist (no zone skips it today, but
+    /// the rules are data) falls back to the completion time, which is only the pre-clamp race.
+    /// </para>
+    /// </remarks>
+    private static DateTime SuccessStamp(DateTime completedAtUtc, DateOnly pulledDay, TimeZoneInfo zone)
+    {
+        if (LocalDate(completedAtUtc, zone) <= pulledDay)
+            return completedAtUtc;
+
+        var lastSecond = pulledDay.ToDateTime(new TimeOnly(23, 59, 59));
+        return zone.IsInvalidTime(lastSecond)
+            ? completedAtUtc
+            : TimeZoneInfo.ConvertTimeToUtc(lastSecond, zone);
     }
 
     /// <summary>
