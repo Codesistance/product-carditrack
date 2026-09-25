@@ -17,7 +17,7 @@ public interface IMedicalEntryService
 {
     Task<MedicalEntriesResponse> GetAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
 
-    /// <exception cref="InvalidOperationException">The list would outgrow what it can hold.</exception>
+    /// <exception cref="Exceptions.MedicalLedgerFullException">The list would outgrow what it can hold.</exception>
     Task<MedicalEntriesResponse> AddAsync(
         Guid requestingUserId, Guid cardiMemberId, MedicalEntryKind kind, string text, CancellationToken ct = default);
 
@@ -25,7 +25,7 @@ public interface IMedicalEntryService
     /// Changes a current line. The old wording is kept in the history, marked as changed, and a new
     /// line takes its place — dated now and confirmed by whoever made the change.
     /// </summary>
-    /// <exception cref="InvalidOperationException">The list would outgrow what it can hold.</exception>
+    /// <exception cref="Exceptions.MedicalLedgerFullException">The list would outgrow what it can hold.</exception>
     Task<MedicalEntriesResponse> ReviseAsync(
         Guid requestingUserId, Guid cardiMemberId, Guid entryId, MedicalEntryKind kind, string text,
         CancellationToken ct = default);
