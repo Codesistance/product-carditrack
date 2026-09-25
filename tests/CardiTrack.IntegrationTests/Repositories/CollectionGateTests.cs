@@ -51,8 +51,16 @@ public class CollectionGateTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        await _services.DisposeAsync();
-        await _container.DisposeAsync();
+        // The container goes even if StartAsync failed before the provider was built.
+        try
+        {
+            if (_services is not null)
+                await _services.DisposeAsync();
+        }
+        finally
+        {
+            await _container.DisposeAsync();
+        }
     }
 
     /// <summary>The ordinary case: somebody is watching and staying, so collection continues.</summary>

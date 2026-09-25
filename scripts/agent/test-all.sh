@@ -8,7 +8,9 @@
 #     project. Neither is run, and neither is reported as passing.
 #
 # TESTCONTAINERS_RYUK_DISABLED=true matches CI: the Ryuk reaper container cannot
-# run in most agent sandboxes, and the suites clean up after themselves.
+# run in most agent sandboxes. The suites remove their containers when a run
+# finishes; a run killed part-way leaves them behind, which only a throwaway VM
+# can afford — on a workstation, export TESTCONTAINERS_RYUK_DISABLED=false.
 #
 # Usage: scripts/agent/test-all.sh [--unit | --integration]
 set -uo pipefail

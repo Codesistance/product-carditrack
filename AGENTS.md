@@ -65,7 +65,9 @@ Docker 29 must use `fuse-overlayfs` with the containerd snapshotter disabled and
 `sudo usermod -aG docker "$USER"` and open a new terminal (never `chmod 666` the socket — that
 hands every process on the VM root through Docker). `scripts/agent/services-up.sh` does the
 install, the daemon configuration and the group membership when Docker is absent. Run tests
-with `TESTCONTAINERS_RYUK_DISABLED=true` (matches CI).
+with `TESTCONTAINERS_RYUK_DISABLED=true` (matches CI) — the reaper container cannot run in this
+VM. On a workstation leave Ryuk on: without it, a run that is killed part-way leaves its
+Postgres containers running.
 
 Apply EF migrations once the db is up (command in README). MedGemma/Ollama and the AI
 pipeline are optional (`docker compose --profile full ...`) and not needed for the core stack.
