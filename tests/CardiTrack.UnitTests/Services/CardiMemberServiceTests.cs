@@ -379,6 +379,30 @@ public class CardiMemberServiceTests
         Assert.Equal(0, arthur.ConnectedDeviceCount);
     }
 
+    /// <summary>
+    /// The member's own LastSyncDate wins even when a connection carries a later one — the detail
+    /// screen's rule (BuildDetailAsync), so a card and the page it opens name the same time.
+    /// </summary>
+    [Fact]
+    public async Task GetForUserInOrganization_PrefersTheMembersOwnStamp_OverANewerConnection()
+    {
+        var own = new DateTime(2026, 9, 25, 9, 0, 0, DateTimeKind.Utc);
+        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe", LastSyncDate = own };
+        _members.GetByOrganizationIdAsync(_organizationId).Returns([member]);
+        _links.GetByCardiMemberIdAsync(member.Id).Returns(
+        [
+            new UserCardiMember { UserId = _userId, CardiMemberId = member.Id, IsActive = true },
+        ]);
+        _devices.GetActiveByCardiMemberIdAsync(member.Id).Returns(
+        [
+            new DeviceConnection { CardiMemberId = member.Id, LastSyncDate = own.AddHours(2) },
+        ]);
+
+        var only = Assert.Single(await CreateSut().GetForUserInOrganizationAsync(_userId, _organizationId));
+
+        Assert.Equal(own, only.LastSyncedAt);
+    }
+
     // ── M1-13 detail ────────────────────────────────────────────────────────────
 
     private CardiMember SeedMember(
