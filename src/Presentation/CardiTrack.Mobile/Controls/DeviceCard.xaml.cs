@@ -64,23 +64,24 @@ public partial class DeviceCard : ContentView
             // cannot currently pull anything.
             var needsReconnect = device.Status == "token_expired";
             DeviceInfoSection.Opacity = needsReconnect ? 0.55 : 1;
-            ReconnectRow.IsVisible = needsReconnect;
-            RefreshRow.IsVisible = !needsReconnect;
-            RepullRow.IsVisible = !needsReconnect;
+            ReconnectButton.IsVisible = needsReconnect;
+            RefreshButton.IsVisible = !needsReconnect;
+            RepullButton.IsVisible = !needsReconnect;
             PrimaryRow.IsVisible = !needsReconnect;
-            SemanticProperties.SetDescription(ReconnectRow,
-                $"{device.DisplayName} needs reconnecting. Opens sign-in to restore the connection.");
+            SemanticProperties.SetDescription(ReconnectButton,
+                $"Reconnect {device.DisplayName}. Opens sign-in to restore the connection.");
 
-            SyncedLabel.Text = device.LastSyncedAt is { } synced
-                ? $"synced {RelativeTime.Format(synced)}"
-                : "not synced yet";
+            // One sentence for both ends of the sync: when it last sent, and when it next will.
+            // The second half is left off while the connection cannot sync at all.
+            var last = device.LastSyncedAt is { } synced
+                ? $"Synced {RelativeTime.Format(synced)}"
+                : "Not synced yet";
+            SyncedLabel.Text = needsReconnect || device.NextSyncAt is null
+                ? last
+                : $"{last} · next {NextSyncText(device.NextSyncAt)}";
 
             ApplyDatasets(device.Scopes);
 
-            LastSyncValue.Text = device.LastSyncedAt is { } last
-                ? RelativeTime.Format(last)
-                : "—";
-            NextSyncValue.Text = NextSyncText(device.NextSyncAt);
             TodayValue.Text = device.TodayUpdateCount switch
             {
                 0 => "No updates",
@@ -91,7 +92,7 @@ public partial class DeviceCard : ContentView
             ApplyBattery(device);
             ApplyHistoryRepull(device.HistoryRepull);
 
-            PrimaryStar.IsVisible = device.IsPrimary;
+            PrimaryPill.IsVisible = device.IsPrimary;
             PrimarySwitch.IsToggled = device.IsPrimary;
             // Turning the only primary off would leave the member without one; promotion
             // happens by switching a different device on.
@@ -150,17 +151,15 @@ public partial class DeviceCard : ContentView
         var status = HistoryRepullCopy.StatusLine(repull, now);
         RepullStatusLabel.Text = status ?? string.Empty;
         RepullStatusLabel.IsVisible = status is not null;
-        RepullLabel.Opacity = _canRepull ? 1 : 0.5;
-
         // Genuinely not a control while withheld, rather than a tap that silently does nothing:
-        // a disabled row is announced as such by a screen reader, and the gesture never fires.
-        RepullRow.IsEnabled = _canRepull;
-        RepullRow.InputTransparent = !_canRepull;
+        // a disabled button is announced as such by a screen reader, and dimmed for everyone.
+        RepullButton.IsEnabled = _canRepull;
+        RepullButton.Opacity = _canRepull ? 1 : 0.5;
 
-        SemanticProperties.SetDescription(RepullRow, status is null
+        SemanticProperties.SetDescription(RepullButton, status is null
             ? "Re-pull history"
             : $"Re-pull history. {status}");
-        SemanticProperties.SetHint(RepullRow, _canRepull
+        SemanticProperties.SetHint(RepullButton, _canRepull
             ? "Re-reads past days from the device's provider to fill gaps"
             : string.Empty);
     }
@@ -169,22 +168,22 @@ public partial class DeviceCard : ContentView
     public void SetBusy(bool busy)
     {
         IsEnabled = !busy;
-        RefreshLabel.Text = busy ? "Working..." : "Refresh Connection";
+        RefreshButton.Text = busy ? "Working…" : "Refresh";
     }
 
     private static string NextSyncText(DateTime? nextSyncAt)
     {
         if (nextSyncAt is not { } next)
-            return "When connected";
+            return "when connected";
 
         var minutes = (int)Math.Ceiling(
             (DateTime.SpecifyKind(next, DateTimeKind.Utc) - DateTime.UtcNow).TotalMinutes);
         return minutes switch
         {
-            <= 0 => "Any moment",
-            1 => "In 1 min",
-            < 60 => $"In {minutes} mins",
-            _ => $"In {minutes / 60}h",
+            <= 0 => "any moment",
+            1 => "in 1 min",
+            < 60 => $"in {minutes} mins",
+            _ => $"in {minutes / 60}h",
         };
     }
 
@@ -369,20 +368,20 @@ public partial class DeviceCard : ContentView
         _ => "device_other.png",
     };
 
-    private void OnRefreshTapped(object? sender, TappedEventArgs e) =>
+    private void OnRefreshClicked(object? sender, EventArgs e) =>
         RefreshRequested?.Invoke(this, _deviceId);
 
-    private void OnReconnectTapped(object? sender, TappedEventArgs e) =>
+    private void OnReconnectClicked(object? sender, EventArgs e) =>
         ReconnectRequested?.Invoke(this, _deviceId);
 
-    private void OnRepullTapped(object? sender, TappedEventArgs e)
+    private void OnRepullClicked(object? sender, EventArgs e)
     {
         if (!_canRepull)
             return;
         RepullRequested?.Invoke(this, _deviceId);
     }
 
-    private void OnRemoveTapped(object? sender, TappedEventArgs e) =>
+    private void OnRemoveClicked(object? sender, EventArgs e) =>
         RemoveRequested?.Invoke(this, _deviceId);
 
     private void OnPrimaryToggled(object? sender, ToggledEventArgs e)

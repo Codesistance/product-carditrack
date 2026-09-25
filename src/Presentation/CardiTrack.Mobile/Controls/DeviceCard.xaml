@@ -13,7 +13,7 @@
             <VerticalStackLayout x:Name="DeviceInfoSection" Spacing="12">
 
             <!-- Identity -->
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                 <Border Grid.Column="0"
                         WidthRequest="44" HeightRequest="44"
                         StrokeThickness="0"
@@ -42,20 +42,31 @@
                                    FontFamily="QuicksandSemiBold"
                                    FontSize="10"/>
                         </Border>
-                        <Label x:Name="SyncedLabel"
-                               Style="{StaticResource Body2}"
-                               FontSize="12"
-                               VerticalTextAlignment="Center"/>
+                        <!-- Primary as a word beside the status, rather than a star in the
+                             corner that said the same thing as the switch further down. -->
+                        <Border x:Name="PrimaryPill"
+                                IsVisible="False"
+                                StrokeThickness="0"
+                                Padding="8,2"
+                                BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                VerticalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8"/>
+                            </Border.StrokeShape>
+                            <Label Text="PRIMARY"
+                                   FontFamily="QuicksandSemiBold"
+                                   FontSize="10"
+                                   TextColor="{StaticResource PrimaryDark}"/>
+                        </Border>
                     </HorizontalStackLayout>
                 </VerticalStackLayout>
-
-                <Image x:Name="PrimaryStar"
-                       Grid.Column="2"
-                       Source="icon_star.svg"
-                       WidthRequest="20" HeightRequest="20"
-                       IsVisible="False"
-                       VerticalOptions="Start"/>
             </Grid>
+
+            <!-- When it last sent and when it next will, as one sentence. These were a "synced"
+                 caption here plus Last Sync and Next Sync tiles below — the first said twice. -->
+            <Label x:Name="SyncedLabel"
+                   Style="{StaticResource Body2}"
+                   FontSize="13"/>
 
             <!-- What this connection shares: one pill per dataset family, not per dataset. Full
                  card width rather than inside the identity grid — even summary pills read better
@@ -105,33 +116,9 @@
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
                     <ColumnDefinition x:Name="BatteryColumn" Width="0"/>
                 </Grid.ColumnDefinitions>
                 <Border Grid.Column="0" StrokeThickness="0" Padding="10,8"
-                        BackgroundColor="{StaticResource SelectedOptionBackground}">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="10"/>
-                    </Border.StrokeShape>
-                    <VerticalStackLayout Spacing="2">
-                        <Label Text="LAST SYNC" FontFamily="QuicksandSemiBold" FontSize="9"
-                               TextColor="{StaticResource MutedText}"/>
-                        <Label x:Name="LastSyncValue" Style="{StaticResource Body2Medium}" FontSize="12"/>
-                    </VerticalStackLayout>
-                </Border>
-                <Border Grid.Column="1" StrokeThickness="0" Padding="10,8"
-                        BackgroundColor="{StaticResource SelectedOptionBackground}">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="10"/>
-                    </Border.StrokeShape>
-                    <VerticalStackLayout Spacing="2">
-                        <Label Text="NEXT SYNC" FontFamily="QuicksandSemiBold" FontSize="9"
-                               TextColor="{StaticResource MutedText}"/>
-                        <Label x:Name="NextSyncValue" Style="{StaticResource Body2Medium}" FontSize="12"/>
-                    </VerticalStackLayout>
-                </Border>
-                <Border Grid.Column="2" StrokeThickness="0" Padding="10,8"
                         BackgroundColor="{StaticResource SelectedOptionBackground}">
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="10"/>
@@ -142,7 +129,7 @@
                         <Label x:Name="TodayValue" Style="{StaticResource Body2Medium}" FontSize="12"/>
                     </VerticalStackLayout>
                 </Border>
-                <Border x:Name="BatteryTile" Grid.Column="3" StrokeThickness="0" Padding="10,8"
+                <Border x:Name="BatteryTile" Grid.Column="1" StrokeThickness="0" Padding="10,8"
                         IsVisible="False"
                         BackgroundColor="{StaticResource SelectedOptionBackground}">
                     <Border.StrokeShape>
@@ -160,79 +147,52 @@
 
             <BoxView Style="{StaticResource DividerLine}"/>
 
-            <!-- Actions -->
-
-            <!-- The provider itself broke the token (Fitbit rejected the refresh, or revoked
-                 consent) — retrying Refresh Connection just repeats the same failure. Reconnect
-                 takes the place of Refresh Connection rather than sitting alongside it, so there
-                 is one live action here, not one that works and one that silently can't. -->
-            <Grid x:Name="ReconnectRow" ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="40"
-                  IsVisible="False">
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnReconnectTapped"/>
-                </Grid.GestureRecognizers>
-                <Image Grid.Column="0" Source="icon_refresh.svg"
-                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                <Label Grid.Column="1" Text="Reconnect"
-                       Style="{StaticResource Body2Medium}"
-                       TextColor="{StaticResource Primary}"
-                       FontFamily="QuicksandSemiBold"
-                       VerticalTextAlignment="Center"/>
+            <!-- Actions, as the app's compact action buttons: the ones that do something in blue,
+                 Remove in red at the far end. Reconnect takes Refresh's place when the provider
+                 itself broke the token — retrying Refresh would repeat the same failure, so there
+                 is one live action there, not one that works and one that silently can't. -->
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+                <Button x:Name="RefreshButton"
+                        Text="Refresh"
+                        Style="{StaticResource ActionButtonBlue}"
+                        ImageSource="icon_btn_refresh.svg"
+                        Clicked="OnRefreshClicked"/>
+                <Button x:Name="ReconnectButton"
+                        Text="Reconnect"
+                        Style="{StaticResource ActionButtonBlue}"
+                        ImageSource="icon_btn_connect.svg"
+                        IsVisible="False"
+                        Clicked="OnReconnectClicked"/>
+                <!-- Re-pull: asks the server to re-read a stretch of this device's past days to
+                     fill gaps the routine sync left. Withheld while a request is open or cooling
+                     down; its progress is the line under the buttons. -->
+                <Button x:Name="RepullButton"
+                        Grid.Column="1"
+                        Text="Re-pull"
+                        Style="{StaticResource ActionButtonBlue}"
+                        ImageSource="icon_btn_history.svg"
+                        Clicked="OnRepullClicked"/>
+                <Button Grid.Column="3"
+                        Text="Remove"
+                        Style="{StaticResource ActionButtonRed}"
+                        ImageSource="icon_btn_delete.svg"
+                        Clicked="OnRemoveClicked"/>
             </Grid>
 
-            <Grid x:Name="RefreshRow" ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="40">
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnRefreshTapped"/>
-                </Grid.GestureRecognizers>
-                <Image Grid.Column="0" Source="icon_refresh.svg"
-                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                <Label x:Name="RefreshLabel" Grid.Column="1" Text="Refresh Connection"
-                       Style="{StaticResource Body2Medium}" VerticalTextAlignment="Center"/>
-            </Grid>
+            <Label x:Name="RepullStatusLabel"
+                   Style="{StaticResource Body2}"
+                   FontSize="12"
+                   TextColor="{StaticResource MutedText}"
+                   IsVisible="False"/>
 
-            <!-- Re-pull History: asks the server to re-read a stretch of this device's past days
-                 to fill gaps the routine sync left. The status line under the label is the
-                 request's progress and is hidden when there is nothing to say, so the row sits
-                 at the same height as its neighbours until a request exists. -->
-            <Grid x:Name="RepullRow" ColumnDefinitions="Auto,*" ColumnSpacing="12" MinimumHeightRequest="40">
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnRepullTapped"/>
-                </Grid.GestureRecognizers>
-                <Image Grid.Column="0" Source="icon_calendar.svg"
-                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                    <Label x:Name="RepullLabel" Text="Re-pull History"
-                           Style="{StaticResource Body2Medium}" VerticalTextAlignment="Center"/>
-                    <Label x:Name="RepullStatusLabel"
-                           Style="{StaticResource Body2}"
-                           FontSize="12"
-                           TextColor="{StaticResource MutedText}"
-                           IsVisible="False"/>
-                </VerticalStackLayout>
-            </Grid>
-
-            <Grid x:Name="PrimaryRow" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="40">
-                <Image Grid.Column="0" Source="icon_star.svg"
-                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                <Label Grid.Column="1" Text="Set as Primary"
+            <Grid x:Name="PrimaryRow" ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="40">
+                <Label Text="Use as primary device"
                        Style="{StaticResource Body2Medium}" VerticalTextAlignment="Center"/>
                 <Switch x:Name="PrimarySwitch"
-                        Grid.Column="2"
+                        Grid.Column="1"
                         OnColor="{StaticResource Primary}"
                         VerticalOptions="Center"
                         Toggled="OnPrimaryToggled"/>
-            </Grid>
-
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="40">
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnRemoveTapped"/>
-                </Grid.GestureRecognizers>
-                <Image Grid.Column="0" Source="icon_trash.svg"
-                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                <Label Grid.Column="1" Text="Remove Device"
-                       Style="{StaticResource Body2Medium}"
-                       TextColor="{StaticResource ErrorRed}"
-                       VerticalTextAlignment="Center"/>
             </Grid>
 
         </VerticalStackLayout>
