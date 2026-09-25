@@ -42,7 +42,7 @@ public class HistoryRepullWorkerTests
         _unitOfWork.DeviceConnections.Returns(_connections);
         _unitOfWork.CardiMembers.Returns(_members);
 
-        _member = new CardiMember { Id = Guid.NewGuid(), Name = "Margaret Doe", IsActive = true };
+        _member = new CardiMember { Id = Guid.NewGuid(), FirstName = "Margaret", LastName = "Doe", IsActive = true };
         _connection = new DeviceConnection
         {
             Id = Guid.NewGuid(),

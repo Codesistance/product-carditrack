@@ -38,7 +38,8 @@ public static class TestDataSeeder
         var member = new CardiMember
         {
             OrganizationId = organizationId,
-            Name = $"Member {Guid.NewGuid():N}",
+            FirstName = "Member",
+            LastName = Guid.NewGuid().ToString("N"),
             DateOfBirth = new DateOnly(1955, 6, 15),
             Gender = Gender.Female,
             MonitoringPausedUntil = monitoringPausedUntil,

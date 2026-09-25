@@ -181,7 +181,7 @@ public partial class QuestionnairesPage : ContentPage
         }
 
         ChatBot.MemberId = _route.Id;
-        ChatBot.MemberFirstName = NameFormatting.FirstName(_memberName);
+        ChatBot.MemberFirstName = _memberName;
         var ticket = _gate.Begin();
         _ticket = ticket;
 

@@ -40,7 +40,7 @@ public class DeviceConnectionInviteServiceTests
         SetupCaregiverLink(active: true);
 
         _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(
-            new CardiMember { Id = _memberId, Name = "Margaret Hale", IsActive = true });
+            new CardiMember { Id = _memberId, FirstName = "Margaret", LastName = "Hale", IsActive = true });
         _unitOfWork.Users.GetByIdAsync(_userId).Returns(
             new User { Id = _userId, Name = "John Thornton" });
 
@@ -341,7 +341,7 @@ public class DeviceConnectionInviteServiceTests
         var created = await sut.CreateAsync(_userId, _memberId, Request(), BaseUrl);
 
         _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(
-            new CardiMember { Id = _memberId, Name = "Margaret Hale", IsActive = false });
+            new CardiMember { Id = _memberId, FirstName = "Margaret", LastName = "Hale", IsActive = false });
 
         // A consent screen that cannot say who is asking on whose behalf is not informed consent.
         Assert.Null(await sut.ViewAsync(TokenFrom(created)));
@@ -617,7 +617,7 @@ public class DeviceConnectionInviteServiceTests
     {
         var otherMemberId = Guid.NewGuid();
         _unitOfWork.CardiMembers.GetByIdAsync(otherMemberId).Returns(
-            new CardiMember { Id = otherMemberId, Name = "Someone Else", IsActive = true });
+            new CardiMember { Id = otherMemberId, FirstName = "Someone", LastName = "Else", IsActive = true });
         _unitOfWork.UserCardiMembers.GetByUserIdAsync(_userId).Returns(
         [
             new UserCardiMember { UserId = _userId, CardiMemberId = _memberId, IsActive = true },

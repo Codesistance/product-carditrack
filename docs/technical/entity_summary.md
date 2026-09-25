@@ -27,7 +27,8 @@ This document provides an overview of the CardiTrack domain entities. The number
 
 #### 3. **CardiMember**
 - Person being monitored (can be the User themselves)
-- Contains: Name, Email, Phone, DateOfBirth, Gender, OrganizationId, LastSyncDate
+- Contains: FirstName, LastName, Email, Phone, DateOfBirth, Gender, OrganizationId, LastSyncDate
+- Name: **FirstName** (required, `varchar(200)`) is what the app greets and labels the member by; **LastName** (nullable, `varchar(200)`) is null for someone known by one name. **FullName** is a C# getter joining the two — never a column (`Ignore`d in `CardiMemberConfiguration`), so it cannot drift, and EF cannot translate it: queries filter and sort on the parts. Split from a single `Name` column by the `SplitCardiMemberName` migration (first word → FirstName, rest → LastName), using the same rule as `Domain/Common/PersonName.Split`, which also serves legacy clients still sending one `Name`
 - Emergency contact: two flat columns — EmergencyContactName, EmergencyContactPhone (no JSON, no separate entity yet)
 - MedicalNotes: **encrypted at rest** (AES-256-GCM, applied in `CardiMemberService`). Column is `text`, not `varchar(2000)` — ciphertext is longer than the 2000-character input limit
 - Monitoring pause: MonitoringPausedUntil (null = monitoring normally) and MonitoringPauseReason. Time-bounded and self-expiring; enforced in `GetDueForSyncAsync`, so a paused member is genuinely not synced

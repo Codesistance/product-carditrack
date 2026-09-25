@@ -126,7 +126,8 @@ public class CardiMemberService : ICardiMemberService
         var cardiMember = new CardiMember
         {
             OrganizationId = organizationId,
-            Name = request.Name,
+            FirstName = request.FirstName.Trim(),
+            LastName = NullIfBlank(request.LastName),
             DateOfBirth = request.DateOfBirth,
             Gender = request.Gender,
             Email = request.Email,
@@ -292,7 +293,9 @@ public class CardiMemberService : ICardiMemberService
         {
             Id = cardiMember.Id,
             OrganizationId = cardiMember.OrganizationId,
-            Name = cardiMember.Name,
+            FirstName = cardiMember.FirstName,
+            LastName = cardiMember.LastName,
+            Name = cardiMember.FullName,
             DateOfBirth = cardiMember.DateOfBirth,
             Age = CalculateAge(cardiMember.DateOfBirth),
             Gender = cardiMember.Gender,
@@ -360,7 +363,9 @@ public class CardiMemberService : ICardiMemberService
         {
             Id = cardiMember.Id,
             OrganizationId = cardiMember.OrganizationId,
-            Name = cardiMember.Name,
+            FirstName = cardiMember.FirstName,
+            LastName = cardiMember.LastName,
+            Name = cardiMember.FullName,
             DateOfBirth = cardiMember.DateOfBirth,
             Age = CalculateAge(cardiMember.DateOfBirth),
             Gender = cardiMember.Gender,
@@ -412,7 +417,9 @@ public class CardiMemberService : ICardiMemberService
             {
                 Id = cm.Id,
                 OrganizationId = cm.OrganizationId,
-                Name = cm.Name,
+                FirstName = cm.FirstName,
+                LastName = cm.LastName,
+                Name = cm.FullName,
                 DateOfBirth = cm.DateOfBirth,
                 Age = CalculateAge(cm.DateOfBirth),
                 Gender = cm.Gender,
@@ -503,7 +510,8 @@ public class CardiMemberService : ICardiMemberService
         }
         // Neither supplied: the photo is left alone — same omitted-means-keep stance as Gender.
 
-        member.Name = request.Name;
+        member.FirstName = request.FirstName.Trim();
+        member.LastName = NullIfBlank(request.LastName);
         member.DateOfBirth = request.DateOfBirth;
         member.Email = request.Email;
         member.Phone = request.Phone;
@@ -828,7 +836,7 @@ public class CardiMemberService : ICardiMemberService
         var lastSyncedAt = member.LastSyncDate ?? connections.Max(c => c.LastSyncDate);
         var latestAssessment = await _unitOfWork.RealtimeAssessments.GetLatestAsync(member.Id, ct);
         var (freshnessTier, freshnessMessage) = MemberInsightsCalculator.ComputeDataFreshness(
-            lastSyncedAt, latestAssessment?.GeneratedAtUtc, now, FirstNameOf(member.Name));
+            lastSyncedAt, latestAssessment?.GeneratedAtUtc, now, member.FirstName);
 
         // Consent checked before the query, not after — same stance as EnvironmentalContextSource:
         // only a consented member can ever have a row, so the common case skips the roundtrip.
@@ -850,7 +858,9 @@ public class CardiMemberService : ICardiMemberService
         {
             Id = member.Id,
             OrganizationId = member.OrganizationId,
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
+            Name = member.FullName,
             Insight = MemberInsightComposer.Compose(baselineInsight, trendInsight, now, age),
             DateOfBirth = member.DateOfBirth,
             Age = age,
@@ -963,11 +973,7 @@ public class CardiMemberService : ICardiMemberService
         return age;
     }
 
-    /// <summary>
-    /// Same first-token split <c>DashboardService</c> uses for the freshness caption, so a
-    /// member named "Margaret Doe" is "Margaret" on both screens rather than the full name on
-    /// one and the first on the other.
-    /// </summary>
-    private static string FirstNameOf(string name) =>
-        name.Split(' ', StringSplitOptions.RemoveEmptyEntries) is [var first, ..] ? first : name;
+    /// <summary>Trimmed surname, or null when none was given — a single-name member has no surname, not an empty one.</summary>
+    private static string? NullIfBlank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

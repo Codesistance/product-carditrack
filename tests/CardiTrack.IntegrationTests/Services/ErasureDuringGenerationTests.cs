@@ -473,7 +473,8 @@ public class ErasureDuringGenerationTests : IAsyncLifetime
         var member = new CardiMember
         {
             OrganizationId = organization.Id,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 4, 2),
             Gender = Gender.Female,
             IsActive = true,

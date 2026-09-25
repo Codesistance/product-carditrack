@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 using Microsoft.Extensions.Logging;
 
@@ -18,8 +19,8 @@ public partial class BaselineLearningPage : ContentPage
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
         _ctx = ctx;
         _member = ctx.RequireMember();
-        TitleLabel.Text = $"Getting to know {_member.Name}";
-        IntroLabel.Text = $"Over the next 30 days, CardiTrack will learn what a normal day looks like for {_member.Name}:";
+        TitleLabel.Text = $"Getting to know {_member.DisplayFirstName()}";
+        IntroLabel.Text = $"Over the next 30 days, CardiTrack will learn what a normal day looks like for {_member.DisplayFirstName()}:";
 
         if (ctx.Origin == WizardOrigin.Modal)
         {

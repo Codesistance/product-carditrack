@@ -2,6 +2,7 @@ using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
@@ -229,7 +230,7 @@ public class FamilyMembershipTests : IAsyncLifetime
         var joined = families.Single(f => f.OrganizationId == seed.OrganizationId);
         Assert.Equal("member", joined.Role);
         Assert.False(joined.IsHomeFamily);
-        Assert.Equal(["Margaret Okafor"], joined.WatchedMemberNames);
+        Assert.Equal(["Margaret"], joined.WatchedMemberNames); // first names — the app labels members by them
 
         var own = families.Single(f => f.OrganizationId == seed.OtherOrganizationId);
         Assert.True(own.IsHomeFamily);
@@ -447,7 +448,8 @@ public class FamilyMembershipTests : IAsyncLifetime
     private static CardiMember NewMember(Guid organizationId, string name) => new()
     {
         OrganizationId = organizationId,
-        Name = name,
+        FirstName = PersonName.Split(name).FirstName,
+        LastName = PersonName.Split(name).LastName,
         DateOfBirth = new DateOnly(1943, 4, 2),
         IsActive = true,
     };

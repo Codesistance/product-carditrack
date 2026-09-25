@@ -604,7 +604,7 @@ public class MemberChatService : IMemberChatService
             else if (MemberChatReplies.CarriesNoQuestion(flattened))
             {
                 MemberChatTelemetry.TagSource(MemberChatTelemetry.SourceNoQuestion);
-                result = NotAQuestionResult(member?.Name);
+                result = NotAQuestionResult(NamePlaceholder.FirstNameOf(member));
             }
             else
             {
@@ -686,7 +686,7 @@ public class MemberChatService : IMemberChatService
         IMemberChatSendProgress? progress,
         CancellationToken ct)
     {
-        var history = await BuildHistoryBlockAsync(session.Id, member?.Name, ct);
+        var history = await BuildHistoryBlockAsync(session.Id, member?.FullName, ct);
 
         // A yes or no to the change the previous turn proposed is answered here, before any
         // model runs — the same slot as the no-question guard, for the same reason: the app
@@ -715,7 +715,7 @@ public class MemberChatService : IMemberChatService
         // copy so the two prompts cannot disagree about who was named.
         // A member row that is gone (or nameless) has no name to redact against, so the message
         // would cross unredacted — refused here, before the first Rewrite-slot call (#1246).
-        var forModel = NamePlaceholder.RedactMessageOrRefuse(flattened, member?.Name);
+        var forModel = NamePlaceholder.RedactMessageOrRefuse(flattened, member?.FullName);
 
         // History travels with every step that reads the caregiver's message, not just the
         // clinical one — a follow-up like "why?" is only judgeable, and only plannable, in the
@@ -733,7 +733,7 @@ public class MemberChatService : IMemberChatService
             _logger.LogWarning(
                 "Member chat message for CardiMember {CardiMemberId} refused by the malicious pre-check",
                 cardiMemberId);
-            throw new ArgumentException(RefusedReply(NamePlaceholder.FirstName(member?.Name)));
+            throw new ArgumentException(RefusedReply(NamePlaceholder.FirstNameOf(member)));
         }
 
         // On a streamed send, every step from here is numbered as it goes out, and the first one
@@ -745,7 +745,7 @@ public class MemberChatService : IMemberChatService
         var steps = progress is null
             ? null
             : new NumberedSteps(progress, () => waitingLines = ReportWaitingLinesAsync(
-                forModel, NamePlaceholder.FirstName(member?.Name), progress, waitingLinesCts.Token));
+                forModel, NamePlaceholder.FirstNameOf(member), progress, waitingLinesCts.Token));
 
         try
         {
@@ -823,7 +823,7 @@ public class MemberChatService : IMemberChatService
             : triage.Result switch
             {
                 { IsAboutThisMoment: true } =>
-                    await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow, ct),
+                    await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, NamePlaceholder.FirstNameOf(member), utcNow, ct),
                 { IsAskingForAdvice: true } =>
                     await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
                 { IsCasualOrSocial: true } or { IsOffTopic: true } =>
@@ -838,7 +838,7 @@ public class MemberChatService : IMemberChatService
             result = result with { Calls = InsertAfterTriage(result.Calls, billedRoute) };
         }
 
-        var checkedResult = await CheckAnswerAsync(result, forModel, history, member?.Name, session, progress, ct);
+        var checkedResult = await CheckAnswerAsync(result, forModel, history, member?.FullName, session, progress, ct);
         return await RemedyAsync(checkedResult, forModel, history, cardiMemberId, member, utcNow, progress, ct);
     }
 
@@ -1042,10 +1042,10 @@ public class MemberChatService : IMemberChatService
     /// non-question.
     /// </para>
     /// </remarks>
-    private static MemberChatWorkflowResult NotAQuestionResult(string? memberName) => new()
+    private static MemberChatWorkflowResult NotAQuestionResult(string? memberFirstName) => new()
     {
         Workflow = MemberChatWorkflow.SteerCasual,
-        Reply = MemberChatReplies.NotAQuestionReply(NamePlaceholder.FirstName(memberName)),
+        Reply = MemberChatReplies.NotAQuestionReply(memberFirstName),
         Calls = [],
     };
 
@@ -1428,7 +1428,7 @@ public class MemberChatService : IMemberChatService
             {
                 // Both branches can be served — the ambiguity is real and worth one tap.
                 case 2:
-                    return ClarifyResult(route, triageUsage, member?.Name);
+                    return ClarifyResult(route, triageUsage, NamePlaceholder.FirstNameOf(member));
 
                 // Only one can. Answering with it beats asking a question whose other option is a
                 // dead end: "what of his diet" offered a suggestion and a readings summary when
@@ -1452,7 +1452,7 @@ public class MemberChatService : IMemberChatService
             // however recent, is not this" — so "how are they doing today" no longer opens with
             // what cannot be seen right now.
             MemberChatWorkflow.Status when aboutThisMoment =>
-                await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow, ct),
+                await AnswerLiveStatusAsync(triageUsage, cardiMemberId, NamePlaceholder.FirstNameOf(member), utcNow, ct),
             MemberChatWorkflow.Status =>
                 await AnswerStatusLineAsync(route, triageUsage, cardiMemberId, member, history, utcNow, ct),
             // The row already read above when advise was a clarify candidate; a direct route to
@@ -1549,11 +1549,9 @@ public class MemberChatService : IMemberChatService
     /// phrasings in the sentence are the tappable-option vocabulary spoken aloud.
     /// </summary>
     private static MemberChatWorkflowResult ClarifyResult(
-        ChatRouteDecision route, AiUsage triageUsage, string? memberName)
+        ChatRouteDecision route, AiUsage triageUsage, string? memberFirstName)
     {
-        var subject = string.IsNullOrWhiteSpace(NamePlaceholder.FirstName(memberName))
-            ? "them"
-            : NamePlaceholder.FirstName(memberName)!;
+        var subject = string.IsNullOrWhiteSpace(memberFirstName) ? "them" : memberFirstName;
 
         var reply = $"I can answer that a couple of different ways — {DescribeForClarify(route.Primary!.Value, subject)}, "
             + $"or {DescribeForClarify(route.RunnerUp!.Value, subject)}. Which would help most?";
@@ -1687,7 +1685,7 @@ public class MemberChatService : IMemberChatService
     private async Task<MemberChatWorkflowResult> AnswerLiveStatusAsync(
         AiUsage triageUsage,
         Guid cardiMemberId,
-        string? memberName,
+        string? memberFirstName,
         DateTime utcNow,
         CancellationToken ct = default)
     {
@@ -1697,7 +1695,7 @@ public class MemberChatService : IMemberChatService
         return new MemberChatWorkflowResult
         {
             Workflow = MemberChatWorkflow.Status,
-            Reply = CapReply(MemberChatReplies.LiveStatusReply(NamePlaceholder.FirstName(memberName), recent, today)),
+            Reply = CapReply(MemberChatReplies.LiveStatusReply(memberFirstName, recent, today)),
             Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
     }
@@ -1792,7 +1790,7 @@ public class MemberChatService : IMemberChatService
         DateTime utcNow,
         CancellationToken ct)
     {
-        var name = NamePlaceholder.FirstName(member?.Name);
+        var name = NamePlaceholder.FirstNameOf(member);
         var today = DateOnly.FromDateTime(utcNow);
         var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
         var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
@@ -1800,7 +1798,7 @@ public class MemberChatService : IMemberChatService
         // The earlier replies are name-redacted, so the caption is redacted the same way before
         // looking for it — as a sentence of its own, not a phrase inside another one.
         var captionAlreadySaid = line is not null && history.EarlierReplies is { } earlier
-            && NamePlaceholder.Redact(line.Message, member?.Name) is { } redacted
+            && NamePlaceholder.Redact(line.Message, member?.FullName) is { } redacted
             && earlier.Value.Any(reply => MemberChatReplies.ContainsSentence(reply, redacted));
 
         var reply = MemberChatReplies.StatusReply(
@@ -1985,7 +1983,7 @@ public class MemberChatService : IMemberChatService
         {
             Workflow = MemberChatWorkflow.Advise,
             Reply = CapReply(MemberChatReplies.AdviseReply(
-            NamePlaceholder.FirstName(member?.Name), advise, utcNow, asksForSpecifics)),
+            NamePlaceholder.FirstNameOf(member), advise, utcNow, asksForSpecifics)),
             Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
 
@@ -2020,12 +2018,12 @@ public class MemberChatService : IMemberChatService
         // The same DPIA A20 boundary as the send: this prompt carries the caregiver's own words,
         // and "how is Moses sleeping?" names the member. With no name on file to redact against
         // the canned lines stand in — waiting copy never fails, and never crosses unredacted.
-        var memberName = (await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId))?.Name;
-        if (!NamePlaceholder.CanRedactAgainst(memberName))
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+        if (!NamePlaceholder.CanRedactAgainst(member?.FullName))
             return FallbackWaitingSentences;
-        var forModel = NamePlaceholder.Redact(flattened, memberName) ?? flattened;
+        var forModel = NamePlaceholder.Redact(flattened, member.FullName) ?? flattened;
 
-        return await GenerateWaitingLinesAsync(forModel, NamePlaceholder.FirstName(memberName), ct)
+        return await GenerateWaitingLinesAsync(forModel, NamePlaceholder.FirstNameOf(member), ct)
             ?? FallbackWaitingSentences;
     }
 

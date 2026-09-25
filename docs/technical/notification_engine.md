@@ -526,12 +526,12 @@ second instance of its recorded **[GAP] #1**.
 
 ```csharp
 // VULNERABLE — name persisted in the clinical plane
-TemplateData = JsonSerializer.Serialize(new { name = member.Name, n = 4 });
+TemplateData = JsonSerializer.Serialize(new { name = member.FirstName, n = 4 });
 
 // SECURED — pseudonym + non-identifying counters; name resolved per request at render time
 TemplateData = JsonSerializer.Serialize(new { n = 4 });        // CardiMemberId is already on the row
 var member = await _cardiMembers.GetByIdAsync(notification.CardiMemberId);   // today
-return notification.Render(locale, member.Name);
+return notification.Render(locale, member.FirstName);
 ```
 
 **This control does not wait on the identity vault.** `pii.subject_identities` is net-new in

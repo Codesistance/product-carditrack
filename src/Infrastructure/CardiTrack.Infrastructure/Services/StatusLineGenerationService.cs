@@ -261,7 +261,7 @@ public class StatusLineGenerationService
         // straight back — see CanRedactAgainst. The previous line stands, which is what this path
         // does with every other failure. This crossing predates the clinical/rewrite split and
         // carried the same gap; it is fixed here because it is the same boundary, one file over.
-        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        if (!NamePlaceholder.CanRedactAgainst(member.FullName))
         {
             _logger.LogWarning(
                 "Status line for CardiMember {CardiMemberId} was not rewritten: no name on file to "
@@ -277,7 +277,7 @@ public class StatusLineGenerationService
         // and chat paths run.
         var flattened = MedicalPromptBlocks.Flatten(clinical.Finding);
         var read = RenderClinicalRead(
-            NamePlaceholder.Redact(flattened, member.Name) ?? flattened,
+            NamePlaceholder.Redact(flattened, member.FullName) ?? flattened,
             severity);
         CurrentStatusAiResponse aiResponse;
         try

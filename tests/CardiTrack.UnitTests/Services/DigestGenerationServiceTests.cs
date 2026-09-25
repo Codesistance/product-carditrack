@@ -144,7 +144,8 @@ public class DigestGenerationServiceTests
     private CardiMember Member() => new()
     {
         Id = _memberId,
-        Name = "Margaret Doe",
+        FirstName = "Margaret",
+        LastName = "Doe",
         DateOfBirth = new DateOnly(1948, 3, 2),
         Gender = Gender.Female,
         IsActive = true,
@@ -2410,7 +2411,8 @@ public class DigestGenerationServiceTests
     public async Task NoQuestionIsComposedAtAll_ForAMemberWithNoNameToRedactAgainst()
     {
         var member = MemberWithNoSexOnFile();
-        member.Name = string.Empty;
+        member.FirstName = string.Empty;
+        member.LastName = null;
         _members.GetByIdAsync(_memberId).Returns(member);
         ReturnsQuestion(
             "Were there visitors today?",
@@ -3089,7 +3091,8 @@ public class DigestGenerationServiceTests
     public async Task TheDigestDoesNotCrossToTheRewriteSlot_WhenThereIsNoNameToRedactAgainst()
     {
         var member = Member();
-        member.Name = "   ";
+        member.FirstName = "   ";
+        member.LastName = null;
         _members.GetByIdAsync(_memberId).Returns(member);
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);

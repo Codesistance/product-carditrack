@@ -148,14 +148,27 @@
                     </VerticalStackLayout>
 
                     <VerticalStackLayout Spacing="4">
-                        <Label Text="Full Name*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Label Text="First Name*" Style="{StaticResource AuthFieldLabel}"/>
                         <Border Style="{StaticResource AuthEntryBorder}">
-                            <Entry x:Name="NameEntry"
+                            <Entry x:Name="FirstNameEntry"
                                    Style="{StaticResource AuthEntry}"
-                                   Placeholder="Full name"
+                                   Placeholder="First name"
                                    TextChanged="OnNameChanged"/>
                         </Border>
-                        <Label x:Name="NameError"
+                        <Label x:Name="FirstNameError"
+                               Style="{StaticResource AuthErrorLabel}"
+                               IsVisible="False"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Last Name" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Entry x:Name="LastNameEntry"
+                                   Style="{StaticResource AuthEntry}"
+                                   Placeholder="Last name (optional)"
+                                   TextChanged="OnNameChanged"/>
+                        </Border>
+                        <Label x:Name="LastNameError"
                                Style="{StaticResource AuthErrorLabel}"
                                IsVisible="False"/>
                     </VerticalStackLayout>

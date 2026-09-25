@@ -135,7 +135,7 @@ public class CsvReportRenderer : IReportRenderer
     /// </remarks>
     private static void WriteTranscript(CsvWriter csv, ReportDataSet data, ChatTranscript transcript)
     {
-        var memberName = data.Members.Count > 0 ? data.Members[0].Member.Name : string.Empty;
+        var memberName = data.Members.Count > 0 ? data.Members[0].Member.FullName : string.Empty;
 
         foreach (var header in new[] { "Member", "SentUtc", "Speaker", "Message" })
             csv.WriteField(header);
@@ -237,7 +237,7 @@ public class CsvReportRenderer : IReportRenderer
         {
             foreach (var log in member.ActivityLogs)
             {
-                WriteText(csv, member.Member.Name);
+                WriteText(csv, member.Member.FullName);
                 csv.WriteField(log.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
                 csv.WriteField(log.Steps);
                 csv.WriteField(log.Distance);
@@ -277,7 +277,7 @@ public class CsvReportRenderer : IReportRenderer
                 .For(
                     member with { ActivityLogs = data.PeriodReadings(member) },
                     member.Member.DateOfBirth.ToAgeInYears(data.To))
-                .Select(row => (member.Member.Name, row)))
+                .Select(row => (member.Member.FullName, row)))
             .ToList();
 
     private static void WriteComparison(CsvWriter csv, ReportDataSet data)
@@ -319,7 +319,7 @@ public class CsvReportRenderer : IReportRenderer
         {
             foreach (var alert in member.Alerts)
             {
-                WriteText(csv, member.Member.Name);
+                WriteText(csv, member.Member.FullName);
                 csv.WriteField(alert.TriggeredDate.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
                 csv.WriteField(alert.Severity.ToString());
                 csv.WriteField(alert.AlertType.ToString());
@@ -345,7 +345,7 @@ public class CsvReportRenderer : IReportRenderer
         {
             foreach (var device in member.Devices)
             {
-                WriteText(csv, member.Member.Name);
+                WriteText(csv, member.Member.FullName);
                 csv.WriteField(device.DeviceType.ToString());
                 csv.WriteField(device.ConnectionStatus.ToString());
                 csv.WriteField(device.ConnectedDate?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
@@ -365,7 +365,7 @@ public class CsvReportRenderer : IReportRenderer
         {
             foreach (var entry in member.Journals)
             {
-                WriteText(csv, member.Member.Name);
+                WriteText(csv, member.Member.FullName);
                 csv.WriteField(entry.Audience.ToString());
                 csv.WriteField(entry.LocalDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
                 WriteText(csv, entry.Headline);
@@ -387,7 +387,7 @@ public class CsvReportRenderer : IReportRenderer
         {
             foreach (var notice in member.Notices)
             {
-                WriteText(csv, member.Member.Name);
+                WriteText(csv, member.Member.FullName);
                 csv.WriteField(notice.FirstDetectedDate.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
                 csv.WriteField(notice.Category.ToString());
                 csv.WriteField(notice.RuleCode);

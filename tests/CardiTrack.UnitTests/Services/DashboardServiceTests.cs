@@ -46,7 +46,8 @@ public class DashboardServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
             Phone = "+441234567890",
             EmergencyContactName = "Lorri Warf",
@@ -678,7 +679,8 @@ public class DashboardServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
             MonitoringPausedUntil = pausedUntil,
             MonitoringPauseReason = reason,
@@ -717,7 +719,8 @@ public class DashboardServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
             IsActive = true,
             EnvironmentalContextConsentGranted = granted,
@@ -960,7 +963,8 @@ public class DashboardServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
             IsActive = true,
             CreatedDate = memberSince ?? DateTime.UtcNow.AddDays(-120),
@@ -1013,7 +1017,8 @@ public class DashboardServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
             IsActive = true,
             CreatedDate = DateTime.UtcNow.AddDays(-120),
@@ -1046,7 +1051,8 @@ public class DashboardServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
             IsActive = true,
             CreatedDate = DateTime.UtcNow.AddDays(-120),
@@ -1178,7 +1184,8 @@ public class DashboardServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 9, 25),
             IsActive = true,
         });

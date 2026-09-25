@@ -57,7 +57,8 @@ public class QuietReassuranceServiceTests
     private CardiMember Member(DateTime? lastSync = null) => new()
     {
         Id = _memberId,
-        Name = "Margaret Doe",
+        FirstName = "Margaret",
+        LastName = "Doe",
         DateOfBirth = new DateOnly(1948, 3, 2),
         IsActive = true,
         CreatedDate = UtcNow.AddDays(-120),
@@ -159,7 +160,8 @@ public class QuietReassuranceServiceTests
         _members.GetByIdAsync(healthyId).Returns(new CardiMember
         {
             Id = healthyId,
-            Name = "Arthur Doe",
+            FirstName = "Arthur",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1950, 1, 1),
             IsActive = true,
             CreatedDate = UtcNow.AddDays(-120),

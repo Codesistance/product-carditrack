@@ -366,7 +366,8 @@ public class RetentionPolicyTests : IAsyncLifetime
         var member = new CardiMember
         {
             OrganizationId = organizationId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 4, 2),
             Gender = Gender.Female,
             IsActive = true,

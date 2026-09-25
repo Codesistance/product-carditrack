@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
@@ -866,7 +867,8 @@ public class AccountErasureCascadeTests : IAsyncLifetime
     private static CardiMember NewMember(Guid organizationId, string name) => new()
     {
         OrganizationId = organizationId,
-        Name = name,
+        FirstName = PersonName.Split(name).FirstName,
+        LastName = PersonName.Split(name).LastName,
         DateOfBirth = new DateOnly(1948, 4, 2),
         Gender = Gender.Female,
         IsActive = true,

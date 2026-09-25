@@ -4,6 +4,7 @@ using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Charts;
 using CardiTrack.Mobile.Core.Export;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
@@ -384,9 +385,9 @@ public partial class JournalEntryPage : ContentPage
         }
 
         ChatBot.MemberId = _route.Id;
-        ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
+        ChatBot.MemberFirstName = member.DisplayFirstName();
         if (!_headerPersonalised)
-            ApplyHeaderName(NameFormatting.FirstName(member.Name));
+            ApplyHeaderName(member.DisplayFirstName());
         ApplyTrends(member.Metrics);
     }
 

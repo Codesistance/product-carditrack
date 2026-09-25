@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
+using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.Infrastructure.Services;
 
@@ -49,7 +50,34 @@ internal static partial class NamePlaceholder
     /// </summary>
     internal const string Token = "CardiTrackCardiMember";
 
-    /// <summary>The person's first name — what a family member would actually say aloud.</summary>
+    /// <summary>
+    /// The name generated copy calls a member by — their stored first name, what a family member
+    /// would actually say aloud — or null when there is no member or no name, so the copy falls
+    /// back to its own wording ("them") rather than interpolating an empty string.
+    /// </summary>
+    /// <remarks>
+    /// A one-letter first name with a surname resolves to the full name instead. Whatever this
+    /// returns is written into chat replies and history, and history goes back to a model through
+    /// <see cref="Redact"/> — which deliberately skips a lone initial (matching one would tokenise
+    /// every stray "A" or "I"). Copy carrying "A" alone would therefore carry it out unredacted;
+    /// "A Smith" is always redacted whole. A one-letter name with no surname is its own full name,
+    /// and <see cref="Redact"/> always matches the full name, so it needs no special case.
+    /// </remarks>
+    internal static string? FirstNameOf(CardiMember? member)
+    {
+        if (string.IsNullOrWhiteSpace(member?.FirstName))
+            return null;
+
+        var first = member.FirstName.Trim();
+        return first.Length == 1 && !string.IsNullOrWhiteSpace(member.LastName)
+            ? member.FullName.Trim()
+            : first;
+    }
+
+    /// <summary>
+    /// The first word of a single full name. For names still held as one string — caregivers'
+    /// — never for a CardiMember, whose first name is stored: use <see cref="FirstNameOf"/>.
+    /// </summary>
     internal static string? FirstName(string? name)
     {
         var parts = (name ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -78,19 +106,6 @@ internal static partial class NamePlaceholder
         return TokenPattern().Replace(text, name);
     }
 
-    /// <summary>
-    /// The inverse of <see cref="Resolve"/>: swaps the member's name out of text that is about to
-    /// be sent to a model, so nothing downstream of it ever sees who this is. Both the full name
-    /// and the first name are matched, longest first, so "Margaret Doe" is replaced whole rather
-    /// than leaving a bare surname behind.
-    /// </summary>
-    /// <remarks>
-    /// Case-insensitive and word-bounded. A member whose name is also an ordinary word ("May",
-    /// "Bill") will see that word replaced wherever it appears in the text handed to the model —
-    /// accepted deliberately, because the cost is one model call reading slightly odd context
-    /// while the cost of the opposite mistake is a real name reaching a third-party provider.
-    /// Nothing a caregiver reads passes through here.
-    /// </remarks>
     /// <summary>
     /// Whether a member's name can be redacted against at all. Every slot boundary asks this
     /// before it wraps anything for the Rewrite slot, and refuses in its own way when the answer
@@ -136,23 +151,49 @@ internal static partial class NamePlaceholder
         return Redact(message, name) ?? message;
     }
 
+    /// <summary>
+    /// The inverse of <see cref="Resolve"/>: swaps the member's name out of text that is about to
+    /// be sent to a model, so nothing downstream of it ever sees who this is. Pass the member's
+    /// full name (<c>CardiMember.FullName</c>). It is matched whole, and so is every leading run of
+    /// its words, longest first — "Mary Ann Smith", then "Mary Ann", then "Mary" — so the full
+    /// name is replaced whole rather than leaving a bare surname behind.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Why every leading run and not just the first word: the stored first name is always one of
+    /// them, and it can be more than one word ("Mary Ann"). It is the stored first name that
+    /// <see cref="Resolve"/> writes into chat replies, so history fed back to a model holds it
+    /// verbatim. Matching only "Mary" would send "CardiTrackCardiMember Ann" — half a name.
+    /// </para>
+    /// <para>
+    /// Case-insensitive and word-bounded. A member whose name is also an ordinary word ("May",
+    /// "Bill") will see that word replaced wherever it appears in the text handed to the model —
+    /// accepted deliberately, because the cost is one model call reading slightly odd context
+    /// while the cost of the opposite mistake is a real name reaching a third-party provider.
+    /// Nothing a caregiver reads passes through here.
+    /// </para>
+    /// </remarks>
     internal static string? Redact(string? text, string? name)
     {
         if (string.IsNullOrEmpty(text) || string.IsNullOrWhiteSpace(name))
             return text;
 
-        var forms = new List<string> { name.Trim() };
-        // A single-letter first name is not worth matching: the word boundary would fire on
-        // every stray initial in the text and say nothing about who the member is.
-        if (FirstName(name) is { Length: > 1 } first
-            && !forms.Contains(first, StringComparer.OrdinalIgnoreCase))
-        {
-            forms.Add(first);
-        }
-
+        // Words, not characters: the gap between two words matches any run of whitespace, so a
+        // name stored or written with a double space or a tab ("Mary  Ann") is still matched whole.
+        // Rebuilding the forms with single spaces would miss it and leave all but the first word.
+        var words = name.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         var redacted = text;
-        foreach (var form in forms.OrderByDescending(f => f.Length))
-            redacted = Regex.Replace(redacted, $@"\b{Regex.Escape(form)}\b", Token, RegexOptions.IgnoreCase);
+        for (var count = words.Length; count >= 1; count--)
+        {
+            // A single-letter first name is not worth matching: the word boundary would fire on
+            // every stray initial in the text and say nothing about who the member is. The full
+            // name is always matched, however short.
+            if (count < words.Length && count == 1 && words[0].Length <= 1)
+                continue;
+
+            var pattern = string.Join(@"\s+", words.Take(count).Select(Regex.Escape));
+            redacted = Regex.Replace(redacted, $@"\b{pattern}\b", Token, RegexOptions.IgnoreCase);
+        }
 
         return redacted;
     }

@@ -1,5 +1,6 @@
 ﻿using CardiTrack.Domain.Enums;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Controls;
@@ -54,8 +55,8 @@ public partial class StatusHeroCard : ContentView
 
     public void Apply(DashboardResponse data)
     {
-        var firstName = NameFormatting.FirstName(data.Name);
-        NameLabel.Text = data.Name;
+        var firstName = data.DisplayFirstName();
+        NameLabel.Text = data.DisplayFirstName();
         // "66 years - Male". Unspecified is left off rather than spelled out: a caregiver who
         // did not answer the question does not need it read back to them under the name.
         var sex = data.Gender switch

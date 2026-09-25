@@ -1020,7 +1020,8 @@ public class AlertDetailComposerTests
     private CardiMember Member(DateOnly? dateOfBirth = null) => new()
     {
         Id = _memberId,
-        Name = "Margaret Doe",
+        FirstName = "Margaret",
+        LastName = "Doe",
         DateOfBirth = dateOfBirth ?? new DateOnly(1950, 6, 1),
         Phone = "+15550001111",
         EmergencyContactName = "Jane",

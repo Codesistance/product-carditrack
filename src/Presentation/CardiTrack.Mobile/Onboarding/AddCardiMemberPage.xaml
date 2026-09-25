@@ -68,17 +68,30 @@
                             Margin="0,10,0,0"
                             Clicked="OnAddPhotoTapped"/>
 
-                    <!-- Full Name -->
+                    <!-- First Name -->
                     <VerticalStackLayout Spacing="6" Margin="0,28,0,0">
-                        <Label Text="Full Name*" Style="{StaticResource AuthFieldLabel}"/>
-                        <Border x:Name="NameBorder" Style="{StaticResource AuthEntryBorder}">
-                            <Entry x:Name="NameEntry"
+                        <Label Text="First Name*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border x:Name="FirstNameBorder" Style="{StaticResource AuthEntryBorder}">
+                            <Entry x:Name="FirstNameEntry"
                                    Style="{StaticResource AuthEntry}"
-                                   Placeholder="Enter Name"
+                                   Placeholder="What the family calls them"
                                    ReturnType="Next"
                                    TextChanged="OnFormChanged"/>
                         </Border>
-                        <Label x:Name="NameError" Style="{StaticResource AuthErrorLabel}" IsVisible="False"/>
+                        <Label x:Name="FirstNameError" Style="{StaticResource AuthErrorLabel}" IsVisible="False"/>
+                    </VerticalStackLayout>
+
+                    <!-- Last Name (optional: some people go by one name) -->
+                    <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
+                        <Label Text="Last Name" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border x:Name="LastNameBorder" Style="{StaticResource AuthEntryBorder}">
+                            <Entry x:Name="LastNameEntry"
+                                   Style="{StaticResource AuthEntry}"
+                                   Placeholder="Optional"
+                                   ReturnType="Next"
+                                   TextChanged="OnFormChanged"/>
+                        </Border>
+                        <Label x:Name="LastNameError" Style="{StaticResource AuthErrorLabel}" IsVisible="False"/>
                     </VerticalStackLayout>
 
                     <!-- Date of Birth -->

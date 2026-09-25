@@ -429,7 +429,7 @@ public class HealthInsightService : IHealthInsightService
         // name out of the caregiver notes DemographicsContextSource decrypts without redacting.
         // The guarded write at the end refuses to store the card, but the name has reached Vertex
         // by then — and A20's boundary is about what is sent, not about what is kept.
-        if (!NamePlaceholder.CanRedactAgainst(member?.Name))
+        if (!NamePlaceholder.CanRedactAgainst(member?.FullName))
         {
             CopyGuardTelemetry.Count(AlertSurface, CopyGuardTelemetry.ReasonReadBlank);
             return false;
@@ -438,8 +438,8 @@ public class HealthInsightService : IHealthInsightService
         // What the rewrite is given, held in a local because it is also what the rewrite is held
         // to: the grounding check below has to compare the copy against everything the model was
         // shown, not against half of it.
-        var brief = $"finding: {ForRewrite(read.Explanation, member.Name)}\n"
-            + $"suggested action: {ForRewrite(read.RecommendedAction, member.Name)}";
+        var brief = $"finding: {ForRewrite(read.Explanation, member.FullName)}\n"
+            + $"suggested action: {ForRewrite(read.RecommendedAction, member.FullName)}";
 
         AlertAiResponse aiResponse;
         try
@@ -748,7 +748,7 @@ public class HealthInsightService : IHealthInsightService
 
         // Same boundary as the alert path above, same reason: no member, no redaction, so
         // nothing crosses.
-        if (!NamePlaceholder.CanRedactAgainst(member?.Name))
+        if (!NamePlaceholder.CanRedactAgainst(member?.FullName))
         {
             CopyGuardTelemetry.Count(BaselineSurface, CopyGuardTelemetry.ReasonReadBlank);
             return false;
@@ -758,7 +758,7 @@ public class HealthInsightService : IHealthInsightService
         try
         {
             var readFindings = read.KeyFindings
-                .Select(finding => ForRewrite(finding, member.Name))
+                .Select(finding => ForRewrite(finding, member.FullName))
                 .Where(finding => finding.Length > 0)
                 .ToList();
 
@@ -766,7 +766,7 @@ public class HealthInsightService : IHealthInsightService
                 BuildRewritePrompt(
                     BaselineRewriteInstructions,
                     new DeidentifiedFindings(
-                        $"summary: {ForRewrite(read.Summary, member.Name)}"
+                        $"summary: {ForRewrite(read.Summary, member.FullName)}"
                         + (readFindings.Count == 0
                             ? string.Empty
                             : "\nfindings:\n- " + string.Join("\n- ", readFindings)))),

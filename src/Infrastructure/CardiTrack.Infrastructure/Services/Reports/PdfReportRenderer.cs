@@ -167,7 +167,7 @@ public class PdfReportRenderer : IReportRenderer
 
             foreach (var member in data.Members)
             {
-                var prefix = data.Members.Count > 1 ? $"{member.Member.Name} · " : string.Empty;
+                var prefix = data.Members.Count > 1 ? $"{member.Member.FullName} · " : string.Empty;
 
                 if (ShouldDrawTrends(sections, member, data.ChartFrom, data.ChartTo))
                     Section(column, prefix + "Trends", e => Charts(e, member, data.ChartFrom, data.ChartTo));
@@ -271,7 +271,7 @@ public class PdfReportRenderer : IReportRenderer
             .PaddingVertical(9).PaddingHorizontal(12)
             .Column(column =>
             {
-                column.Item().Text(member.Member.Name).FontSize(14).SemiBold().FontColor(Ink);
+                column.Item().Text(member.Member.FullName).FontSize(14).SemiBold().FontColor(Ink);
                 column.Item().PaddingTop(2).Text(string.Join("   ·   ", facts))
                     .FontSize(9).FontColor(Secondary);
             });

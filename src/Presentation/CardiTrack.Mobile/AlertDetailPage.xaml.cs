@@ -6,6 +6,7 @@ using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Charts;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -143,7 +144,7 @@ public partial class AlertDetailPage : ContentPage
     private void Apply(AlertDetailResponse alert)
     {
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-        var firstName = NameFormatting.FirstName(alert.CardiMemberName);
+        var firstName = alert.MemberFirstName();
         ChatBot.MemberId = alert.CardiMemberId;
         ChatBot.MemberFirstName = firstName;
 
@@ -178,9 +179,9 @@ public partial class AlertDetailPage : ContentPage
 
         Avatar.BoxWidth = 52;
         Avatar.Apply(alert.CardiMemberName, alert.CardiMemberPhotoUrl);
-        MemberNameLabel.Text = string.IsNullOrWhiteSpace(alert.CardiMemberName)
+        MemberNameLabel.Text = string.IsNullOrWhiteSpace(alert.MemberFirstName())
             ? "CardiMember"
-            : alert.CardiMemberName;
+            : alert.MemberFirstName();
         MemberTypeLabel.Text = alert.Type;
         MessageLabel.Text = alert.Message;
 
@@ -195,7 +196,7 @@ public partial class AlertDetailPage : ContentPage
         QuickActions.Apply(
             new QuickActionTarget(
                 alert.CardiMemberId,
-                alert.CardiMemberName,
+                alert.MemberFirstName(),
                 alert.Phone,
                 alert.EmergencyContactPhone,
                 alert.EmergencyContactName),
@@ -700,7 +701,7 @@ public partial class AlertDetailPage : ContentPage
         if (_alert is not { } alert)
             return;
 
-        var firstName = NameFormatting.FirstName(alert.CardiMemberName);
+        var firstName = alert.MemberFirstName();
         var who = string.IsNullOrWhiteSpace(firstName) ? "a CardiMember" : firstName;
 
         try

@@ -11,9 +11,14 @@ public class UpdateCardiMemberValidator : AbstractValidator<UpdateCardiMemberReq
 {
     public UpdateCardiMemberValidator()
     {
-        RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Name is required")
-            .Length(2, 100).WithMessage("Name must be between 2 and 100 characters");
+        // Same name rules as CreateCardiMemberValidator, including the legacy Name fallback.
+        RuleFor(x => x.FirstName)
+            .NotEmpty().WithMessage("First name is required")
+            .MaximumLength(100).WithMessage("First name cannot exceed 100 characters");
+
+        RuleFor(x => x.LastName)
+            .MaximumLength(100).WithMessage("Last name cannot exceed 100 characters")
+            .When(x => !string.IsNullOrEmpty(x.LastName));
 
         RuleFor(x => x.DateOfBirth)
             .NotEmpty().WithMessage("Date of birth is required")

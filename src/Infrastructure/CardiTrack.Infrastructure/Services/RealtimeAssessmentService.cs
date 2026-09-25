@@ -557,7 +557,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         // exactly what makes the refusal cheap here: the alert is still raised, carrying the
         // fixed non-clinical observation, so a missing name costs the family a sentence rather
         // than the page.
-        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        if (!NamePlaceholder.CanRedactAgainst(member.FullName))
         {
             _logger.LogWarning(
                 "The heart-rate alert for CardiMember {CardiMemberId} was raised without the "
@@ -570,7 +570,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         // would drop three quarters of a long read — including a conclusion that arrives late in
         // it — before the sentence a family is paged with is written from it.
         var flattened = MedicalPromptBlocks.FlattenWhole(assessment.ModelOutput);
-        var read = NamePlaceholder.Redact(flattened, member.Name) ?? flattened;
+        var read = NamePlaceholder.Redact(flattened, member.FullName) ?? flattened;
 
         AlertRewriteAiResponse rewritten;
         try

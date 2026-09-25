@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Devices;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 using Microsoft.Extensions.Logging;
 
@@ -62,8 +63,8 @@ public partial class DeviceConnectionPage : ContentPage
         TitleHeading.Text = $"Connect Your {device.DisplayName}";
         DeviceLogoText.Text = device.LogoText;
         AuthorizeBtn.Text = $"Authorize {device.DisplayName}";
-        NeedsLabel.Text = $"To look after {_member.Name}, CardiTrack needs:";
-        AuthorizingLabel.Text = $"Connecting to {_member.Name}'s {device.DisplayName}...";
+        NeedsLabel.Text = $"To look after {_member.DisplayFirstName()}, CardiTrack needs:";
+        AuthorizingLabel.Text = $"Connecting to {_member.DisplayFirstName()}'s {device.DisplayName}...";
 
         // The same-phone flow needs the system browser, which only iOS and Android have. On the
         // Windows build it would fail at the tap with "not supported here", so the handover is not
@@ -71,8 +72,8 @@ public partial class DeviceConnectionPage : ContentPage
         var canAuthorizeHere = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS();
         AuthorizeBtn.IsVisible = canAuthorizeHere;
         HandoverPrompt.Text = canAuthorizeHere
-            ? $"Is {NameFormatting.FirstName(_member.Name)} not with you?"
-            : $"Send this to {NameFormatting.FirstName(_member.Name)}";
+            ? $"Is {_member.DisplayFirstName()} not with you?"
+            : $"Send this to {_member.DisplayFirstName()}";
     }
 
     private async void OnAuthorizeClicked(object? sender, EventArgs e)

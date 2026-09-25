@@ -15,9 +15,18 @@ public class CardiMemberConfiguration : IEntityTypeConfiguration<CardiMember>
         builder.Property(c => c.OrganizationId)
             .IsRequired();
 
-        builder.Property(c => c.Name)
+        // 200 each, the width the single Name column had: the SplitCardiMemberName backfill can
+        // move any stored name into either part without truncating it. Input is capped tighter by
+        // the request validators.
+        builder.Property(c => c.FirstName)
             .HasMaxLength(200)
             .IsRequired();
+
+        builder.Property(c => c.LastName)
+            .HasMaxLength(200);
+
+        // Derived from the two parts above; never a column. See CardiMember.FullName.
+        builder.Ignore(c => c.FullName);
 
         builder.Property(c => c.Email)
             .HasMaxLength(255);

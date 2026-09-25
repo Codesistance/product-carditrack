@@ -92,7 +92,8 @@ public class WeekbookGenerationTests
     private CardiMember Member() => new()
     {
         Id = _memberId,
-        Name = "Ada Doe",
+        FirstName = "Ada",
+        LastName = "Doe",
         DateOfBirth = new DateOnly(1948, 3, 2),
         Gender = Gender.Female,
         IsActive = true,

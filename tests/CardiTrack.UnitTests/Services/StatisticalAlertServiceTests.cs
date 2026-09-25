@@ -75,7 +75,8 @@ public class StatisticalAlertServiceTests
     private CardiMember Member() => new()
     {
         Id = _memberId,
-        Name = "Margaret Doe",
+        FirstName = "Margaret",
+        LastName = "Doe",
         DateOfBirth = new DateOnly(1948, 3, 2),
         Gender = Gender.Female,
         IsActive = true,
@@ -1136,7 +1137,7 @@ public class StatisticalAlertServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "   ",
+            FirstName = "",
             DateOfBirth = new DateOnly(1948, 3, 2),
             Gender = Gender.Female,
             IsActive = true,

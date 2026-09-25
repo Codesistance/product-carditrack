@@ -1,3 +1,5 @@
+using CardiTrack.Domain.Common;
+
 namespace CardiTrack.Mobile.Core.Onboarding;
 
 /// <summary>
@@ -7,6 +9,13 @@ namespace CardiTrack.Mobile.Core.Onboarding;
 /// </summary>
 public sealed class CardiMemberDraft
 {
+    public string? FirstName { get; set; }
+    public string? LastName { get; set; }
+
+    /// <summary>
+    /// The single name field a draft saved before the first/last split carries. Read only through
+    /// <see cref="RestoredNames"/>; never written by a current build.
+    /// </summary>
     public string? Name { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public int RelationshipIndex { get; set; } = -1;
@@ -44,7 +53,9 @@ public sealed class CardiMemberDraft
     /// input, so a draft holding only that is treated as empty.
     /// </summary>
     public bool HasContent =>
-        !string.IsNullOrWhiteSpace(Name)
+        !string.IsNullOrWhiteSpace(FirstName)
+        || !string.IsNullOrWhiteSpace(LastName)
+        || !string.IsNullOrWhiteSpace(Name)
         || DateOfBirth is not null
         || RelationshipIndex >= 0
         || SexIndex >= 0
@@ -52,4 +63,20 @@ public sealed class CardiMemberDraft
         || !string.IsNullOrWhiteSpace(EmergencyContactName)
         || !string.IsNullOrWhiteSpace(EmergencyContactPhone)
         || !string.IsNullOrEmpty(PhotoPath);
+
+    /// <summary>
+    /// The first and last name to put back in the form: the two fields as typed, or — for a draft
+    /// saved by a build that had one name field — that name split the way the server splits it,
+    /// so an upgrade mid-onboarding does not lose what the caregiver typed.
+    /// </summary>
+    public (string? FirstName, string? LastName) RestoredNames()
+    {
+        if (!string.IsNullOrWhiteSpace(FirstName) || !string.IsNullOrWhiteSpace(LastName))
+            return (FirstName, LastName);
+        if (string.IsNullOrWhiteSpace(Name))
+            return (null, null);
+
+        var (first, last) = PersonName.Split(Name);
+        return (first, last);
+    }
 }

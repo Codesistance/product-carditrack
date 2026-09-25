@@ -54,7 +54,8 @@ public class AdviseGenerationServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 3, 15),
             // On file, and load-bearing since the rewrite brief stopped choosing for itself: the
             // copy below writes a pronoun token, and this is what it resolves to.
@@ -661,7 +662,7 @@ public class AdviseGenerationServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "",
+            FirstName = "",
             IsActive = true,
         });
         var existing = ExistingRow(_memberId, promptVersion: 0);
@@ -867,7 +868,8 @@ public class AdviseGenerationServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             IsActive = true,
             MonitoringPausedUntil = DateTime.UtcNow.AddHours(4),
         });
@@ -885,7 +887,8 @@ public class AdviseGenerationServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             IsActive = false,
         });
 

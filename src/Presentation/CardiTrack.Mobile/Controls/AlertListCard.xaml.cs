@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Controls;
@@ -35,9 +36,9 @@ public partial class AlertListCard : ContentView
         // Who and when share the line under the title: "Dad, 6 days ago". An alert whose member
         // name comes back blank (the field is never null, but it can be empty) just says when.
         var when = RelativeTime.Format(alert.TriggeredAt);
-        MemberLabel.Text = string.IsNullOrWhiteSpace(alert.CardiMemberName)
+        MemberLabel.Text = string.IsNullOrWhiteSpace(alert.MemberFirstName())
             ? when
-            : $"{alert.CardiMemberName}, {when}";
+            : $"{alert.MemberFirstName()}, {when}";
         MessageLabel.Text = alert.Message;
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
@@ -83,7 +84,7 @@ public partial class AlertListCard : ContentView
         AcknowledgeButton.IsVisible = !isHandled;
 
         // "them" when the list carries no name, so the tooltips below stay sentences.
-        var firstName = NameFormatting.FirstName(alert.CardiMemberName);
+        var firstName = alert.MemberFirstName();
         var who = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
 
         // Call reaches the member; SOS reaches their emergency contact — the dashboard's two

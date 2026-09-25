@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Services;
 #if ANDROID || IOS
 using CardiTrack.Mobile.Notifications;
@@ -23,7 +24,7 @@ public partial class ConnectionSuccessPage : ContentPage
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
         _ctx = ctx;
         _member = ctx.RequireMember();
-        ConnectedLabel.Text = $"{_member.Name}'s {device.DisplayName} is now connected";
+        ConnectedLabel.Text = $"{_member.DisplayFirstName()}'s {device.DisplayName} is now connected";
 
         if (!ctx.ShowBaselineIntro)
         {

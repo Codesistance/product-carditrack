@@ -1412,7 +1412,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // straight back — see CanRedactAgainst. The book is discarded rather than written from a
         // read that could carry the member's name to Vertex; the apps' own "no review yet" copy
         // is a better thing to show a caregiver than an off-estate disclosure.
-        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        if (!NamePlaceholder.CanRedactAgainst(member.FullName))
         {
             CopyGuardTelemetry.Count($"{period}book", CopyGuardTelemetry.ReasonReadBlank);
             _logger.LogWarning(
@@ -1426,7 +1426,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // sized for a caregiver note, so it would hand the rewrite the first thousand characters
         // of the account and nothing else.
         var flattened = MedicalPromptBlocks.FlattenWhole(finding);
-        var read = NamePlaceholder.Redact(flattened, member.Name) ?? flattened;
+        var read = NamePlaceholder.Redact(flattened, member.FullName) ?? flattened;
 
         try
         {
@@ -1913,7 +1913,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         {
             familyFacts = QuestionnaireAnswersContextSource.VisibleFacts(
                 await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
-                _encryption, utcNow, member?.Name);
+                _encryption, utcNow, member?.FullName);
 
             if (familyFacts.Count > 0
                 && !memberContext.Contains(
@@ -1985,7 +1985,7 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         // No name, nothing to redact against, and NamePlaceholder.Redact would hand the read
         // straight back — see CanRedactAgainst. Nothing crosses; the previous summary stands.
-        if (member is null || !NamePlaceholder.CanRedactAgainst(member.Name))
+        if (member is null || !NamePlaceholder.CanRedactAgainst(member.FullName))
         {
             _logger.LogWarning(
                 "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: no "
@@ -1996,7 +1996,7 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         // The A20 boundary as a type: the rewrite builder takes DeidentifiedFindings and cannot be
         // handed the member context or the readings, whatever a future edit here tries to pass.
-        var read = RenderClinicalRead(clinical, member.Name);
+        var read = RenderClinicalRead(clinical, member.FullName);
 
         // The yardstick the copy coming back is measured against — a summary or a headline may
         // only name a reading this text named. Narrower than what the prompt is sent, on purpose:

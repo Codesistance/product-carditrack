@@ -358,7 +358,8 @@ public class HealthInsightServicePromptTests
         _members.GetByIdAsync(memberId).Returns(new CardiMember
         {
             Id = memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = DateOfBirth,
             Gender = gender,
             MedicalNotes = medicalNotes,
@@ -785,7 +786,7 @@ public class HealthInsightServicePromptTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "   ",
+            FirstName = "",
             DateOfBirth = DateOfBirth,
             Gender = Gender.Female,
             IsActive = true,
@@ -981,7 +982,7 @@ public class HealthInsightServicePromptTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "   ",
+            FirstName = "",
             DateOfBirth = DateOfBirth,
             IsActive = true,
         });

@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
@@ -118,7 +119,7 @@ public partial class MedicalInformationPage : ContentPage
             return;
 
         var edited = await _popups.EditMedicalNotesAsync(
-            NameFormatting.FirstName(_member.Name), _member.MedicalNotes);
+            _member.DisplayFirstName(), _member.MedicalNotes);
 
         // Null is "cancelled"; an empty string is a background the caregiver deliberately cleared.
         if (edited is null)
@@ -185,7 +186,12 @@ public partial class MedicalInformationPage : ContentPage
     private static UpdateCardiMemberRequest RequestFor(CardiMemberDetailResponse member, string notes) =>
         new()
         {
-            Name = member.Name,
+            // Display* rather than the raw fields: from an API that predates the split, FirstName
+            // is empty and the parts come from the full name. Name is the old API's single name,
+            // held to its 2–100 rule; a current API ignores it whenever FirstName is sent.
+            FirstName = member.DisplayFirstName(),
+            LastName = member.DisplayLastName(),
+            Name = MemberNameRules.LegacyName(member.DisplayFirstName(), member.DisplayLastName()),
             DateOfBirth = member.DateOfBirth,
             RelationshipType = member.Relationship,
             Email = member.Email,
@@ -279,7 +285,7 @@ public partial class MedicalInformationPage : ContentPage
     private void Apply(CardiMemberDetailResponse member)
     {
         var hasNotes = !string.IsNullOrWhiteSpace(member.MedicalNotes);
-        var firstName = NameFormatting.FirstName(member.Name);
+        var firstName = member.DisplayFirstName();
         ChatBot.MemberId = _route.Id;
         ChatBot.MemberFirstName = firstName;
 

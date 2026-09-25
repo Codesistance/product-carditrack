@@ -90,6 +90,66 @@ public class NamePlaceholderTests
     /// Word-bounded: a name that happens to sit inside a longer word is not the member being
     /// named, and replacing it would corrupt the sentence the model has to read.
     /// </summary>
+    /// <summary>
+    /// A stored first name can be more than one word, and it is what chat replies now resolve to —
+    /// so recalled history holds "Mary Ann" verbatim. Every leading run of the full name is
+    /// matched, so no half of it ("Ann") reaches the model.
+    /// </summary>
+    [Fact]
+    public void Redact_TakesAMultiWordFirstNameWhole() =>
+        Assert.Equal(
+            $"{NamePlaceholder.Token} slept well. {NamePlaceholder.Token} walked. {NamePlaceholder.Token} rested.",
+            NamePlaceholder.Redact("Mary Ann Smith slept well. Mary Ann walked. Mary rested.", "Mary Ann Smith"));
+
+    /// <summary>
+    /// The API trims names but does not collapse the space inside them, and a caregiver can type
+    /// "Mary  Ann". Neither the stored spacing nor the text's may decide whether a word escapes.
+    /// </summary>
+    /// <summary>
+    /// <see cref="NamePlaceholder.Redact"/> deliberately skips a lone initial (see
+    /// <see cref="Redact_SkipsASingleLetterFirstName"/>), so a one-letter first name must never be
+    /// what chat resolution writes into replies and history on its own: it resolves to the full
+    /// name, which is redacted whole on the way back to the model.
+    /// </summary>
+    [Fact]
+    public void ASingleLetterFirstName_NeverReachesTheModelThroughChatHistory()
+    {
+        var member = new CardiTrack.Domain.Entities.CardiMember { FirstName = "A", LastName = "Smith" };
+
+        var resolvedName = NamePlaceholder.FirstNameOf(member);
+        var storedReply = NamePlaceholder.Resolve(
+            $"{NamePlaceholder.Token} slept well and {NamePlaceholder.Token} walked more.", resolvedName);
+        var historyForModel = NamePlaceholder.Redact(storedReply, member.FullName);
+
+        Assert.Equal("A Smith", resolvedName);
+        Assert.Equal(
+            $"{NamePlaceholder.Token} slept well and {NamePlaceholder.Token} walked more.", historyForModel);
+        Assert.DoesNotContain("Smith", historyForModel);
+        Assert.DoesNotMatch(@"\bA\b", historyForModel);
+    }
+
+    [Theory]
+    [InlineData("Arthur", "Doe", "Arthur")]
+    [InlineData("Mary Ann", "Smith", "Mary Ann")]
+    [InlineData("A", null, "A")]
+    [InlineData("  ", "Doe", null)]
+    public void FirstNameOf_IsTheStoredFirstName_ExceptALoneInitialBesideASurname(
+        string first, string? last, string? expected)
+    {
+        var member = new CardiTrack.Domain.Entities.CardiMember { FirstName = first, LastName = last };
+
+        Assert.Equal(expected, NamePlaceholder.FirstNameOf(member));
+    }
+
+    [Theory]
+    [InlineData("Mary  Ann Smith")]
+    [InlineData("Mary Ann\tSmith")]
+    [InlineData("Mary Ann Smith")]
+    public void Redact_MatchesAcrossAnyRunOfWhitespace(string storedFullName) =>
+        Assert.Equal(
+            $"{NamePlaceholder.Token} slept. {NamePlaceholder.Token} walked. {NamePlaceholder.Token} rested.",
+            NamePlaceholder.Redact("Mary Ann  Smith slept. Mary\tAnn walked. Mary  Ann rested.", storedFullName));
+
     [Fact]
     public void Redact_DoesNotMatchInsideALongerWord() =>
         Assert.Equal("Marginal changes only.", NamePlaceholder.Redact("Marginal changes only.", "Mar"));

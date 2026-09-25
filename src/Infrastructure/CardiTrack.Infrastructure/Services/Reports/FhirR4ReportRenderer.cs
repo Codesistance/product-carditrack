@@ -182,9 +182,15 @@ public class FhirR4ReportRenderer : IReportRenderer
         Id = id.ToString(),
         Meta = RestrictedMeta(),
         Active = true,
-        // HumanName.Text rather than parsed given/family: we store one name field, and splitting
-        // it on whitespace would guess wrong for a great many real names.
-        Name = [new HumanName { Text = member.Name }],
+        // Given/family straight from the two fields the caregiver fills in — never parsed out of
+        // the full name, which would guess wrong for a great many real names. Family is omitted
+        // for a single-name member; Text carries the name as it is displayed.
+        Name = [new HumanName
+        {
+            Given = [member.FirstName],
+            Family = member.LastName,
+            Text = member.FullName,
+        }],
         BirthDate = member.DateOfBirth.ToString("yyyy-MM-dd"),
         Gender = MapGender(member.Gender)
         // Deliberately absent: telecom, address, emergency contacts and medical notes. None of

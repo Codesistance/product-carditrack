@@ -111,7 +111,7 @@ public class DashboardService : IDashboardService
 
         var latestAssessment = await _unitOfWork.RealtimeAssessments.GetLatestAsync(cardiMemberId, ct);
         var (freshnessTier, freshnessMessage) = MemberInsightsCalculator.ComputeDataFreshness(
-            lastSyncedAt, latestAssessment?.GeneratedAtUtc, now, FirstNameOf(member.Name));
+            lastSyncedAt, latestAssessment?.GeneratedAtUtc, now, member.FirstName);
 
         // Everything the verdict needs is already resolved above — no extra read but the one
         // aggregate. Evaluated here rather than in the response initialiser because the response
@@ -168,7 +168,9 @@ public class DashboardService : IDashboardService
         return new DashboardResponse
         {
             CardiMemberId = member.Id,
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
+            Name = member.FullName,
             Age = age,
             Gender = member.Gender,
             EmergencyContactPhone = member.EmergencyContactPhone,
@@ -244,7 +246,4 @@ public class DashboardService : IDashboardService
             GeneratedAt = now,
         };
     }
-
-    private static string FirstNameOf(string name) =>
-        name.Split(' ', StringSplitOptions.RemoveEmptyEntries) is [var first, ..] ? first : name;
 }

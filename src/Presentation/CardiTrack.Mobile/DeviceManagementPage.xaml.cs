@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Devices;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Onboarding;
@@ -159,10 +160,10 @@ public partial class DeviceManagementPage : ContentPage
                     _last = load;
                     _member = load.Member;
                     ChatBot.MemberId = memberId;
-                    ChatBot.MemberFirstName = NameFormatting.FirstName(load.Member.Name);
-                    MemberSubtitleLabel.Text = $"{load.Member.Name} • CardiMember";
+                    ChatBot.MemberFirstName = load.Member.DisplayFirstName();
+                    MemberSubtitleLabel.Text = $"{load.Member.DisplayFirstName()} • CardiMember";
                     EmptyDetailLabel.Text =
-                        $"Connect a wearable so CardiTrack can start watching over {NameFormatting.FirstName(load.Member.Name)}.";
+                        $"Connect a wearable so CardiTrack can start watching over {load.Member.DisplayFirstName()}.";
                     Render(load.Devices.Devices);
                     SetState(loaded: true);
                 },

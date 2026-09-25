@@ -30,6 +30,8 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 
 ## Screen Index
 
+**Member names:** every screen greets and labels a CardiMember by their **first name** only — headers, cards, alert rows, pickers, prompts and toasts alike (`MemberNames.DisplayFirstName()` / `MemberFirstName()` in `CardiTrack.Mobile.Core`, which read the API's stored `firstName` and fall back to the first word of `name` only against an API from before the first/last split). Avatars still take initials from the full name. The full name appears only where an export names the member (health export title, CardiJournal export).
+
 | ID | Screen | Variations | Built |
 |----|--------|------------|-------|
 | M1-01 | Splash Screen | 2 (a–b) | ✅ `SplashPage` |
@@ -369,7 +371,8 @@ These five screens span onboarding → daily use → emergency response. **Build
 - Tapping either opens the photo action sheet: "Take a photo" (`MediaPicker.CapturePhotoAsync`; hidden where capture isn't supported), "Choose from library" (`MediaPicker.PickPhotosAsync`), and "Remove photo" once one is set. The photo is downscaled on device (longest edge ≤ 1280 px, JPEG) and sent as `photoBase64` on submit; if it can't be prepared the form offers "Continue without photo" rather than blocking the member.
 
 **Required Fields:**
-- "Full Name *" — text input
+- "First Name *" — text input (what the family calls them; the name the app greets and labels them by)
+- "Last Name" — text input, **optional** (some people go by one name). Continue stays off until the first name is filled; both are capped at 100 characters (`MemberNameRules`, the API's rules). A draft saved by a build with the old single "Full Name" field is restored split into the two
 - "Date of Birth *" — date picker (format: MM/DD/YYYY). Unset until they pick a day (`DateField.Date` is nullable); Continue stays off until a date is chosen, and submit refuses a missing or out-of-range date (`DateOfBirth.Validate`) rather than standing in today.
 - "Sex *" — picker (Male / Female), helper text: "Helps us read heart rate and sleep against the right range."
   - **Deliberate divergence from the Figma M1-04/M1-13 comps** — the field is not in the design file but ships because DOB + sex set the reference range the summaries are read against; do not drop it on a pixel-match pass
@@ -925,7 +928,7 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 
 **Photo:** the member's photo when one is set, otherwise an initials avatar live-updating as the name is typed. Tapping the avatar — or the "Change Photo" link beneath — opens the photo action sheet (take / choose from library / remove); a replacement or removal is applied when the form saves (`photoBase64` / `removePhoto`, never both).
 
-**Basic Info:** "Full Name*", "Date of Birth*" (picker), "Relationship*" (picker)
+**Basic Info:** "First Name*", "Last Name" (optional), "Date of Birth*" (picker), "Relationship*" (picker)
 
 **Medical & Emergency:** "Medical Notes" (multi-line, ≤2000 chars, encrypted at rest), "Emergency Contact Name", "Emergency Contact Number"
 

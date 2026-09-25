@@ -60,7 +60,7 @@ public class FamilyService : IFamilyService
             // inventory of who the family watches.
             var watched = (await _unitOfWork.CardiMembers.GetByOrganizationIdAsync(membership.OrganizationId))
                 .Where(m => links.Contains(m.Id))
-                .Select(m => m.Name)
+                .Select(m => m.FirstName)
                 .ToList();
 
             summaries.Add(new FamilySummary(

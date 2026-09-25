@@ -206,7 +206,7 @@ public class ReportComparisonTests
             .ToList();
 
         return new ReportMemberData(
-            new CardiMember { Id = _memberId, Name = "Test Member", DateOfBirth = new DateOnly(1948, 3, 15) },
+            new CardiMember { Id = _memberId, FirstName = "Test", LastName = "Member", DateOfBirth = new DateOnly(1948, 3, 15) },
             logs, [], [], [], [])
         {
             Baseline = baseline,

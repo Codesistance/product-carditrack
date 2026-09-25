@@ -122,7 +122,7 @@ public class ChatThemeService : IChatThemeService
         // rather than themed from an unredacted transcript. Such a session re-queues each pass
         // and keeps its opening-question fallback; an orphaned one is the deletion pipeline's
         // to remove (R-A17), not this job's to label.
-        if (string.IsNullOrWhiteSpace(member?.Name))
+        if (string.IsNullOrWhiteSpace(member?.FullName))
         {
             _logger.LogWarning(
                 "Theming skipped for chat session {SessionId}: CardiMember {CardiMemberId} not found or has no name, so the transcript cannot be redacted.",
@@ -134,7 +134,7 @@ public class ChatThemeService : IChatThemeService
         // and the member's name swapped back out before any of it leaves the estate.
         var lines = turns.Select(t =>
         {
-            var content = NamePlaceholder.Redact(Reveal(t.Content), member?.Name) ?? string.Empty;
+            var content = NamePlaceholder.Redact(Reveal(t.Content), member.FullName) ?? string.Empty;
             // One turn, one line: embedded newlines would let a turn's content masquerade as
             // extra role-prefixed lines in the transcript — and would make the per-line cap
             // below meaningless for the lines after the first.
@@ -157,7 +157,7 @@ public class ChatThemeService : IChatThemeService
             session.Id, generation.Usage.ModelName, generation.Usage.InputTokens,
             generation.Usage.OutputTokens, generation.Usage.DurationMs);
 
-        return Sanitize(generation.Result.Theme, member?.Name);
+        return Sanitize(generation.Result.Theme, NamePlaceholder.FirstNameOf(member));
     }
 
     /// <summary>
@@ -166,7 +166,7 @@ public class ChatThemeService : IChatThemeService
     /// belongs); one that cannot be resolved is refused rather than shown as a sentinel — the
     /// same rule <c>MemberChatService.ResolvedOrFallback</c> applies to replies.
     /// </summary>
-    private static string? Sanitize(string? theme, string? memberName)
+    private static string? Sanitize(string? theme, string? memberFirstName)
     {
         var cleaned = (theme ?? string.Empty)
             .ReplaceLineEndings(" ")
@@ -177,7 +177,7 @@ public class ChatThemeService : IChatThemeService
         if (cleaned.Length == 0)
             return null;
 
-        cleaned = NamePlaceholder.Resolve(cleaned, NamePlaceholder.FirstName(memberName)) ?? cleaned;
+        cleaned = NamePlaceholder.Resolve(cleaned, memberFirstName) ?? cleaned;
         if (NamePlaceholder.IsPresentIn(cleaned))
             return null;
 

@@ -158,7 +158,8 @@ public class MedicalLedgerConcurrencyTests : IAsyncLifetime
         var member = new CardiMember
         {
             OrganizationId = organization.Id,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 3, 1),
             MedicalNotes = notes,
             IsActive = true,

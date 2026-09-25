@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
@@ -551,7 +552,7 @@ public partial class AlertsPage : ContentPage
     {
         if (string.IsNullOrWhiteSpace(number))
         {
-            var prompt = addPrompt(NameFormatting.FirstName(alert.CardiMemberName));
+            var prompt = addPrompt(alert.MemberFirstName());
             var addNow = await _popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");
             if (addNow)
                 await Shell.Current.GoToAsync(

@@ -149,7 +149,7 @@ public partial class CaregiverInvitesPage : ContentPage
 
     private void Apply(IReadOnlyList<CaregiverInviteResponse> invites)
     {
-        var first = NameFormatting.FirstName(_memberName);
+        var first = _memberName;
         var who = string.IsNullOrWhiteSpace(first) ? "them" : first;
         HeaderTitle.Text = string.IsNullOrWhiteSpace(first) ? "Who can see them" : $"Who can see {first}";
         HeaderSubtitle.Text = "The people helping you watch over them";
@@ -322,7 +322,7 @@ public partial class CaregiverInvitesPage : ContentPage
         if (string.IsNullOrEmpty(_freshLink))
             return;
 
-        var first = NameFormatting.FirstName(_memberName);
+        var first = _memberName;
         var who = string.IsNullOrWhiteSpace(first) ? "someone I look after" : first;
         try
         {

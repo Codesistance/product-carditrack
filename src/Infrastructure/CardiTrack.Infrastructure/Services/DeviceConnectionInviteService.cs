@@ -202,7 +202,7 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
             return null;
 
         return new WearerInviteView(
-            MemberFirstName: NamePlaceholder.FirstName(member.Name) ?? member.Name,
+            MemberFirstName: member.FirstName,
             CaregiverFirstName: NamePlaceholder.FirstName(caregiver.Name) ?? caregiver.Name,
             DeviceDisplayName: invite.DeviceType.GetDisplayName(),
             Provider: DeviceProviderNames.ToWireName(invite.DeviceType),

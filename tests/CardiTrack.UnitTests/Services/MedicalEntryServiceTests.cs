@@ -63,7 +63,7 @@ public class MedicalEntryServiceTests
                 : throw new FormatException("not ciphertext");
         });
 
-        _member = new CardiMember { Name = "Margaret Doe", IsActive = true, CreatedDate = Now.AddYears(-1) };
+        _member = new CardiMember { FirstName = "Margaret", LastName = "Doe", IsActive = true, CreatedDate = Now.AddYears(-1) };
         _members.GetByIdAsync(_member.Id).Returns(_member);
     }
 

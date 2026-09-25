@@ -141,7 +141,7 @@ public sealed class JournalChatActions
         CancellationToken ct)
     {
         var (localToday, weekStartsOn) = await LocalCalendarAsync(cardiMemberId, member, utcNow);
-        var firstName = NamePlaceholder.FirstName(member?.Name);
+        var firstName = NamePlaceholder.FirstNameOf(member);
 
         // The member's name comes out of the caregiver's words before they reach the Rewrite
         // slot — "rewrite Moses's daybook" carries the one identifier this prompt could leak — the
@@ -149,7 +149,7 @@ public sealed class JournalChatActions
         // the service; the token, should the model echo it, has no use here and is never shown.
         var resolved = await _rewriteAi.GenerateStructuredWithUsageAsync<JournalResolveAiResponse>(
             BuildResolvePrompt(
-                NamePlaceholder.RedactMessageOrRefuse(flattened, member?.Name),
+                NamePlaceholder.RedactMessageOrRefuse(flattened, member?.FullName),
                 questionsOnlyHistory, localToday, weekStartsOn),
             ct);
 
@@ -321,7 +321,7 @@ public sealed class JournalChatActions
         }
 
         var (localToday, _) = await LocalCalendarAsync(cardiMemberId, member, utcNow);
-        var firstName = NamePlaceholder.FirstName(member?.Name);
+        var firstName = NamePlaceholder.FirstNameOf(member);
 
         if (!await MemberChatAccess.CanManageAsync(_access, userId, cardiMemberId, ct))
         {

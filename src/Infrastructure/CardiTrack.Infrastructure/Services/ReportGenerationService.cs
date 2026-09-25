@@ -514,7 +514,7 @@ public class ReportGenerationService : IReportGenerationService
     private static string BuildFileName(ReportDataSet data, string extension)
     {
         var subject = data.Members.Count == 1
-            ? Slug(data.Members[0].Member.Name)
+            ? Slug(data.Members[0].Member.FullName)
             : $"{data.Members.Count}-members";
 
         // A transcript says so in its name and is dated by the conversation, not by the range
@@ -600,7 +600,7 @@ public class ReportGenerationService : IReportGenerationService
         foreach (var member in data.Members)
         {
             var label = PseudonymFor(pseudonyms.Count);
-            pseudonyms[label] = member.Member.Name;
+            pseudonyms[label] = member.Member.FullName;
 
             var sb = new StringBuilder();
             sb.AppendLine($"## {label}");

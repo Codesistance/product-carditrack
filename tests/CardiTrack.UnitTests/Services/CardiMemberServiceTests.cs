@@ -76,7 +76,8 @@ public class CardiMemberServiceTests
 
     private static CreateCardiMemberRequest BuildRequest() => new()
     {
-        Name = "Margaret Doe",
+        FirstName = "Margaret",
+        LastName = "Doe",
         DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
         Gender = Gender.Female,
         Email = "margaret@example.com",
@@ -137,6 +138,56 @@ public class CardiMemberServiceTests
     }
 
     [Fact]
+    public async Task Create_FromALegacyClientSendingOnlyName_SplitsItLikeTheMigration()
+    {
+        CardiMember? savedMember = null;
+        await _members.AddAsync(Arg.Do<CardiMember>(m => savedMember = m));
+        // Built without FirstName/LastName, as an old build's payload deserialises: omitted.
+        var full = BuildRequest();
+        var request = new CreateCardiMemberRequest
+        {
+            Name = "Mary Ann Smith",
+            DateOfBirth = full.DateOfBirth,
+            Gender = full.Gender,
+            RelationshipType = full.RelationshipType,
+            IsPrimaryCaregiver = full.IsPrimaryCaregiver,
+        };
+
+        await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request);
+
+        Assert.Equal("Mary", savedMember!.FirstName);
+        Assert.Equal("Ann Smith", savedMember.LastName);
+    }
+
+    [Fact]
+    public async Task Create_TrimsTheNamesAndStoresABlankLastNameAsNone()
+    {
+        CardiMember? savedMember = null;
+        await _members.AddAsync(Arg.Do<CardiMember>(m => savedMember = m));
+        var request = BuildRequest();
+        request.FirstName = "  Arthur ";
+        request.LastName = "   ";
+
+        var response = await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request);
+
+        Assert.Equal("Arthur", savedMember!.FirstName);
+        Assert.Null(savedMember.LastName);
+        Assert.Equal("Arthur", response.FirstName);
+        Assert.Null(response.LastName);
+        Assert.Equal("Arthur", response.Name);
+    }
+
+    [Fact]
+    public async Task Create_ResponseCarriesBothPartsAndTheJoinedFullName()
+    {
+        var response = await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, BuildRequest());
+
+        Assert.Equal("Margaret", response.FirstName);
+        Assert.Equal("Doe", response.LastName);
+        Assert.Equal("Margaret Doe", response.Name);
+    }
+
+    [Fact]
     public async Task Create_PersistsMemberAndCaregiverLink()
     {
         CardiMember? savedMember = null;
@@ -148,7 +199,8 @@ public class CardiMemberServiceTests
 
         Assert.NotNull(savedMember);
         Assert.Equal(_organizationId, savedMember!.OrganizationId);
-        Assert.Equal("Margaret Doe", savedMember.Name);
+        Assert.Equal("Margaret", savedMember.FirstName);
+        Assert.Equal("Doe", savedMember.LastName);
         Assert.Equal(Gender.Female, savedMember.Gender);
         // Medical notes are PHI — what reaches the repository must be ciphertext.
         Assert.Equal("enc(Pacemaker fitted 2019)", savedMember.MedicalNotes);
@@ -221,7 +273,8 @@ public class CardiMemberServiceTests
         var member = new CardiMember
         {
             OrganizationId = _organizationId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
             IsActive = true,
         };
@@ -249,7 +302,7 @@ public class CardiMemberServiceTests
     [Fact]
     public async Task GetById_DefaultsRelationship_WhenNoLinksExist()
     {
-        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
+        var member = new CardiMember { OrganizationId = _organizationId, FirstName = "Margaret", LastName = "Doe" };
         _members.GetByIdAsync(member.Id).Returns(member);
         _links.GetByCardiMemberIdAsync(member.Id).Returns([]);
 
@@ -262,8 +315,8 @@ public class CardiMemberServiceTests
     [Fact]
     public async Task GetForUserInOrganization_ListsOnlyTheMembersTheCallerHasAGrantOn()
     {
-        var mine = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
-        var theirs = new CardiMember { OrganizationId = _organizationId, Name = "Arthur Doe" };
+        var mine = new CardiMember { OrganizationId = _organizationId, FirstName = "Margaret", LastName = "Doe" };
+        var theirs = new CardiMember { OrganizationId = _organizationId, FirstName = "Arthur", LastName = "Doe" };
         _members.GetByOrganizationIdAsync(_organizationId).Returns([mine, theirs]);
         _links.GetByCardiMemberIdAsync(mine.Id).Returns(
         [
@@ -303,7 +356,7 @@ public class CardiMemberServiceTests
     [Fact]
     public async Task GetForUserInOrganization_ReportsTheCallersOwnRelationship_NotAnothersGrant()
     {
-        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
+        var member = new CardiMember { OrganizationId = _organizationId, FirstName = "Margaret", LastName = "Doe" };
         _members.GetByOrganizationIdAsync(_organizationId).Returns([member]);
         _links.GetByCardiMemberIdAsync(member.Id).Returns(
         [
@@ -338,7 +391,7 @@ public class CardiMemberServiceTests
     [Fact]
     public async Task GetForUserInOrganization_IgnoresARevokedGrant()
     {
-        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
+        var member = new CardiMember { OrganizationId = _organizationId, FirstName = "Margaret", LastName = "Doe" };
         _members.GetByOrganizationIdAsync(_organizationId).Returns([member]);
         _links.GetByCardiMemberIdAsync(member.Id).Returns(
         [
@@ -359,8 +412,8 @@ public class CardiMemberServiceTests
     {
         // The Family tab's "last heard from" line: the newest across the member's active
         // connections when the member carries no stamp of its own — the detail screen's rule.
-        var watched = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
-        var unconnected = new CardiMember { OrganizationId = _organizationId, Name = "Arthur Doe" };
+        var watched = new CardiMember { OrganizationId = _organizationId, FirstName = "Margaret", LastName = "Doe" };
+        var unconnected = new CardiMember { OrganizationId = _organizationId, FirstName = "Arthur", LastName = "Doe" };
         _members.GetByOrganizationIdAsync(_organizationId).Returns([watched, unconnected]);
         foreach (var member in new[] { watched, unconnected })
         {
@@ -397,7 +450,7 @@ public class CardiMemberServiceTests
     public async Task GetForUserInOrganization_PrefersTheMembersOwnStamp_OverANewerConnection()
     {
         var own = new DateTime(2026, 9, 25, 9, 0, 0, DateTimeKind.Utc);
-        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe", LastSyncDate = own };
+        var member = new CardiMember { OrganizationId = _organizationId, FirstName = "Margaret", LastName = "Doe", LastSyncDate = own };
         _members.GetByOrganizationIdAsync(_organizationId).Returns([member]);
         _links.GetByCardiMemberIdAsync(member.Id).Returns(
         [
@@ -420,7 +473,7 @@ public class CardiMemberServiceTests
     [Fact]
     public async Task GetForUserInOrganization_ConnectedButNeverSynced_CountsTheDeviceWithNoTime()
     {
-        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
+        var member = new CardiMember { OrganizationId = _organizationId, FirstName = "Margaret", LastName = "Doe" };
         _members.GetByOrganizationIdAsync(_organizationId).Returns([member]);
         _links.GetByCardiMemberIdAsync(member.Id).Returns(
         [
@@ -447,7 +500,8 @@ public class CardiMemberServiceTests
         var member = new CardiMember
         {
             OrganizationId = _organizationId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
             EmergencyContactName = "Jane Doe",
             EmergencyContactPhone = "+441234567891",
@@ -790,7 +844,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = "Margaret A. Doe",
+            FirstName = "Maggie",
+            LastName = "Doe-Smith",
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Now also on lisinopril",
@@ -799,7 +854,8 @@ public class CardiMemberServiceTests
             AlertSensitivity = AlertSensitivity.High,
         });
 
-        Assert.Equal("Margaret A. Doe", member.Name);
+        Assert.Equal("Maggie", member.FirstName);
+        Assert.Equal("Doe-Smith", member.LastName);
         Assert.Equal("enc(Now also on lisinopril)", member.MedicalNotes);
         Assert.Equal("John Doe", member.EmergencyContactName);
         Assert.Equal(AlertSensitivity.High, member.AlertSensitivity);
@@ -812,7 +868,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "   ",
@@ -831,7 +888,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Pacemaker fitted 2019. Now also on lisinopril",
@@ -854,7 +912,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             // Exactly what SeedMember has on file, the way a form that never showed the field
@@ -881,7 +940,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Written before encryption",
@@ -900,7 +960,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "   ",
@@ -1012,7 +1073,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Penicillin allergy, stopped aspirin",
@@ -1044,7 +1106,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Allergy: Penicillin",
@@ -1068,7 +1131,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Pacemaker fitted 2019. Now also on lisinopril",
@@ -1090,7 +1154,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = null,
@@ -1117,7 +1182,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Allergy: Penicillin",
@@ -1146,7 +1212,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             RelationshipType = RelationshipType.Parent,
             MedicalNotes = "Pacemaker fitted 2019",
@@ -1198,7 +1265,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             Gender = Gender.Male,
         });
@@ -1217,7 +1285,8 @@ public class CardiMemberServiceTests
 
         await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
         {
-            Name = member.Name,
+            FirstName = member.FirstName,
+            LastName = member.LastName,
             DateOfBirth = member.DateOfBirth,
             Gender = null,
         });
@@ -1233,9 +1302,9 @@ public class CardiMemberServiceTests
             .Returns(Task.FromException(new KeyNotFoundException("CardiMember not found")));
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() => CreateSut().UpdateAsync(
-            _userId, member.Id, new UpdateCardiMemberRequest { Name = "Nope", DateOfBirth = member.DateOfBirth }));
+            _userId, member.Id, new UpdateCardiMemberRequest { FirstName = "Nope", DateOfBirth = member.DateOfBirth }));
 
-        Assert.Equal("Margaret Doe", member.Name);
+        Assert.Equal("Margaret Doe", member.FullName);
     }
 
     // ── M1-13 pause / resume ────────────────────────────────────────────────────
@@ -1477,7 +1546,8 @@ public class CardiMemberServiceTests
 
     private UpdateCardiMemberRequest BuildUpdateRequest(CardiMember member) => new()
     {
-        Name = member.Name,
+        FirstName = member.FirstName,
+        LastName = member.LastName,
         DateOfBirth = member.DateOfBirth,
         RelationshipType = RelationshipType.Parent,
     };
@@ -1543,13 +1613,13 @@ public class CardiMemberServiceTests
         _photoProcessor.Process(Arg.Any<ReadOnlyMemory<byte>>())
             .Returns(_ => throw new InvalidProfilePhotoException("Photos must be JPEG or PNG images."));
         var request = BuildUpdateRequest(member);
-        request.Name = "Should Not Stick";
+        request.FirstName = "Should Not Stick";
         request.PhotoBase64 = PhotoBase64;
 
         await Assert.ThrowsAsync<InvalidProfilePhotoException>(
             () => CreateSut().UpdateAsync(_userId, member.Id, request));
 
-        Assert.Equal("Margaret Doe", member.Name);
+        Assert.Equal("Margaret Doe", member.FullName);
         Assert.Equal("members/x/old.jpg", member.PhotoObjectName);
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }

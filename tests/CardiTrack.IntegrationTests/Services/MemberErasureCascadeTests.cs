@@ -672,7 +672,8 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         var member = new CardiMember
         {
             OrganizationId = organization.Id,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 4, 2),
             Gender = Gender.Female,
             IsActive = true,
@@ -974,7 +975,8 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         var member = new CardiMember
         {
             OrganizationId = organizationId,
-            Name = "Arthur Doe",
+            FirstName = "Arthur",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1946, 9, 9),
             Gender = Gender.Male,
             IsActive = true,

@@ -32,7 +32,8 @@ public class ChatThemeServiceTests
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1950, 6, 1),
             IsActive = true,
         });

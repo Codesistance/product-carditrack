@@ -566,7 +566,8 @@ public class AlertService : IAlertService
         {
             AlertId = alert.Id,
             CardiMemberId = alert.CardiMemberId,
-            CardiMemberName = member?.Name ?? string.Empty,
+            CardiMemberName = member?.FullName ?? string.Empty,
+            CardiMemberFirstName = member?.FirstName ?? string.Empty,
             CardiMemberPhotoUrl = photoUrl,
             EmergencyContactPhone = member?.EmergencyContactPhone,
             EmergencyContactName = member?.EmergencyContactName,

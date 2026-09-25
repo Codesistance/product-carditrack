@@ -77,7 +77,7 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
         var questionnaires = await _unitOfWork.MemberQuestionnaires
             .GetByCardiMemberAsync(request.CardiMemberId, ct);
 
-        var lines = VisibleFacts(questionnaires, _encryption, request.UtcNow, request.Member?.Name)
+        var lines = VisibleFacts(questionnaires, _encryption, request.UtcNow, request.Member?.FullName)
             .Select(fact => FormatLine(fact, request.UtcNow))
             .ToList();
         if (lines.Count == 0)

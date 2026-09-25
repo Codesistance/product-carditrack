@@ -245,7 +245,8 @@ public class DispatchServiceTests
         _members.GetByIdAsync(memberId).Returns(new CardiMember
         {
             Id = memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 3, 2),
             IsActive = true,
         });
@@ -419,7 +420,8 @@ public class DispatchServiceTests
         _members.GetByIdAsync(memberId).Returns(new CardiMember
         {
             Id = memberId,
-            Name = "Margaret Doe",
+            FirstName = "Margaret",
+            LastName = "Doe",
             DateOfBirth = new DateOnly(1948, 3, 2),
             IsActive = false,
         });

@@ -18,6 +18,17 @@ public class CardiMemberDetailResponse
     /// <summary>The family that owns this member — see <see cref="CardiMemberResponse.OrganizationId"/>.</summary>
     public Guid OrganizationId { get; set; }
 
+    /// <summary>What the app greets and labels this member by.</summary>
+    public string FirstName { get; set; } = string.Empty;
+
+    /// <summary>Surname, or null for someone known by a single name.</summary>
+    public string? LastName { get; set; }
+
+    /// <summary>
+    /// Full name — <see cref="FirstName"/> and <see cref="LastName"/> joined. For the places a
+    /// full name is needed; greetings and labels use <see cref="FirstName"/>. Kept under its
+    /// original name so app builds from before the split keep rendering.
+    /// </summary>
     public string Name { get; set; } = string.Empty;
 
     /// <summary>

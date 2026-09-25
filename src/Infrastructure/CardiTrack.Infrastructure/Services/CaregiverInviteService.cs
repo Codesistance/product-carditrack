@@ -159,7 +159,7 @@ public class CaregiverInviteService : ICaregiverInviteService
         // that told everybody "readings, alerts and journal" when the inviter had ticked one of
         // them would be asking them to accept something other than what is on offer.
         return new CaregiverInviteView(
-            FirstName(member.Name),
+            member.FirstName,
             FirstName(inviter.Name),
             invite.ExpiresAt,
             invite.CanViewHealthData,
