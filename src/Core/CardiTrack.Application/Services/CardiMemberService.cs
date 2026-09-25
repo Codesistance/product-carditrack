@@ -504,59 +504,76 @@ public class CardiMemberService : ICardiMemberService
     public async Task RemoveAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
     {
         await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
-        var member = await RequireActiveMemberAsync(cardiMemberId);
 
-        var now = DateTime.UtcNow;
-        member.IsActive = false;
-        member.UpdatedDate = now;
-
-        // The membership is soft-deleted but the photo is not: a full-face image is Tier 1 data
-        // and must not outlive the membership. Cleared here, blob deleted after the save lands.
-        var photoObjectName = member.PhotoObjectName;
-        member.PhotoObjectName = null;
-
-        _unitOfWork.CardiMembers.Update(member);
-
-        // Deactivate the links too, otherwise the member keeps passing access checks and
-        // keeps being counted by anything that walks a caregiver's links.
-        foreach (var link in await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId))
+        // Under the member's device lock, and the devices read after it: a callback storing a grant
+        // takes the same lock, so it either lands before this read — and its grant is queued below —
+        // or waits, then sees the member inactive and refuses. Read without the lock, a connect could
+        // commit a new connection after this loop and leave its grant live for a removed member.
+        string? photoObjectName;
+        await _unitOfWork.BeginTransactionAsync();
+        try
         {
-            if (!link.IsActive) continue;
-            link.IsActive = false;
-            link.UpdatedDate = now;
-            _unitOfWork.UserCardiMembers.Update(link);
-        }
+            await _unitOfWork.DeviceConnections.LockMemberDevicesAsync(cardiMemberId, ct);
+            var member = await RequireActiveMemberAsync(cardiMemberId);
 
-        // Devices must stop syncing, and their tokens should not outlive the member — at the
-        // provider as well as here. Each grant is queued for the Worker to end, in this same save and
-        // before the token is cleared, so a provider timeout cannot leave it live at Google for a
-        // member who has been removed from the app. The Worker keeps one that another member's
-        // live connection reads through: revocation ends the grant for the whole account.
-        foreach (var connection in await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId))
-        {
-            if (!connection.IsActive) continue;
-            if ((connection.RefreshToken ?? connection.AccessToken) is { } token)
+            var now = DateTime.UtcNow;
+            member.IsActive = false;
+            member.UpdatedDate = now;
+
+            // The membership is soft-deleted but the photo is not: a full-face image is Tier 1 data
+            // and must not outlive the membership. Cleared here, blob deleted after the save lands.
+            photoObjectName = member.PhotoObjectName;
+            member.PhotoObjectName = null;
+
+            _unitOfWork.CardiMembers.Update(member);
+
+            // Deactivate the links too, otherwise the member keeps passing access checks and
+            // keeps being counted by anything that walks a caregiver's links.
+            foreach (var link in await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId))
             {
-                await _unitOfWork.PendingGrantRevocations.AddAsync(new PendingGrantRevocation
-                {
-                    CardiMemberId = connection.CardiMemberId,
-                    DeviceConnectionId = connection.Id,
-                    DeviceType = connection.DeviceType,
-                    HealthUserId = connection.HealthUserId,
-                    Token = token,
-                    NextAttemptAt = now,
-                });
+                if (!link.IsActive) continue;
+                link.IsActive = false;
+                link.UpdatedDate = now;
+                _unitOfWork.UserCardiMembers.Update(link);
             }
-            connection.IsActive = false;
-            connection.ConnectionStatus = ConnectionStatus.Disconnected;
-            connection.AccessToken = null;
-            connection.RefreshToken = null;
-            connection.TokenExpiry = null;
-            connection.UpdatedDate = now;
-            _unitOfWork.DeviceConnections.Update(connection);
-        }
 
-        await _unitOfWork.SaveChangesAsync();
+            // Devices must stop syncing, and their tokens should not outlive the member — at the
+            // provider as well as here. Each grant is queued for the Worker to end, in this same save and
+            // before the token is cleared, so a provider timeout cannot leave it live at Google for a
+            // member who has been removed from the app. The Worker keeps one that another member's
+            // live connection reads through: revocation ends the grant for the whole account.
+            foreach (var connection in await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId))
+            {
+                if (!connection.IsActive) continue;
+                if ((connection.RefreshToken ?? connection.AccessToken) is { } token)
+                {
+                    await _unitOfWork.PendingGrantRevocations.AddAsync(new PendingGrantRevocation
+                    {
+                        CardiMemberId = connection.CardiMemberId,
+                        DeviceConnectionId = connection.Id,
+                        DeviceType = connection.DeviceType,
+                        HealthUserId = connection.HealthUserId,
+                        Token = token,
+                        NextAttemptAt = now,
+                    });
+                }
+                connection.IsActive = false;
+                connection.ConnectionStatus = ConnectionStatus.Disconnected;
+                connection.AccessToken = null;
+                connection.RefreshToken = null;
+                connection.TokenExpiry = null;
+                connection.UpdatedDate = now;
+                _unitOfWork.DeviceConnections.Update(connection);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
 
         if (photoObjectName is not null)
             await TryDeletePhotoAsync(photoObjectName, ct);

@@ -1357,6 +1357,43 @@ public class CardiMemberServiceTests
         Assert.Null(connection.RefreshToken);
     }
 
+    /// <summary>
+    /// Copilot review round 10 on #1290: removal reads the member's devices under the same device
+    /// lock a connect takes to store a grant, so a connection cannot commit after the read and
+    /// leave its grant unqueued for a removed member.
+    /// </summary>
+    [Fact]
+    public async Task Remove_ReadsTheMembersDevicesUnderTheDeviceLock_AndCommitsThem()
+    {
+        var member = SeedMember();
+        var devices = _unitOfWork.DeviceConnections;
+
+        await CreateSut().RemoveAsync(_userId, member.Id);
+
+        Received.InOrder(() =>
+        {
+            _unitOfWork.BeginTransactionAsync();
+            devices.LockMemberDevicesAsync(member.Id, Arg.Any<CancellationToken>());
+            devices.GetByCardiMemberIdAsync(member.Id);
+            _unitOfWork.SaveChangesAsync();
+            _unitOfWork.CommitTransactionAsync();
+        });
+    }
+
+    [Fact]
+    public async Task Remove_WhenTheSaveFails_RollsBackAndDeletesNoPhoto()
+    {
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/old.jpg";
+        _unitOfWork.SaveChangesAsync().Returns(Task.FromException<int>(new InvalidOperationException("db down")));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateSut().RemoveAsync(_userId, member.Id));
+
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        await _photoStorage.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+    }
+
     [Fact]
     public async Task Remove_WithoutPhoto_DeletesNothing()
     {
