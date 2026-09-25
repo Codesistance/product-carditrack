@@ -131,13 +131,22 @@ public static class MemberPhotoCache
     /// </summary>
     public static Task<string?> FetchAsync(Uri url, MemberPhotoCacheKey key)
     {
-        var path = PathFor(key);
-        Latest[Path.GetDirectoryName(path)!] = path;
+        // The session's folder and the session's generation are read together, under the lock
+        // Clear() takes: read apart, a sign-out between them could pair the old session's folder
+        // with the new generation, and the download would then pass the check that is meant to
+        // throw it away and write the last account's photo back after the sign-out.
+        string path;
+        int generation;
+        lock (Gate)
+        {
+            path = PathFor(key);
+            generation = _generation;
+            Latest[Path.GetDirectoryName(path)!] = path;
+        }
 
         // Keyed by session as well as photo: a download begun before a sign-out is thrown away
         // when it lands, and a request after the sign-out must start its own rather than join
         // that one and get nothing back.
-        var generation = Volatile.Read(ref _generation);
         var flight = $"{generation}|{path}";
         return InFlight.GetOrAdd(flight, _ => new Lazy<Task<string?>>(() => FetchCoreAsync(url, key, path, generation, flight))).Value;
     }
