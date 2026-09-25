@@ -558,6 +558,8 @@ A comment line (`: keep-alive`) goes out every 15 s while nothing else does, so 
 
 **Hanging up.** A caller that disconnects cancels the send, which rolls back as it always has. A write that fails on a dead connection without a cancellation lets the send finish and save, so the reply is in the history the next time the app loads it. The app treats an `answer` without a following `done` as the answer, since the turn is saved before the `answer` goes out.
 
+**A send still running when its conversation is ended or reopened (decided 2026-09-25: kept as is).** Within one open chat sheet the app prevents this: "new conversation", the history list and "continue" are all disabled while a reply is on its way. The remaining case is a caregiver who closes the sheet mid-send, reopens it and ends or switches the conversation before the first send finishes, or does so from a second device. The send then saves its question and reply into the conversation it was asked in, which by then is in the history list rather than on screen. Nothing is lost, and the reply sits beside the question it answers. A journal offer that reply made cannot be confirmed from an ended conversation and lapses unapplied, which is the safe direction for a destructive offer. The alternative considered was to mark a conversation "send in flight" in the database and refuse end and reopen with a 409 until the reply lands, letting a reopened sheet show "still answering". It was not taken: it needs a schema change and a staleness rule for sends that die mid-flight, to prevent an outcome that loses nothing.
+
 **Kept for older builds.** `POST …/messages` and `POST …/waiting-sentences` stay: an app built before streaming still calls both. The new app calls neither.
 
 ## 8. Failure posture
