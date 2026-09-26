@@ -701,25 +701,17 @@ public partial class JournalPage : ContentPage
             LineBreakMode = LineBreakMode.TailTruncation,
         };
 
-        // A small button, not a link line: "Read" is the card's one action said quietly, and
-        // the whole card is tappable anyway — this is the visible affordance, not the only one.
-        var read = new Border
+        // A small button, not a link line: "Read" is the card's one action said quietly — the
+        // shared Tonal S, the everyday in-card action — and the whole card is tappable anyway;
+        // this is the visible affordance, not the only one. AppButton names itself from its
+        // caption; the hint replaces its generic one with where the tap goes.
+        var read = new AppButton
         {
-            StrokeThickness = 0.5,
-            Stroke = Tinted("PrimaryDark"),
-            BackgroundColor = Colors.Transparent,
-            Padding = new Thickness(14, 5),
+            Text = "Read",
+            Tone = AppButtonTone.Tonal,
+            Size = AppButtonSize.S,
             HorizontalOptions = LayoutOptions.Start,
-            StrokeShape = new RoundRectangle { CornerRadius = 13 },
-            Content = new Label
-            {
-                Text = "Read",
-                FontFamily = "QuicksandSemiBold",
-                FontSize = 12,
-                TextColor = Tinted("PrimaryDark"),
-            },
         };
-        SemanticProperties.SetDescription(read, "Read");
         SemanticProperties.SetHint(read, $"Opens this {PeriodNoun(_cadence)}'s full entry");
 
         // The alert tiles' construction, borrowed whole: a coloured rounded rect underneath and
@@ -760,15 +752,12 @@ public partial class JournalPage : ContentPage
             Content = inner,
         };
 
-        var open = new TapGestureRecognizer
-        {
-            Command = new Command(async () => await Shell.Current.GoToAsync(
-                $"{JournalEntryPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}"
-                + $"&cadence={_cadence.WireValue()}"
-                + $"&name={Uri.EscapeDataString(_memberFirstName ?? string.Empty)}")),
-        };
-        card.GestureRecognizers.Add(open);
-        read.GestureRecognizers.Add(open);
+        var open = new Command(async () => await Shell.Current.GoToAsync(
+            $"{JournalEntryPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}"
+            + $"&cadence={_cadence.WireValue()}"
+            + $"&name={Uri.EscapeDataString(_memberFirstName ?? string.Empty)}"));
+        card.GestureRecognizers.Add(new TapGestureRecognizer { Command = open });
+        read.Command = open;
 
         return card;
     }

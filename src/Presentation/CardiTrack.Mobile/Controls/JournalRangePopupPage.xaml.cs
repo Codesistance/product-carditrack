@@ -98,7 +98,7 @@ public partial class JournalRangePopupPage : ContentPage
 
     private async void OnScrimTapped(object? sender, TappedEventArgs e) => await CloseAsync(null);
 
-    private async void OnCloseTapped(object? sender, TappedEventArgs e) => await CloseAsync(null);
+    private async void OnCloseTapped(object? sender, EventArgs e) => await CloseAsync(null);
 
     private async void OnExportClicked(object? sender, EventArgs e) => await CloseAsync(Range());
 

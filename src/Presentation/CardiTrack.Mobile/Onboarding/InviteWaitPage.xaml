@@ -14,7 +14,7 @@
 
             <controls:WizardHeader x:Name="Header"
                                    Grid.Row="0"
-                                   Title="Waiting for them"
+                                   Title="Waiting for Them"
                                    Step="They finish on their own device"
                                    BackRequested="OnCancelTapped"
                                    ContentPadding="20,14,20,16"/>
@@ -148,17 +148,16 @@
                                             Tone="Primary"
                                             Size="L"/>
 
-                        <Label x:Name="CancelLink"
-                               Text="Cancel"
-                               Style="{StaticResource PrimaryLink}"
-                               TextDecorations="None"
-                               FontSize="16"
-                               HorizontalOptions="Center"
-                               Margin="0,20,0,0">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnCancelTapped"/>
-                            </Label.GestureRecognizers>
-                        </Label>
+                        <!-- The quiet way out (Done once the invitation has finished): the shared
+                             Text L. Its 48 band carries most of the gap above it, hence the small
+                             margin. -->
+                        <controls:AppButton x:Name="CancelLink"
+                                            Text="Cancel"
+                                            HorizontalOptions="Center"
+                                            Margin="0,6,0,0"
+                                            Clicked="OnCancelTapped"
+                                            Tone="Text"
+                                            Size="L"/>
 
                     </VerticalStackLayout>
                 </Grid>

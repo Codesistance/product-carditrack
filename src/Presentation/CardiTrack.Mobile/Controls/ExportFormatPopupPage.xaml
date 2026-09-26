@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.ExportFormatPopupPage"
              BackgroundColor="Transparent">
 
@@ -41,31 +42,11 @@
                            Margin="0,0,28,0"/>
 
                     <!-- Dismissal as a mark, in the corner, the same one the other popups use. -->
-                    <Grid x:Name="CloseHit"
-                          Padding="8"
-                          Margin="0,-8,-8,0"
-                          BackgroundColor="Transparent"
-                          HorizontalOptions="End"
-                          VerticalOptions="Start"
-                          SemanticProperties.Description="Close">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnCloseTapped"/>
-                        </Grid.GestureRecognizers>
-                        <Border BackgroundColor="{StaticResource ActionTintBlueBackground}"
-                                StrokeThickness="0"
-                                WidthRequest="32"
-                                HeightRequest="32">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="10"/>
-                            </Border.StrokeShape>
-                            <Label Text="✕"
-                                   TextColor="{StaticResource ActionTintBlueInk}"
-                                   FontFamily="QuicksandSemiBold"
-                                   FontSize="13"
-                                   HorizontalOptions="Center"
-                                   VerticalOptions="Center"/>
-                        </Border>
-                    </Grid>
+                    <controls:DismissButton Margin="0,-8,-8,0"
+                                            HorizontalOptions="End"
+                                            VerticalOptions="Start"
+                                            SemanticProperties.Description="Close"
+                                            Clicked="OnCloseTapped"/>
                 </Grid>
 
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="12">

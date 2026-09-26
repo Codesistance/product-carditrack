@@ -93,7 +93,7 @@ public partial class ExportDeliveryPopupPage : ContentPage
 
     private async void OnScrimTapped(object? sender, TappedEventArgs e) => await CloseAsync(null);
 
-    private async void OnCloseTapped(object? sender, TappedEventArgs e) => await CloseAsync(null);
+    private async void OnCloseTapped(object? sender, EventArgs e) => await CloseAsync(null);
 
     private async void OnSaveTapped(object? sender, TappedEventArgs e) =>
         await CloseAsync(ExportDelivery.Save);
