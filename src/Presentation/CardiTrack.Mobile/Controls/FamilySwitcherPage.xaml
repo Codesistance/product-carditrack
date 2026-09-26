@@ -75,12 +75,9 @@
                                         Size="L"/>
                 </Grid>
 
-                <Button Text="Close"
-                        BackgroundColor="Transparent"
-                        TextColor="{StaticResource MutedText}"
-                        FontFamily="QuicksandSemiBold"
-                        FontSize="16"
-                        HeightRequest="44"
+                <controls:AppButton Text="Close"
+                        Tone="Text"
+                        Size="M"
                         Clicked="OnCloseClicked"/>
             </VerticalStackLayout>
         </Border>

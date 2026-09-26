@@ -116,15 +116,19 @@
                            IsVisible="False"
                            Margin="0,0,0,4"/>
 
-                    <Button x:Name="ResendBtn"
+                    <controls:AppButton x:Name="ResendBtn"
                             Text="Resend verification email"
-                            Style="{StaticResource AuthActionLink}"
+                            Tone="Text"
+                            Size="M"
+                            HorizontalOptions="Center"
                             SemanticProperties.Hint="Sends another verification email"
                             Clicked="OnResendClicked"/>
 
-                    <Button x:Name="BackBtn"
+                    <controls:AppButton x:Name="BackBtn"
                             Text="Wrong email? Go back"
-                            Style="{StaticResource AuthActionLink}"
+                            Tone="Text"
+                            Size="M"
+                            HorizontalOptions="Center"
                             Margin="0,12,0,0"
                             SemanticProperties.Hint="Returns to sign in so you can use a different email"
                             Clicked="OnBackToSignInClicked"/>

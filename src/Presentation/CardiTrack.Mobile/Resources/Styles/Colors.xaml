@@ -245,25 +245,20 @@
     <SolidColorBrush x:Key="Gray950Brush" Color="{StaticResource Gray950}"/>
 
     <!-- ── Gradient brushes ── -->
-    <!-- ── Action buttons (Styles.xaml ActionButton*) ──
-         One colour per meaning — blue does the thing (Save, Connect, Add, Edit), green is Yes,
-         red is No and Delete, dark grey is Cancel, amber is Undo — each as a slight top-to-bottom
-         gradient instead of a shadow: a lighter first sliver for the lit top edge, the base colour
-         through the middle, a little darker at the foot. About 6% either way, so the button still
-         reads as its colour, and the dark end keeps white 14px text at 4.5:1 or better. Amber
-         carries dark ink rather than white, which it could not hold. -->
+    <!-- ── Action fills (AppButton) ──
+         The solid tones' fills at M and S: blue for the step forward, dark grey for backing out,
+         red for removal — each a slight top-to-bottom gradient instead of a shadow: a lighter
+         first sliver for the lit top edge, the base colour through the middle, a little darker at
+         the foot. About 6% either way, so the button still reads as its colour, and the dark end
+         keeps white 14px text at 4.5:1 or better. The green and amber that Yes and Undo once had
+         were folded into Primary and Tonal by the 2026-09-26 button audit. -->
+    <!-- Amber ink, kept for the medical ledger's "review due" pill, which still wears it. -->
     <Color x:Key="ActionAmberInk">#5A3300</Color>
     <LinearGradientBrush x:Key="ActionBlueBrush" StartPoint="0.5,0" EndPoint="0.5,1">
         <GradientStop Color="#3A8EDB" Offset="0.0" />
         <GradientStop Color="#2C82D4" Offset="0.08" />
         <GradientStop Color="#1B6FC0" Offset="0.55" />
         <GradientStop Color="#155FA8" Offset="1.0" />
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="ActionGreenBrush" StartPoint="0.5,0" EndPoint="0.5,1">
-        <GradientStop Color="#389A7C" Offset="0.0" />
-        <GradientStop Color="#2A8E70" Offset="0.08" />
-        <GradientStop Color="#1A7A5E" Offset="0.55" />
-        <GradientStop Color="#146A51" Offset="1.0" />
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="ActionRedBrush" StartPoint="0.5,0" EndPoint="0.5,1">
         <GradientStop Color="#DC5650" Offset="0.0" />
@@ -277,12 +272,6 @@
         <GradientStop Color="#3F4A57" Offset="0.55" />
         <GradientStop Color="#343E49" Offset="1.0" />
     </LinearGradientBrush>
-    <LinearGradientBrush x:Key="ActionAmberBrush" StartPoint="0.5,0" EndPoint="0.5,1">
-        <GradientStop Color="#FBDDA8" Offset="0.0" />
-        <GradientStop Color="#F9D08A" Offset="0.08" />
-        <GradientStop Color="#F6C26B" Offset="0.55" />
-        <GradientStop Color="#EDB252" Offset="1.0" />
-    </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="GradientButtonBrush" StartPoint="0,0.5" EndPoint="1,0.5">
         <GradientStop Color="{StaticResource GradientDarkBlue}" Offset="0.0" />
@@ -290,11 +279,6 @@
         <GradientStop Color="{StaticResource GradientTeal}" Offset="1.0" />
     </LinearGradientBrush>
 
-    <LinearGradientBrush x:Key="GradientButtonLightBrush" StartPoint="0,0.5" EndPoint="1,0.5">
-        <GradientStop Color="#4D174E86" Offset="0.0" />
-        <GradientStop Color="#4D1884DC" Offset="0.458" />
-        <GradientStop Color="#4D36C09B" Offset="1.0" />
-    </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="WelcomePageBackground" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Color="#F0F6FF" Offset="0.0" />
