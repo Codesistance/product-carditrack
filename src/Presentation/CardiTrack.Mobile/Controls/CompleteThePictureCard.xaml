@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.CompleteThePictureCard"
+             IsVisible="False">
+
+    <!-- "Complete the picture": every open data-completeness item, on the Dashboard and on
+         Alerts alike, so the two screens cannot drift into asking the same thing two ways.
+         A sideways row, each item a little narrower than the card so the next one shows at the
+         edge and says the row scrolls, and a count on the title so "there are others" is said
+         before anybody swipes. One item fills the card. The horizontal padding lives on the
+         heading and the row's content rather than on the Border, as on the Recent Alerts card:
+         Android clips a Border's content to its padded area, and the row has to slide out under
+         the rounded edge. -->
+    <Border Style="{StaticResource ElevatedCard}"
+            Padding="0,14,0,17">
+        <VerticalStackLayout Spacing="12">
+            <Grid x:Name="NudgeHeader"
+                  ColumnDefinitions="Auto,Auto,*,Auto"
+                  Margin="14,0,13,0">
+                <Label Grid.Column="0"
+                       Text="Complete the picture"
+                       Style="{StaticResource DashboardSectionTitle}"
+                       VerticalOptions="Center"/>
+                <!-- The Key Metrics section's count badge, so a count on a section title reads
+                     the same everywhere on the screen. -->
+                <Border x:Name="NudgeCountBadge"
+                        Grid.Column="1"
+                        WidthRequest="20" HeightRequest="20"
+                        Margin="8,0,0,0"
+                        Padding="0"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource CountBadgeNeutral}"
+                        VerticalOptions="Center"
+                        IsVisible="False">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10"/>
+                    </Border.StrokeShape>
+                    <Label x:Name="NudgeCountLabel"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="11"
+                           TextColor="{StaticResource White}"
+                           HorizontalTextAlignment="Center"
+                           VerticalTextAlignment="Center"/>
+                </Border>
+                <Label x:Name="SeeAllLink"
+                       Grid.Column="3"
+                       Text="See all"
+                       Style="{StaticResource SectionLink}">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSeeAllTapped"/>
+                    </Label.GestureRecognizers>
+                </Label>
+            </Grid>
+            <!-- One line per member with set-up left to do: a ring filled to how much is done,
+                 "Pop's profile 3 of 5", and the next step, which a tap opens (SetupProgressLine).
+                 The set-up reminders the rings stand for leave the rows below. -->
+            <VerticalStackLayout x:Name="SetupRingList" Spacing="8" Margin="14,0,13,0" IsVisible="False"/>
+            <ContentView x:Name="SingleNudgeHost" IsVisible="False" Margin="14,0,13,0"/>
+            <ScrollView x:Name="NudgeScroller"
+                        Orientation="Horizontal"
+                        HorizontalScrollBarVisibility="Never"
+                        IsVisible="False">
+                <HorizontalStackLayout x:Name="NudgeList" Spacing="10" Padding="14,0,13,0"/>
+            </ScrollView>
+        </VerticalStackLayout>
+    </Border>
+</ContentView>
