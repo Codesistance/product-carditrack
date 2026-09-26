@@ -160,21 +160,14 @@
 
                                 <!-- Re-triggers the fetch; the designed affordance for a load
                                      that is taking longer than it should. -->
-                                <Button x:Name="SyncRefreshButton"
-                                        Text="Refresh Now"
-                                        ImageSource="icon_refresh_white.svg"
-                                        ContentLayout="Right,4"
-                                        FontFamily="QuicksandSemiBold"
-                                        FontSize="12"
-                                        TextColor="{StaticResource White}"
-                                        Background="{StaticResource GradientButtonBrush}"
-                                        CornerRadius="5"
-                                        Padding="6,4"
-                                        HeightRequest="34"
-                                        WidthRequest="114"
-                                        Margin="0,13,0,0"
-                                        HorizontalOptions="Center"
-                                        Clicked="OnRefreshClicked"/>
+                                <controls:AppButton x:Name="SyncRefreshButton"
+                                                    Text="Refresh Now"
+                                                    Icon="icon_refresh_white.svg"
+                                                    Tone="Primary"
+                                                    Size="S"
+                                                    Margin="0,13,0,0"
+                                                    HorizontalOptions="Center"
+                                                    Clicked="OnRefreshClicked"/>
                             </VerticalStackLayout>
                         </Border>
 

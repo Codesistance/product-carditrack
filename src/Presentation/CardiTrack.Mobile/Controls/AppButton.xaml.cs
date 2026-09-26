@@ -41,7 +41,7 @@ public enum AppButtonSize
 /// <remarks>
 /// Not a <see cref="Button"/>. A native button is floored to 44 high on Android by the implicit
 /// style and draws its press ripple across its whole bounds, so a 30-high button could only be
-/// had by making it 44 — or by drawing it, as <c>CompactActionButton</c> did first. This draws
+/// had by making it 44 — or by drawing it, as the device card's compact buttons did first. This draws
 /// every size the same way: the shape at the size's height, the tap across a 44 band. Announced as
 /// a button all the same, with its caption as its name.
 /// </remarks>

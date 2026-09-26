@@ -220,7 +220,7 @@
         <GradientStop Color="#A6CBF4" Offset="1"/>
     </LinearGradientBrush>
 
-    <!-- ── Compact tinted actions (CompactActionButton) ──
+    <!-- ── Tinted actions (AppButton Tonal, and Danger at S) ──
          The device card's small buttons: the activity pill's tint and ink for the everyday
          actions, and a pale red with DangerRed ink for removal — ink that clears 4.5:1 on its
          own fill at 12px. -->
