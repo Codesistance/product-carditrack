@@ -932,12 +932,67 @@ public class ReportRendererTests
         Assert.Equal("Health export", PdfReportRenderer.DocumentType(AllSections));
     }
 
+    /// <summary>A preparation date well after every fixture's range, so none of them reads as "last N days".</summary>
+    private static readonly DateOnly PreparedLater = new(2027, 1, 15);
+
     [Fact]
     public void Pdf_NamesAWholeCalendarMonthByItsName()
     {
         var data = BuildData() with { From = new DateOnly(2026, 9, 1), To = new DateOnly(2026, 9, 30) };
 
-        Assert.Equal("Margaret's September 2026", PdfReportRenderer.Title(data));
+        Assert.Equal("Margaret's September 2026", PdfReportRenderer.Title(data, PreparedLater));
+    }
+
+    [Fact]
+    public void Pdf_NamesAWholeCalendarMonthByItsName_EvenWhenItEndsToday()
+    {
+        var data = BuildData() with { From = new DateOnly(2026, 9, 1), To = new DateOnly(2026, 9, 30) };
+
+        Assert.Equal("Margaret's September 2026", PdfReportRenderer.Title(data, new DateOnly(2026, 9, 30)));
+    }
+
+    [Theory]
+    [InlineData(29, 26)]   // prepared the same day
+    [InlineData(29, 27)]   // the caregiver's today is already tomorrow in UTC
+    [InlineData(29, 25)]   // ...or still yesterday
+    [InlineData(6, 26)]
+    [InlineData(89, 26)]
+    public void Pdf_NamesARangeEndingNowByItsLength(int daysBack, int preparedDay)
+    {
+        var to = new DateOnly(2026, 9, 26);
+        var data = BuildData() with { From = to.AddDays(-daysBack), To = to };
+
+        Assert.Equal(
+            $"Margaret's last {daysBack + 1} days",
+            PdfReportRenderer.Title(data, new DateOnly(2026, 9, preparedDay)));
+    }
+
+    [Fact]
+    public void Pdf_KeepsTheDates_ForARangeThatStoppedEarlier()
+    {
+        var data = BuildData() with { From = new DateOnly(2026, 8, 1), To = new DateOnly(2026, 8, 20) };
+
+        Assert.Equal(
+            "Margaret's 1 Aug 2026 – 20 Aug 2026",
+            PdfReportRenderer.Title(data, new DateOnly(2026, 9, 26)));
+    }
+
+    [Fact]
+    public void Pdf_KeepsTheDate_ForASingleDayEndingNow()
+    {
+        var day = new DateOnly(2026, 9, 26);
+        var data = BuildData() with { From = day, To = day };
+
+        Assert.Equal("Margaret's 26 Sep 2026", PdfReportRenderer.Title(data, day));
+    }
+
+    [Fact]
+    public void Pdf_TitlesARollingFamilyExportByItsLengthAlone()
+    {
+        var single = BuildData() with { From = new DateOnly(2026, 8, 28), To = new DateOnly(2026, 9, 26) };
+        var family = single with { Members = [single.Members[0], single.Members[0]] };
+
+        Assert.Equal("Last 30 days", PdfReportRenderer.Title(family, new DateOnly(2026, 9, 26)));
     }
 
     [Theory]
@@ -954,7 +1009,7 @@ public class ReportRendererTests
             To = new DateOnly(toYear, toMonth, toDay)
         };
 
-        Assert.Equal(expected, PdfReportRenderer.Title(data));
+        Assert.Equal(expected, PdfReportRenderer.Title(data, PreparedLater));
     }
 
     [Fact]
@@ -964,7 +1019,7 @@ public class ReportRendererTests
         var single = BuildData();
         var family = single with { Members = [single.Members[0], single.Members[0]] };
 
-        Assert.Equal("7 Feb 2026 – 9 Mar 2026", PdfReportRenderer.Title(family));
+        Assert.Equal("7 Feb 2026 – 9 Mar 2026", PdfReportRenderer.Title(family, PreparedLater));
         Assert.Equal("2 people", ReportLayout.Subject(family));
     }
 
