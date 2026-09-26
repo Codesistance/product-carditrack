@@ -224,15 +224,29 @@
                                Style="{StaticResource Body2}"/>
                         <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
                             <VerticalStackLayout Spacing="0">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48">
-                                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                        <Label Text="Send session telemetry"
-                                               Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
-                                        <Label Text="On by default. Which screens you open, errors, crashes and how fast the app responds — never health data. Turn off any time. Crash reports from before sign-in still go through so a freeze on the login screen can be fixed."
-                                               Style="{StaticResource Body2}" FontSize="13"
-                                               LineBreakMode="WordWrap"/>
-                                    </VerticalStackLayout>
+                                <!-- The switch sits on the title's line, not centred on the paragraph: it
+                                     answers the title. One sentence says what goes and what never does;
+                                     the sign-in exception is a footnote under it. "On by default" and "turn
+                                     off any time" are the switch's own job to say (T1, picked from
+                                     samples 2026-09-26). -->
+                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12"
+                                      Padding="0,8" MinimumHeightRequest="48">
+                                    <Label Grid.Row="0" Grid.Column="0"
+                                           Text="Send session telemetry"
+                                           Style="{StaticResource Body1SemiBoldDark}" FontSize="15"
+                                           VerticalOptions="Center"/>
+                                    <Label Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                           Text="Screens, errors, crashes and speed — never health data."
+                                           Style="{StaticResource Body2}" FontSize="13"
+                                           Margin="0,2,0,0"
+                                           LineBreakMode="WordWrap"/>
+                                    <Label Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                                           Text="Crash reports from the sign-in screen are still sent, so a freeze there can be fixed."
+                                           Style="{StaticResource Caption}"
+                                           Margin="0,6,0,0"
+                                           LineBreakMode="WordWrap"/>
                                     <Switch x:Name="DiagnosticsSwitch"
+                                            Grid.Row="0"
                                             Grid.Column="1"
                                             OnColor="{StaticResource Primary}"
                                             VerticalOptions="Center"
