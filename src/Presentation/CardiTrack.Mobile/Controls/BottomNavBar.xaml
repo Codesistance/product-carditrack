@@ -56,11 +56,17 @@
                  Symmetric about the tab row: it reaches the same 12 past the row's top as past
                  its bottom, so the selected glyph and label sit on the centre line every other tab
                  sits on, with even room above and below — and its top rises 8 above the ground's
-                 edge, into the see-through strip. -->
+                 edge, into the see-through strip.
+
+                 Its x, width and corners are set in code (PillFrame, PillShape): 4 in from a
+                 neighbouring tab, flush and square-cornered against the screen edge under the
+                 first and last tabs. A fixed 4 margin on both sides left a strip of bar showing
+                 between the edge tabs' pill and the screen. -->
             <Border x:Name="SelectionPill"
                     Grid.Column="0"
-                    Margin="4,-12,4,0"
+                    Margin="0,-12,0,0"
                     HeightRequest="73"
+                    HorizontalOptions="Start"
                     VerticalOptions="Start"
                     StrokeThickness="0"
                     Background="{StaticResource TabPillBrush}"
