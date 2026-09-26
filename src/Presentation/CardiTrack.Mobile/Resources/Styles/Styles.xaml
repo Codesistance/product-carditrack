@@ -363,22 +363,19 @@
          Tighter than a card, too — these are four controls in a row, not four surfaces, and the
          row reads better when they do not each claim a card's worth of height. Each tile brings
          its own BackgroundColor; only the emergency action wears red. -->
-    <!-- The icon-only member of the quick-action family: a page's own actions (Member Details'
-         alerts and edit, CardiJournal's export). Same tint and the same soft halo as the labelled
-         tiles above, so an action reads as an action wherever it sits; 12 rather than 18 because
-         a radius drawn for a 60-tall tile turns a 40 square into a circle, and these are chips,
-         not pills. One style, so the next page's action cannot invent a third shape. -->
-    <Style x:Key="IconActionChip" TargetType="Border">
+    <!-- A header's icon-only action: the Dashboard's bell, Member Details' bell and pencil,
+         Connected Devices' add, the Alerts filter. A white 40 square at the unified control
+         radius, no shadow, the whole square the tap target. One style, so the same slot cannot
+         read differently from one header to the next — it did, three ways, before the
+         2026-09-26 button audit. -->
+    <Style x:Key="HeaderActionSquare" TargetType="Border">
         <Setter Property="WidthRequest" Value="40"/>
         <Setter Property="HeightRequest" Value="40"/>
         <Setter Property="StrokeThickness" Value="0"/>
-        <Setter Property="BackgroundColor" Value="{StaticResource QuickActionTint}"/>
-        <Setter Property="VerticalOptions" Value="Center"/>
+        <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
+        <Setter Property="VerticalOptions" Value="Start"/>
         <Setter Property="StrokeShape">
-            <RoundRectangle CornerRadius="12"/>
-        </Setter>
-        <Setter Property="Shadow">
-            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.30" Radius="10" Offset="0,3"/>
+            <RoundRectangle CornerRadius="10"/>
         </Setter>
     </Style>
 

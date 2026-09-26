@@ -62,18 +62,13 @@
                 </VerticalStackLayout>
 
                 <!-- The white square every header uses for its trailing action (the Dashboard's
-                     bell, Connected Devices' add): radius 12, no shadow. Filled PrimaryDark with a
+                     bell, Connected Devices' add) — HeaderActionSquare. Filled PrimaryDark with a
                      white glyph while a filter is on, and a count of the parts narrowing the list
                      on its corner — white, not a status colour: a filter is not an alarm. -->
                 <Grid Grid.Column="2" VerticalOptions="Start">
                     <Border x:Name="FilterButton"
-                            WidthRequest="40" HeightRequest="40"
-                            BackgroundColor="{StaticResource White}"
-                            StrokeThickness="0"
-                            SemanticProperties.Description="Filter alerts">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="12"/>
-                        </Border.StrokeShape>
+                            SemanticProperties.Description="Filter alerts"
+                            Style="{StaticResource HeaderActionSquare}">
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnFilterTapped"/>
                         </Border.GestureRecognizers>

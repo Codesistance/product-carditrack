@@ -60,7 +60,7 @@ public partial class DashboardHeader : ContentView
 
         // The badge is the only thing that carries the count on screen, so the accessible
         // name has to say it too or the number is lost to a screen reader.
-        SemanticProperties.SetDescription(BellButton, count switch
+        SemanticProperties.SetDescription(BellTarget, count switch
         {
             <= 0 => "Alerts",
             1 => "Alerts, 1 unread",

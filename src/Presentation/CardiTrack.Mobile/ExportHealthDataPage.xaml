@@ -29,15 +29,17 @@
                         MinimumHeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource HeaderButtonTint}"
-                        VerticalOptions="Fill">
+                        VerticalOptions="Fill"
+                                       SemanticProperties.Description="Back">
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackClicked"/>
+                    </controls:SquareBorder.GestureRecognizers>
                     <controls:SquareBorder.StrokeShape>
                         <RoundRectangle CornerRadius="99"/>
                     </controls:SquareBorder.StrokeShape>
-                    <ImageButton Source="icon_back_white.svg"
-                                 WidthRequest="20" HeightRequest="20"
-                                 BackgroundColor="Transparent"
-                                 SemanticProperties.Description="Back"
-                                 Clicked="OnBackClicked"/>
+                    <Image Source="icon_back_white.svg"
+                           WidthRequest="20"
+                           HeightRequest="20"/>
                 </controls:SquareBorder>
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
