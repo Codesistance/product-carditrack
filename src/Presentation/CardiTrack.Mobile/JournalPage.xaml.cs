@@ -446,9 +446,9 @@ public partial class JournalPage : ContentPage
                     return;
                 }
 
-                _memberId = member.Id;
-                _memberFirstName = member.DisplayFirstName();
-                PaintFilterChrome();
+                // Through SelectMember like every other way a member is chosen, so the chat
+                // launcher opens about the journal on screen rather than asking again.
+                SelectMember(member.Id, member.DisplayFirstName());
             }
 
             var (urgency, from) = _filter.ToQuery(DateOnly.FromDateTime(DateTime.Now));
