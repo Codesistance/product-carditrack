@@ -57,6 +57,13 @@
     <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The logo mark in every PDF export's running header (ReportLayout). A fixed LogicalName,
+         so moving the file cannot silently rename the resource the loader asks for. -->
+    <EmbeddedResource Include="Services\Reports\Assets\carditrack-mark.png"
+                      LogicalName="CardiTrack.Infrastructure.Reports.carditrack-mark.png" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

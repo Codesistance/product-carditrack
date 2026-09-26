@@ -127,6 +127,38 @@ public class ChatTranscriptRendererTests
     }
 
     [Fact]
+    public async Task Pdf_RendersAnAnswerWrittenInMarkdown()
+    {
+        // The assistant writes the same bold and bullets the health export's summary does, and
+        // the answer is set through the same layout. What is asserted is that the path renders;
+        // NarrativeMarkdownTests pin what each mark becomes.
+        var rendered = await new PdfReportRenderer().RenderAsync(
+            BuildData(BuildTranscript(
+            [
+                new ChatTranscriptTurn(ChatTurnRole.User, "How has she been *really* sleeping?", Started, []),
+                new ChatTranscriptTurn(
+                    ChatTurnRole.Assistant,
+                    "## This week\n\nShe's been sleeping **a little longer** each night.\n\n- Monday: 6h 20m\n- Sunday: 7h 30m",
+                    Started.AddMinutes(1),
+                    [Sleep()]),
+            ])),
+            NoSections, narrative: null);
+
+        Assert.Equal("%PDF", Encoding.ASCII.GetString(rendered.Content, 0, 4));
+    }
+
+    [Fact]
+    public void Pdf_TitlesTheFileAsAChatTranscript()
+    {
+        var data = BuildData();
+
+        var metadata = ChatTranscriptDocument.Compose(data, data.Transcript!).GetMetadata();
+
+        Assert.Equal("Margaret Doe — Chat transcript, 10 Feb 2026", metadata.Title);
+        Assert.Equal("CardiTrack", metadata.Author);
+    }
+
+    [Fact]
     public void Pdf_DrawsTheChartsTheReplyCarried()
     {
         // The whole reason a transcript is worth printing rather than copying out of the app —

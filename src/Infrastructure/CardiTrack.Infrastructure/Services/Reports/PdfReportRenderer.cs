@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Entities;
@@ -19,8 +20,8 @@ namespace CardiTrack.Infrastructure.Services.Reports;
 /// consultation, and a family member filing it. So: the period's headline figures first, because
 /// they answer "how is she" in one glance; then the AI narrative, because it says what happened in
 /// plain language; then the trend charts; then the daily table, because that is what gets
-/// questioned; then alerts. Every page is dated and numbered, and every page carries the
-/// confidentiality footer, since printed pages get separated.
+/// questioned; then alerts. Every page says who it is about and what kind of document it is, is
+/// numbered, and carries the confidentiality footer, since printed pages get separated.
 /// </para>
 /// <para>
 /// This is the only format that carries the generated narrative, and it is labelled as generated.
@@ -35,9 +36,8 @@ public class PdfReportRenderer : IReportRenderer
     private const string Ink = ReportPalette.Ink;
     private const string Body = ReportPalette.Body;
     private const string Secondary = ReportPalette.Secondary;
-    private const string Muted = ReportPalette.Muted;
+    private const string Caption = ReportPalette.Caption;
     private const string Divider = ReportPalette.Divider;
-    private const string Brand = ReportPalette.Brand;
     private const string BrandDark = ReportPalette.BrandDark;
     private const string Tint = ReportPalette.Tint;
     private const string TableHead = ReportPalette.TableHead;
@@ -50,8 +50,6 @@ public class PdfReportRenderer : IReportRenderer
     /// <summary>The content width, and so the chart width: the figure is drawn 1:1 in points.</summary>
     internal static readonly float ContentWidth =
         PageSizes.A4.Width - 2 * MarginHorizontalCm * 72 / 2.54f;
-
-    private const float ChartHeight = 130;
 
     private static readonly Metric[] Metrics =
     [
@@ -85,78 +83,76 @@ public class PdfReportRenderer : IReportRenderer
             : Compose(data, sections, narrative);
 
     /// <summary>The document before it is serialised — what a preview or a test renders pages from.</summary>
-    internal static IDocument Compose(ReportDataSet data, ReportSections sections, string? narrative) =>
-        Document.Create(container =>
-        {
-            container.Page(page =>
+    internal static IDocument Compose(ReportDataSet data, ReportSections sections, string? narrative)
+    {
+        var subject = ReportLayout.Subject(data);
+        var documentType = DocumentType(sections);
+
+        return Document.Create(container =>
             {
-                page.Size(PageSizes.A4);
-                page.MarginHorizontal(MarginHorizontalCm, Unit.Centimetre);
-                page.MarginVertical(MarginVerticalCm, Unit.Centimetre);
-                page.DefaultTextStyle(t => t
-                    .FontFamily(ReportFonts.Families)
-                    .FontSize(10).FontColor(Body).LineHeight(1.3f));
-
-                page.Header().Element(h => ComposeHeader(h, data));
-                page.Content().Element(c => ComposeContent(c, data, sections, narrative));
-                page.Footer().Element(ComposeFooter);
-            });
-        });
-
-    // ── Chrome ──────────────────────────────────────────────────────────────────
-
-    private static void ComposeHeader(IContainer container, ReportDataSet data) =>
-        container.PaddingBottom(14).Column(column =>
-        {
-            column.Item().BorderBottom(1.5f).BorderColor(Brand).PaddingBottom(6).Row(row =>
-            {
-                row.RelativeItem().Text(text =>
+                container.Page(page =>
                 {
-                    text.Span("CardiTrack").FontSize(12).Bold().FontColor(BrandDark);
-                    text.Span("   Health export").FontSize(9).FontColor(Secondary);
+                    page.Size(PageSizes.A4);
+                    page.MarginHorizontal(MarginHorizontalCm, Unit.Centimetre);
+                    page.MarginVertical(MarginVerticalCm, Unit.Centimetre);
+                    page.DefaultTextStyle(t => t
+                        .FontFamily(ReportFonts.Families)
+                        .FontSize(10).FontColor(Body).LineHeight(1.3f));
+
+                    page.Header().Element(h => ReportLayout.Header(h, subject, documentType));
+                    page.Content().Element(c => ComposeContent(c, data, sections, narrative, documentType));
+                    // "Confidential health information" is the wording story 9.2 asks the footer
+                    // for (docs/execution/ui/mobile/user_stories.md), so it is kept whole.
+                    page.Footer().Element(f => ReportLayout.Footer(
+                        f, "Confidential health information · Not a clinical assessment", subject));
                 });
+            })
+            .WithMetadata(ReportLayout.Metadata(subject, documentType, data.From, data.To));
+    }
 
-                row.RelativeItem().AlignRight().AlignBottom().Text(
-                        $"{Date(data.From, "d MMM yyyy")} – {Date(data.To, "d MMM yyyy")}")
-                    .FontSize(9).FontColor(Secondary);
-            });
-        });
-
-    private static void ComposeFooter(IContainer container) =>
-        container.PaddingTop(8).BorderTop(1).BorderColor(Divider).PaddingTop(5).Row(row =>
+    /// <summary>
+    /// What kind of document this is, in the header, over the title and in the file's metadata.
+    /// </summary>
+    /// <remarks>
+    /// Read off the sections rather than passed in, because the sections already are the request's
+    /// shape: the journal screens send journals and nothing else (trends aside, which are the
+    /// picture the entries were written against — see <c>JournalExportRequests</c>), and nothing
+    /// else sends that. A health export whose caregiver ticked only journals is the same document,
+    /// and calling it a journal export is the honest name for it too. Anything with a reading,
+    /// alert, notice or device in it is a health export.
+    /// </remarks>
+    internal static string DocumentType(ReportSections sections) =>
+        sections is
         {
-            // Printed pages get separated from each other, so the warning belongs on each one
-            // rather than on a cover sheet.
-            row.RelativeItem().Text(
-                    "Confidential health information · CardiTrack · Not a clinical assessment")
-                .FontSize(7.5f).FontColor(Muted);
-
-            row.ConstantItem(80).AlignRight().Text(text =>
-            {
-                text.DefaultTextStyle(t => t.FontSize(7.5f).FontColor(Muted));
-                text.Span("Page ");
-                text.CurrentPageNumber();
-                text.Span(" of ");
-                text.TotalPages();
-            });
-        });
+            IncludeJournals: true,
+            IncludeMetrics: false,
+            IncludeAlerts: false,
+            IncludeNotices: false,
+            IncludeDevices: false
+        }
+            ? ReportLayout.JournalExport
+            : ReportLayout.HealthExport;
 
     // ── Content ─────────────────────────────────────────────────────────────────
 
     private static void ComposeContent(
-        IContainer container, ReportDataSet data, ReportSections sections, string? narrative)
+        IContainer container, ReportDataSet data, ReportSections sections, string? narrative,
+        string documentType)
     {
         container.Column(column =>
         {
             column.Spacing(0);
 
-            column.Item().Element(t => TitleBlock(t, data));
+            column.Item().Element(t => TitleBlock(t, data, documentType));
 
             foreach (var member in data.Members)
             {
                 var period = member with { ActivityLogs = data.PeriodReadings(member) };
 
-                column.Item().PaddingTop(18).Element(m => MemberBanner(m, period, sections));
+                // One member's facts sit straight under the title that already names them; a
+                // family export names each member in front of their own.
+                column.Item().PaddingTop(data.Members.Count > 1 ? 14 : 10).Element(m => MemberLine(
+                    m, period, sections, PeriodDays(data), named: data.Members.Count > 1));
 
                 if (sections.IncludeMetrics && period.ActivityLogs.Count > 0)
                     column.Item().PaddingTop(12).Element(k => KeyFigures(k, period));
@@ -214,68 +210,109 @@ public class PdfReportRenderer : IReportRenderer
             section.Item().Element(body);
         });
 
-    private static void TitleBlock(IContainer container, ReportDataSet data) =>
+    /// <summary>
+    /// The kind of document, then who and when it is about, then the period's bare facts.
+    /// </summary>
+    /// <remarks>
+    /// The heading is composed here rather than taken from the request's title. The request's
+    /// title is the history list's label for the export, written by whichever screen queued it
+    /// ("Margaret Okafor — health export", "Margaret Okafor — Daybooks"); printed as the heading it
+    /// repeated the header and said nothing about the period. The heading names the member and
+    /// the period instead, the same way whichever screen asked for it.
+    /// </remarks>
+    private static void TitleBlock(IContainer container, ReportDataSet data, string documentType) =>
         container.Column(column =>
         {
-            column.Item().Text(data.Title ?? "Health export")
-                .FontSize(22).Bold().FontColor(Ink).LineHeight(1.1f);
+            column.Item().Element(e => ReportLayout.Overline(e, documentType));
 
-            var days = data.To.DayNumber - data.From.DayNumber + 1;
+            column.Item().PaddingTop(3).Text(Title(data))
+                .FontSize(ReportLayout.TitleSize).Bold().FontColor(Ink).LineHeight(1.1f);
+
             column.Item().PaddingTop(4).Text(
                     $"{Date(data.From, "d MMMM yyyy")} to {Date(data.To, "d MMMM yyyy")}"
-                    + $"  ·  {days} days  ·  Prepared {Date(DateTime.UtcNow, "d MMMM yyyy")}")
+                    + $"  ·  {Days(PeriodDays(data))}  ·  Prepared {Date(DateTime.UtcNow, "d MMMM yyyy")}")
                 .FontSize(10).FontColor(Secondary);
         });
 
     /// <summary>
-    /// The facts under a member's name: who the document is about, and where the numbers came
-    /// from — device types only, never the caregiver's label for a device
+    /// "Margaret's September 2026" where the range is exactly one calendar month — the shape every
+    /// Monthbook export and most appointment printouts take — and "Margaret's 28 Aug 2026 – 26 Sep
+    /// 2026" otherwise. A family export has no one first name to lead with, so its heading is the
+    /// period alone; each member is named on their own line below it.
+    /// </summary>
+    internal static string Title(ReportDataSet data)
+    {
+        var period = IsCalendarMonth(data.From, data.To)
+            ? Date(data.From, "MMMM yyyy")
+            : ReportLayout.Range(data.From, data.To);
+
+        if (data.Members.Count != 1)
+            return period;
+
+        var member = data.Members[0].Member;
+        var name = string.IsNullOrWhiteSpace(member.FirstName) ? member.FullName.Trim() : member.FirstName.Trim();
+        return name.Length > 0 ? $"{name}'s {period}" : period;
+    }
+
+    private static bool IsCalendarMonth(DateOnly from, DateOnly to) =>
+        from.Day == 1
+        && to.Year == from.Year && to.Month == from.Month
+        && to.Day == DateTime.DaysInMonth(to.Year, to.Month);
+
+    private static int PeriodDays(ReportDataSet data) => data.To.DayNumber - data.From.DayNumber + 1;
+
+    private static string Days(int days) => days == 1 ? "1 day" : $"{days} days";
+
+    /// <summary>
+    /// The facts about a member: who the document is about, and where the numbers came from —
+    /// device types only, never the caregiver's label for a device
     /// (docs/technical/data_protection_architecture.md §70).
     /// </summary>
     /// <remarks>
     /// Each fact is only stated where the export actually carries the data behind it. A caregiver
-    /// who unticked metrics gets no readings gathered at all, and "0 days with readings" printed
+    /// who unticked metrics gets no readings gathered at all, and "0 of 30 days measured" printed
     /// over that absence would report a healthy member as an inactive one — the same mistake as
     /// printing a zero for a day the watch was not worn.
     /// </remarks>
-    internal static IReadOnlyList<string> MemberFacts(ReportMemberData member, ReportSections sections)
+    /// <param name="periodDays">The days the export covers, which the measured count is out of.</param>
+    internal static IReadOnlyList<string> MemberFacts(
+        ReportMemberData member, ReportSections sections, int periodDays)
     {
         var age = AgeAt(member.Member.DateOfBirth, DateOnly.FromDateTime(DateTime.UtcNow));
-        var facts = new List<string> { $"Age {age}", SexLabel(member.Member.Gender) };
+        var facts = new List<string> { age.ToString(CultureInfo.InvariantCulture), SexLabel(member.Member.Gender) };
 
         if (sections.IncludeDevices && member.Devices.Count > 0)
         {
             var types = member.Devices
-                .Select(d => d.DeviceType.ToString())
+                .Select(d => d.DeviceType.GetDisplayName())
                 .Distinct()
                 .OrderBy(t => t, StringComparer.Ordinal);
-            facts.Add("Source: " + string.Join(", ", types));
+            facts.Add(string.Join(", ", types));
         }
 
         if (sections.IncludeMetrics)
         {
             var measured = member.ActivityLogs.Count(HasAnyReading);
-            facts.Add(measured == 1 ? "1 day with readings" : $"{measured} days with readings");
+            facts.Add($"{measured} of {Days(periodDays)} measured");
         }
 
         return facts;
     }
 
-    private static void MemberBanner(IContainer container, ReportMemberData member, ReportSections sections)
-    {
-        var facts = MemberFacts(member, sections);
-
-        container
-            .Background(Tint).CornerRadius(6)
-            .BorderLeft(3).BorderColor(Brand)
-            .PaddingVertical(9).PaddingHorizontal(12)
-            .Column(column =>
-            {
-                column.Item().Text(member.Member.FullName).FontSize(14).SemiBold().FontColor(Ink);
-                column.Item().PaddingTop(2).Text(string.Join("   ·   ", facts))
-                    .FontSize(9).FontColor(Secondary);
-            });
-    }
+    /// <summary>
+    /// The member's facts as one quiet line under the title. It was a tinted banner with the name
+    /// set large inside it, which on a one-member export said the name a third time — after the
+    /// header and the title — in the most prominent box on the page.
+    /// </summary>
+    private static void MemberLine(
+        IContainer container, ReportMemberData member, ReportSections sections, int periodDays, bool named) =>
+        container.Text(text =>
+        {
+            text.DefaultTextStyle(t => t.FontSize(9).FontColor(Caption));
+            if (named)
+                text.Span(member.Member.FullName + "   ").FontSize(11).SemiBold().FontColor(Ink);
+            text.Span(string.Join("  ·  ", MemberFacts(member, sections, periodDays)));
+        });
 
     /// <summary>
     /// The period in four numbers. An average answers the question a caregiver is asked first —
@@ -297,36 +334,39 @@ public class PdfReportRenderer : IReportRenderer
             }
         });
 
+    /// <summary>
+    /// One key figure. The metric's colour is a rule across the tile's top edge — the same colour
+    /// its trend is drawn in further down — rather than a dot beside the title, which at 8pt read
+    /// as a status light.
+    /// </summary>
     private static void StatTile(IContainer container, Metric metric, IReadOnlyList<double> values) =>
         container
             .Border(1).BorderColor(Divider).CornerRadius(6)
-            .PaddingVertical(8).PaddingHorizontal(10)
-            .Column(column =>
+            .Column(tile =>
             {
-                column.Item().Row(row =>
+                tile.Item().Height(2).Background(metric.Color);
+
+                tile.Item().PaddingTop(6).PaddingBottom(8).PaddingHorizontal(10).Column(column =>
                 {
-                    row.ConstantItem(8).AlignMiddle().Height(8).Width(8)
-                        .Background(metric.Color).CornerRadius(4);
-                    row.RelativeItem().PaddingLeft(6).Text(metric.Title)
-                        .FontSize(8.5f).FontColor(Secondary);
+                    column.Item().Text(metric.Title).FontSize(8.5f).FontColor(Secondary);
+
+                    if (values.Count == 0)
+                    {
+                        column.Item().PaddingTop(3).Text("—").FontSize(17).SemiBold().FontColor(Caption);
+                        column.Item().Text("not measured").FontSize(7.5f).FontColor(Caption);
+                        return;
+                    }
+
+                    column.Item().PaddingTop(3).Text(text =>
+                    {
+                        text.Span(metric.Format(values.Average())).FontSize(17).SemiBold().FontColor(Ink);
+                        text.Span("  " + metric.Unit).FontSize(8).FontColor(Secondary);
+                    });
+
+                    column.Item().Text(
+                            $"{metric.Format(values.Min())} – {metric.Format(values.Max())}  ·  {values.Count} d")
+                        .FontSize(7.5f).FontColor(Caption);
                 });
-
-                if (values.Count == 0)
-                {
-                    column.Item().PaddingTop(3).Text("—").FontSize(17).SemiBold().FontColor(Muted);
-                    column.Item().Text("not measured").FontSize(7.5f).FontColor(Muted);
-                    return;
-                }
-
-                column.Item().PaddingTop(3).Text(text =>
-                {
-                    text.Span(metric.Format(values.Average())).FontSize(17).SemiBold().FontColor(Ink);
-                    text.Span("  " + metric.Unit).FontSize(8).FontColor(Secondary);
-                });
-
-                column.Item().Text(
-                        $"{metric.Format(values.Min())} – {metric.Format(values.Max())}  ·  {values.Count} d")
-                    .FontSize(7.5f).FontColor(Muted);
             });
 
     private static void SectionTitle(IContainer container, string title) =>
@@ -348,13 +388,17 @@ public class PdfReportRenderer : IReportRenderer
     private static void Summary(IContainer container, string narrative) =>
         container.PaddingTop(8).Column(column =>
         {
-            column.Item().Element(e => Markdown(e, narrative));
+            column.Item().Element(e => ReportLayout.Markdown(e, narrative));
 
             // Attribution sits with the text it qualifies, not in a footnote a reader skips.
-            column.Item().PaddingTop(10).Element(AiAttribution);
+            column.Item().PaddingTop(10).Element(e => AiAttribution(e,
+                "Written by CardiTrack's AI assistant from the readings in this document. "
+                + "It is not a clinical assessment."));
         });
 
-    private static void AiAttribution(IContainer container) =>
+    /// <summary>The "AI" mark and a sentence saying what it wrote — set over or under the text it
+    /// qualifies, never in a footnote a reader skips.</summary>
+    private static void AiAttribution(IContainer container, string sentence) =>
         container
             .Background(Tint).CornerRadius(4)
             .PaddingVertical(5).PaddingHorizontal(8)
@@ -363,74 +407,9 @@ public class PdfReportRenderer : IReportRenderer
                 row.AutoItem().AlignMiddle()
                     .Background(BrandDark).CornerRadius(3).PaddingVertical(1).PaddingHorizontal(4)
                     .Text("AI").FontSize(6.5f).Bold().FontColor(Colors.White);
-                row.RelativeItem().PaddingLeft(7).AlignMiddle().Text(
-                        "Written by CardiTrack's AI assistant from the readings in this document. "
-                        + "It is not a clinical assessment.")
+                row.RelativeItem().PaddingLeft(7).AlignMiddle().Text(sentence)
                     .FontSize(8).Italic().FontColor(Secondary);
             });
-
-    /// <summary>The narrative's Markdown, laid out as formatting rather than printed as marks.</summary>
-    private static void Markdown(IContainer container, string markdown) =>
-        container.Column(column =>
-        {
-            column.Spacing(6);
-            foreach (var block in NarrativeMarkdown.Parse(markdown))
-            {
-                switch (block)
-                {
-                    case NarrativeMarkdown.Heading heading:
-                        column.Item().PaddingTop(4).Text(text =>
-                        {
-                            text.DefaultTextStyle(t => t.FontSize(heading.Level <= 2 ? 11.5f : 10.5f).SemiBold().FontColor(Ink));
-                            Runs(text, heading.Runs);
-                        });
-                        break;
-
-                    case NarrativeMarkdown.Paragraph paragraph:
-                        column.Item().Text(text =>
-                        {
-                            text.DefaultTextStyle(t => t.LineHeight(1.45f));
-                            Runs(text, paragraph.Runs);
-                        });
-                        break;
-
-                    case NarrativeMarkdown.ListBlock list:
-                        column.Item().Column(items =>
-                        {
-                            items.Spacing(3);
-                            var n = 0;
-                            foreach (var item in list.Items)
-                            {
-                                n++;
-                                var marker = list.Ordered ? $"{n}." : "•";
-                                items.Item().Row(row =>
-                                {
-                                    row.ConstantItem(16).AlignRight().PaddingRight(6)
-                                        .Text(marker).FontColor(Secondary);
-                                    row.RelativeItem().Text(text =>
-                                    {
-                                        text.DefaultTextStyle(t => t.LineHeight(1.4f));
-                                        Runs(text, item);
-                                    });
-                                });
-                            }
-                        });
-                        break;
-                }
-            }
-        });
-
-    private static void Runs(TextDescriptor text, IReadOnlyList<NarrativeMarkdown.Run> runs)
-    {
-        foreach (var run in runs)
-        {
-            var span = text.Span(run.Text);
-            if (run.Bold)
-                span.SemiBold();
-            if (run.Italic)
-                span.Italic();
-        }
-    }
 
     // ── Charts ──────────────────────────────────────────────────────────────────
 
@@ -442,7 +421,7 @@ public class PdfReportRenderer : IReportRenderer
             {
                 var chart = ReportChartRenderer.Line(
                     member.ActivityLogs, metric.Read, from, to, metric.Color, metric.Format,
-                    ContentWidth, ChartHeight, metric.TickSteps);
+                    ContentWidth, ReportLayout.ChartHeight, metric.TickSteps);
                 if (chart is null)
                     continue;
 
@@ -467,7 +446,7 @@ public class PdfReportRenderer : IReportRenderer
                         });
                         row.RelativeItem().AlignRight().Text(
                                 $"average {metric.Format(values.Average())}  ·  {values.Count} of {to.DayNumber - from.DayNumber + 1} days")
-                            .FontSize(8.5f).FontColor(Muted);
+                            .FontSize(8.5f).FontColor(Caption);
                     });
                     block.Item().PaddingTop(4).Element(e => Figure(e, chart));
                 });
@@ -656,33 +635,70 @@ public class PdfReportRenderer : IReportRenderer
         });
 
     /// <summary>
-    /// Severity as a coloured dot beside its word — never the colour alone, which a photocopier
-    /// and a colour-blind reader both lose.
+    /// Severity as its word on a wash of its colour — never the colour alone, which a photocopier
+    /// and a colour-blind reader both lose, and never the colour's name, which is how the table
+    /// used to print it: "Orange" is how the rules grade an alert, not what it means to a reader.
     /// </summary>
-    private static void SeverityChip(IContainer container, AlertSeverity severity) =>
-        container.AlignLeft().Row(row =>
-        {
-            row.ConstantItem(7).AlignMiddle().Height(7).Width(7)
-                .Background(SeverityColor(severity)).CornerRadius(3.5f);
-            row.AutoItem().PaddingLeft(5).AlignMiddle().Text(severity.ToString()).FontSize(9);
-        });
-
-    private static string SeverityColor(AlertSeverity severity) => severity switch
+    /// <remarks>
+    /// The ink is the severity's own hue taken dark enough to clear 4.5:1 on its wash and on the
+    /// zebra row behind it; the wash is the app's status colour at about 12%, a shade lighter than
+    /// the app's 15% pills so that the dark ink still clears on it.
+    /// </remarks>
+    private static void SeverityChip(IContainer container, AlertSeverity severity)
     {
-        AlertSeverity.Red => "#E53E3E",
-        AlertSeverity.Orange => "#ED7B2F",
-        AlertSeverity.Yellow => "#F0A92E",
-        AlertSeverity.Green => "#36C09B",
-        _ => Muted
+        var (wash, ink) = SeverityColors(severity);
+        container.AlignLeft().AlignMiddle()
+            .Background(wash).CornerRadius(3).PaddingVertical(1.5f).PaddingHorizontal(6)
+            .Text(SeverityWord(severity)).FontSize(8).SemiBold().FontColor(ink);
+    }
+
+    /// <summary>
+    /// The app's words for the four grades (AlertSeverityLook on mobile): yellow is Notice, not
+    /// Info, because "something is different" and "nothing to report" are different news. An
+    /// ungraded alert reads as Info, as it does in the app.
+    /// </summary>
+    internal static string SeverityWord(AlertSeverity severity) => severity switch
+    {
+        AlertSeverity.Red => "Critical",
+        AlertSeverity.Orange => "Urgent",
+        AlertSeverity.Yellow => "Notice",
+        _ => "Info"
     };
 
+    private static (string Wash, string Ink) SeverityColors(AlertSeverity severity) => severity switch
+    {
+        AlertSeverity.Red => ("#FCE8E8", "#B42828"),
+        AlertSeverity.Orange => ("#FDEFE6", "#9A4A0E"),
+        AlertSeverity.Yellow => ("#FDF5E6", "#7A5210"),
+        AlertSeverity.Green => ("#E7F7F3", "#15644F"),
+        _ => (TableHead, Caption)
+    };
+
+    /// <summary>
+    /// The journal entries, each on its own card, under one statement of who wrote them.
+    /// </summary>
+    /// <remarks>
+    /// The AI attribution is said once, at the head of the section, rather than repeated at the
+    /// foot of every card: every entry has the same author, and a stack of identical italic lines
+    /// reads as boilerplate and gets skipped — the opposite of what a disclosure is for. The one
+    /// line sits where the reader starts the section, as the summary's does, which is what
+    /// docs/compliance/ai_act_classification.md §7.1 asks for: say it is AI-written where it is
+    /// shown.
+    /// </remarks>
     private static void Journals(IContainer container, ReportMemberData member) =>
         container.PaddingTop(8).Column(column =>
         {
             column.Spacing(10);
+            column.Item().Element(e => AiAttribution(e,
+                "Every entry below was written by CardiTrack's AI assistant. Not a clinical assessment."));
+
             foreach (var entry in member.Journals.OrderBy(j => j.LocalDate))
             {
-                column.Item().ShowEntire()
+                // Kept whole where it fits — moved to the next page rather than split — and let
+                // run on where it cannot fit on any page. ShowEntire, which this was, failed the
+                // whole export on an entry longer than a page, and a Monthbook entry near its
+                // 4,000-character ceiling in a card this narrow comes close to one.
+                column.Item().PreventPageBreak()
                     .Border(1).BorderColor(Divider).CornerRadius(6)
                     .PaddingVertical(9).PaddingHorizontal(12)
                     .Column(card =>
@@ -700,10 +716,7 @@ public class PdfReportRenderer : IReportRenderer
                         if (!string.IsNullOrWhiteSpace(entry.Headline))
                             card.Item().PaddingTop(5).Text(entry.Headline).FontSize(11).SemiBold().FontColor(Ink);
 
-                        card.Item().PaddingTop(4).Element(e => Markdown(e, entry.Text));
-                        card.Item().PaddingTop(6).Text(
-                                "Written by CardiTrack's AI assistant. Not a clinical assessment.")
-                            .FontSize(7.5f).Italic().FontColor(Muted);
+                        card.Item().PaddingTop(4).Element(e => ReportLayout.Markdown(e, entry.Text));
                     });
             }
         });
@@ -732,9 +745,9 @@ public class PdfReportRenderer : IReportRenderer
             {
                 var shade = index++ % 2 == 1 ? Zebra : White;
                 BodyCell(table.Cell(), notice.FirstDetectedDate.ToString("d MMM yyyy", CultureInfo.InvariantCulture), shade, right: false);
-                BodyCell(table.Cell(), notice.Category.ToString(), shade, right: false);
+                BodyCell(table.Cell(), Humanise(notice.Category), shade, right: false);
                 BodyCell(table.Cell(), NoticeLabel(notice.RuleCode), shade, right: false);
-                BodyCell(table.Cell(), notice.State.ToString(), shade, right: false);
+                BodyCell(table.Cell(), Humanise(notice.State), shade, right: false);
             }
         });
 
@@ -749,7 +762,7 @@ public class PdfReportRenderer : IReportRenderer
     {
         var box = cell.Background(shade).BorderBottom(1).BorderColor(Divider)
             .PaddingVertical(4).PaddingHorizontal(6);
-        (right ? box.AlignRight() : box).Text(text).FontSize(9).FontColor(quiet ? Muted : Body);
+        (right ? box.AlignRight() : box).Text(text).FontSize(9).FontColor(quiet ? Caption : Body);
     }
 
     // ── Words and figures ───────────────────────────────────────────────────────
@@ -760,6 +773,39 @@ public class PdfReportRenderer : IReportRenderer
         DigestAudience.Monthbook => "Monthbook",
         _ => "Daybook"
     };
+
+    /// <summary>
+    /// An enum member as words in sentence case — <c>CheckIn</c> as "Check in" — so a table cell
+    /// reads as English rather than as the identifier it came from: what <see cref="NoticeLabel"/>
+    /// does for a rule code, done for PascalCase.
+    /// </summary>
+    internal static string Humanise(Enum value)
+    {
+        var name = value.ToString();
+        var words = new StringBuilder(name.Length + 4);
+        for (var i = 0; i < name.Length; i++)
+        {
+            var c = name[i];
+            // A new word at a lower-to-upper step (CheckIn), and at the last capital of a run
+            // that a lower-case letter follows (HRVDrop is "HRV drop").
+            var boundary = i > 0 && char.IsUpper(c)
+                && (char.IsLower(name[i - 1]) || char.IsDigit(name[i - 1])
+                    || (char.IsUpper(name[i - 1]) && i + 1 < name.Length && char.IsLower(name[i + 1])));
+            if (boundary)
+                words.Append(' ');
+            words.Append(c);
+        }
+
+        // Sentence case, but an acronym stays an acronym.
+        var parts = words.ToString().Split(' ');
+        for (var i = 1; i < parts.Length; i++)
+        {
+            if (parts[i].Length == 1 || parts[i].Any(char.IsLower))
+                parts[i] = parts[i].ToLowerInvariant();
+        }
+
+        return string.Join(' ', parts);
+    }
 
     /// <summary>
     /// Rule codes are catalogue keys (<c>DEVICE_STALE_LONG</c>), not caregiver free text.

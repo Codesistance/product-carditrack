@@ -4,6 +4,7 @@ using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Services.Reports;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
@@ -722,13 +723,24 @@ public class ReportRendererTests
     [Fact]
     public void Pdf_OmitsTrendCharts_WhenTrendsWereUnticked()
     {
-        var data = BuildData(logs: [FullDay()]);
-        var sections = new ReportSections(
-            IncludeMetrics: true, IncludeAlerts: true, IncludeDevices: true, IncludeTrends: false);
+        var logs = Enumerable.Range(0, 14)
+            .Select(i => new ActivityLog
+            {
+                CardiMemberId = MemberId,
+                Date = new DateOnly(2026, 2, 7).AddDays(i),
+                SleepMinutes = 380 + i * 5
+            })
+            .ToList();
+        var data = BuildData(logs: logs);
+        var ticked = new ReportSections(
+            IncludeMetrics: true, IncludeAlerts: true, IncludeDevices: true, IncludeTrends: true);
+        var unticked = ticked with { IncludeTrends = false };
 
-        // Sleep purple is not brand chrome. The 8pt tile dot is tens of pixels;
-        // a drawn series is hundreds. A Trends heading with no marks stays in the tile bucket.
-        Assert.True(CountChartInk(data, sections) < 120,
+        // Sleep purple is not only the series: the Sleep key-figure tile carries a 2pt rule in
+        // it, which is a couple of pixel rows however wide the tile is. A drawn series climbs
+        // through dozens, so rows — not pixels — tell the two apart.
+        Assert.True(CountChartInkRows(data, ticked) > 20, "The control should draw a series.");
+        Assert.True(CountChartInkRows(data, unticked) < 6,
             "Unticked graphs must not leave a series on the page.");
     }
 
@@ -742,17 +754,25 @@ public class ReportRendererTests
         Assert.True(hits > 200, $"Expected a sleep series on the page; found {hits} ink pixels.");
     }
 
-    private static int CountChartInk(ReportDataSet data, ReportSections sections)
+    private static int CountChartInk(ReportDataSet data, ReportSections sections) =>
+        ChartInkByRow(data, sections).Sum();
+
+    /// <summary>Pixel rows, across every page, that carry any sleep ink.</summary>
+    private static int CountChartInkRows(ReportDataSet data, ReportSections sections) =>
+        ChartInkByRow(data, sections).Count(hits => hits > 0);
+
+    private static List<int> ChartInkByRow(ReportDataSet data, ReportSections sections)
     {
         var images = PdfReportRenderer.Compose(data, sections, narrative: null)
             .GenerateImages(new ImageGenerationSettings { ImageFormat = ImageFormat.Png, RasterDpi = 72 });
 
-        var hits = 0;
+        var rows = new List<int>();
         foreach (var bytes in images)
         {
             using var bitmap = SkiaSharp.SKBitmap.Decode(bytes);
             for (var y = 0; y < bitmap.Height; y++)
             {
+                var hits = 0;
                 for (var x = 0; x < bitmap.Width; x++)
                 {
                     var c = bitmap.GetPixel(x, y);
@@ -761,25 +781,40 @@ public class ReportRendererTests
                         && Math.Abs(c.Blue - 0xDC) <= 12)
                         hits++;
                 }
+                rows.Add(hits);
             }
         }
 
-        return hits;
+        return rows;
     }
 
     [Fact]
     public void Pdf_DoesNotClaimZeroDaysOfReadings_WhenMetricsWereNotExported()
     {
         // The gather does not load logs at all when the caregiver unticks metrics, so counting
-        // them here would print "0 days with readings" over a member who has plenty — reporting
+        // them here would print "0 of 31 days measured" over a member who has plenty — reporting
         // an exclusion as an absence, in a document a clinician may act on.
         var member = BuildData(logs: []).Members[0];
 
         var facts = PdfReportRenderer.MemberFacts(
             member,
-            new ReportSections(IncludeMetrics: false, IncludeAlerts: true, IncludeDevices: true));
+            new ReportSections(IncludeMetrics: false, IncludeAlerts: true, IncludeDevices: true),
+            periodDays: 31);
 
-        Assert.DoesNotContain(facts, f => f.Contains("days with readings", StringComparison.Ordinal));
+        Assert.DoesNotContain(facts, f => f.Contains("measured", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Pdf_NamesDevicesAsTheAppDoes_NotByTheirEnumName()
+    {
+        var watch = BuildDevice();
+        watch.DeviceType = DeviceType.AppleWatch;
+        var member = BuildData(devices: [watch]).Members[0];
+
+        var facts = PdfReportRenderer.MemberFacts(member, AllSections, periodDays: 31);
+
+        Assert.Contains("Apple Watch", facts);
+        Assert.DoesNotContain("AppleWatch", facts);
     }
 
     [Fact]
@@ -787,10 +822,10 @@ public class ReportRendererTests
     {
         var member = BuildData(logs: [FullDay(), EmptyDay()]).Members[0];
 
-        var facts = PdfReportRenderer.MemberFacts(member, AllSections);
+        var facts = PdfReportRenderer.MemberFacts(member, AllSections, periodDays: 31);
 
         // Two days gathered, one of them a day the watch was not worn.
-        Assert.Contains("1 day with readings", facts);
+        Assert.Contains("1 of 31 days measured", facts);
     }
 
     [Fact]
@@ -825,10 +860,10 @@ public class ReportRendererTests
             ChartTo: day);
 
         var period = data.Members[0] with { ActivityLogs = data.PeriodReadings(data.Members[0]) };
-        var facts = PdfReportRenderer.MemberFacts(period, AllSections);
+        var facts = PdfReportRenderer.MemberFacts(period, AllSections, periodDays: 1);
 
-        Assert.Contains("1 day with readings", facts);
-        Assert.DoesNotContain("2 days with readings", facts);
+        Assert.Contains("1 of 1 day measured", facts);
+        Assert.DoesNotContain("2 of 1 day measured", facts);
     }
 
     [Fact]
@@ -846,6 +881,156 @@ public class ReportRendererTests
 
         var rendered = await new PdfReportRenderer()
             .RenderAsync(BuildData(logs: logs), AllSections, "Summary.");
+
+        Assert.Equal("%PDF", Encoding.ASCII.GetString(rendered.Content, 0, 4));
+    }
+
+    [Fact]
+    public void Pdf_StatesAgeSexAndDeviceType_AsBareFacts()
+    {
+        var member = BuildData(devices: [BuildDevice()]).Members[0];
+
+        var facts = PdfReportRenderer.MemberFacts(member, AllSections, periodDays: 31);
+
+        // One quiet line under the title: "77 · Female · Fitbit · 1 of 31 days measured". The
+        // caregiver's label for the device never appears (data_protection_architecture.md §70).
+        Assert.Equal(
+            new DateOnly(1948, 4, 12).ToAgeInYears(DateOnly.FromDateTime(DateTime.UtcNow)).ToString(),
+            facts[0]);
+        Assert.Equal("Female", facts[1]);
+        Assert.Equal("Fitbit", facts[2]);
+        Assert.DoesNotContain(facts, f => f.Contains("Mom's", StringComparison.Ordinal));
+    }
+
+    // ── PDF frame ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Pdf_CallsTheJournalScreensExport_ACardiJournalExport()
+    {
+        // The shape JournalExportRequests sends: journals, and the trends they were read against.
+        var journal = new ReportSections(
+            IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false,
+            IncludeTrends: true, IncludeJournals: true, IncludeNotices: false);
+
+        Assert.Equal("CardiJournal export", PdfReportRenderer.DocumentType(journal));
+        Assert.Equal("CardiJournal export", PdfReportRenderer.DocumentType(journal with { IncludeTrends = false }));
+    }
+
+    [Theory]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, false, true, false)]
+    [InlineData(false, false, false, true)]
+    public void Pdf_CallsAnythingCarryingRecordsBesideJournals_AHealthExport(
+        bool metrics, bool alerts, bool notices, bool devices)
+    {
+        var sections = new ReportSections(
+            IncludeMetrics: metrics, IncludeAlerts: alerts, IncludeDevices: devices,
+            IncludeTrends: true, IncludeJournals: true, IncludeNotices: notices);
+
+        Assert.Equal("Health export", PdfReportRenderer.DocumentType(sections));
+        Assert.Equal("Health export", PdfReportRenderer.DocumentType(AllSections));
+    }
+
+    [Fact]
+    public void Pdf_NamesAWholeCalendarMonthByItsName()
+    {
+        var data = BuildData() with { From = new DateOnly(2026, 9, 1), To = new DateOnly(2026, 9, 30) };
+
+        Assert.Equal("Margaret's September 2026", PdfReportRenderer.Title(data));
+    }
+
+    [Theory]
+    [InlineData(2026, 2, 7, 2026, 3, 9, "Margaret's 7 Feb 2026 – 9 Mar 2026")]
+    [InlineData(2026, 9, 1, 2026, 9, 29, "Margaret's 1 Sep 2026 – 29 Sep 2026")]   // a day short
+    [InlineData(2026, 8, 31, 2026, 9, 30, "Margaret's 31 Aug 2026 – 30 Sep 2026")] // a day early
+    [InlineData(2026, 2, 20, 2026, 2, 20, "Margaret's 20 Feb 2026")]               // a pinned day
+    public void Pdf_NamesAnyOtherRangeByItsDates(
+        int fromYear, int fromMonth, int fromDay, int toYear, int toMonth, int toDay, string expected)
+    {
+        var data = BuildData() with
+        {
+            From = new DateOnly(fromYear, fromMonth, fromDay),
+            To = new DateOnly(toYear, toMonth, toDay)
+        };
+
+        Assert.Equal(expected, PdfReportRenderer.Title(data));
+    }
+
+    [Fact]
+    public void Pdf_TitlesAFamilyExportByThePeriodAlone()
+    {
+        // No one first name to lead with; each member is named on their own line instead.
+        var single = BuildData();
+        var family = single with { Members = [single.Members[0], single.Members[0]] };
+
+        Assert.Equal("7 Feb 2026 – 9 Mar 2026", PdfReportRenderer.Title(family));
+        Assert.Equal("2 people", ReportLayout.Subject(family));
+    }
+
+    [Theory]
+    [InlineData(AlertSeverity.Red, "Critical")]
+    [InlineData(AlertSeverity.Orange, "Urgent")]
+    [InlineData(AlertSeverity.Yellow, "Notice")]
+    [InlineData(AlertSeverity.Green, "Info")]
+    public void Pdf_PrintsSeverityInTheAppsWords_NotAsAColourName(AlertSeverity severity, string word)
+    {
+        // The app's vocabulary (AlertSeverityLook): "Orange" is how a rule grades an alert, not
+        // something a clinician reading the table can act on.
+        Assert.Equal(word, PdfReportRenderer.SeverityWord(severity));
+    }
+
+    [Fact]
+    public void Pdf_PrintsEnumValuesAsWords()
+    {
+        Assert.Equal("Check in", PdfReportRenderer.Humanise(DigestUrgency.CheckIn));
+        Assert.Equal("Act now", PdfReportRenderer.Humanise(DigestUrgency.ActNow));
+        Assert.Equal("Blocking", PdfReportRenderer.Humanise(NotificationCategory.Blocking));
+        Assert.Equal("Open", PdfReportRenderer.Humanise(NotificationState.Open));
+    }
+
+    [Fact]
+    public void Pdf_TitlesTheFileWithWhoWhatAndWhen()
+    {
+        // What a file manager, a mail preview and a screen reader announce before the file is
+        // opened — QuestPDF's default names no one and nothing.
+        var metadata = PdfReportRenderer.Compose(BuildData(), AllSections, narrative: null).GetMetadata();
+
+        Assert.Equal("Margaret Doe — Health export, 7 Feb 2026 – 9 Mar 2026", metadata.Title);
+        Assert.Equal("CardiTrack", metadata.Author);
+        Assert.Equal("CardiTrack", metadata.Creator);
+        Assert.Contains("Not a clinical assessment", metadata.Subject);
+    }
+
+    [Fact]
+    public void Pdf_TitlesAJournalExportsFileAsOne()
+    {
+        var journal = new ReportSections(
+            IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false,
+            IncludeTrends: true, IncludeJournals: true);
+
+        var metadata = PdfReportRenderer.Compose(BuildData(journals: [BuildJournal()]), journal, narrative: null)
+            .GetMetadata();
+
+        Assert.Equal("Margaret Doe — CardiJournal export, 7 Feb 2026 – 9 Mar 2026", metadata.Title);
+    }
+
+    [Fact]
+    public async Task Pdf_RendersAJournalEntryLongerThanAPage()
+    {
+        // A card is kept whole where it fits, so one that cannot fit on any page must still lay
+        // out rather than fail the export: forty paragraphs is well past a page of A4.
+        var entry = BuildJournal();
+        entry.Text = string.Join("\n\n", Enumerable.Range(1, 40).Select(i =>
+            $"Paragraph {i}. Sleep held near **their usual**, and the resting heart rate sat where it "
+            + "has sat for most of the month, a little above the published range on two mornings."));
+
+        var rendered = await new PdfReportRenderer().RenderAsync(
+            BuildData(journals: [BuildJournal(), entry, BuildJournal()]),
+            new ReportSections(
+                IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false,
+                IncludeTrends: false, IncludeJournals: true),
+            narrative: null);
 
         Assert.Equal("%PDF", Encoding.ASCII.GetString(rendered.Content, 0, 4));
     }
