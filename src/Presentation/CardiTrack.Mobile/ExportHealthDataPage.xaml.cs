@@ -1,3 +1,4 @@
+using CardiTrack.Mobile.Controls;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
@@ -309,7 +310,7 @@ public partial class ExportHealthDataPage : ContentPage
 
     private void OnPresetClicked(object? sender, EventArgs e)
     {
-        if (sender is not Button { CommandParameter: string parameter }
+        if (sender is not AppButton { CommandParameter: string parameter }
             || !int.TryParse(parameter, out var days))
             return;
 
