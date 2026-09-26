@@ -33,72 +33,52 @@ namespace CardiTrack.Infrastructure.Services.Reports;
 /// Anyone reading it has to be able to tell at a glance what wrote the answers and what they are
 /// not.
 /// </para>
+/// <para>
+/// The frame — running header, title size, footer, file metadata — is the health export's, from
+/// <see cref="ReportLayout"/>, and so is the Markdown an answer is set in: the assistant writes
+/// the same bold and bullets the export's summary does, and printed as asterisks they are noise
+/// in exactly the place the reader is paying attention.
+/// </para>
 /// </remarks>
 internal static class ChatTranscriptDocument
 {
     private const float MarginHorizontalCm = 1.8f;
     private const float MarginVerticalCm = 1.4f;
 
-    private const float ChartHeight = 120;
-
     /// <summary>Charts sit inside the answer block, which is indented from the page edge.</summary>
     private const float AnswerIndent = 12;
 
     private static readonly float ChartWidth = PdfReportRenderer.ContentWidth - AnswerIndent;
 
-    internal static IDocument Compose(ReportDataSet data, ChatTranscript transcript) =>
-        Document.Create(container =>
-        {
-            container.Page(page =>
+    internal static IDocument Compose(ReportDataSet data, ChatTranscript transcript)
+    {
+        var subject = ReportLayout.Subject(data);
+
+        return Document.Create(container =>
             {
-                page.Size(PageSizes.A4);
-                page.MarginHorizontal(MarginHorizontalCm, Unit.Centimetre);
-                page.MarginVertical(MarginVerticalCm, Unit.Centimetre);
-                page.DefaultTextStyle(t => t
-                    .FontFamily(ReportFonts.Families)
-                    .FontSize(10).FontColor(ReportPalette.Body).LineHeight(1.35f));
-
-                page.Header().Element(h => Header(h, transcript));
-                page.Content().Element(c => Content(c, data, transcript));
-                page.Footer().Element(Footer);
-            });
-        });
-
-    // ── Chrome ──────────────────────────────────────────────────────────────────
-
-    private static void Header(IContainer container, ChatTranscript transcript) =>
-        container.PaddingBottom(14).Column(column =>
-        {
-            column.Item().BorderBottom(1.5f).BorderColor(ReportPalette.Brand).PaddingBottom(6).Row(row =>
-            {
-                row.RelativeItem().Text(text =>
+                container.Page(page =>
                 {
-                    text.Span("CardiTrack").FontSize(12).Bold().FontColor(ReportPalette.BrandDark);
-                    text.Span("   Chat transcript").FontSize(9).FontColor(ReportPalette.Secondary);
+                    page.Size(PageSizes.A4);
+                    page.MarginHorizontal(MarginHorizontalCm, Unit.Centimetre);
+                    page.MarginVertical(MarginVerticalCm, Unit.Centimetre);
+                    page.DefaultTextStyle(t => t
+                        .FontFamily(ReportFonts.Families)
+                        .FontSize(10).FontColor(ReportPalette.Body).LineHeight(1.35f));
+
+                    page.Header().Element(h => ReportLayout.Header(h, subject, ReportLayout.ChatTranscript));
+                    page.Content().Element(c => Content(c, data, transcript));
+                    // Longer than the health export's by "AI-generated answers": every page of this
+                    // document is mostly generated text, and a page handed on alone has to say so.
+                    // It is also the wording the AI Act survey records for this document
+                    // (docs/compliance/ai_act_classification.md §7.1).
+                    page.Footer().Element(f => ReportLayout.Footer(
+                        f,
+                        "Confidential health information · AI-generated answers · Not a clinical assessment",
+                        subject));
                 });
-
-                row.RelativeItem().AlignRight().AlignBottom()
-                    .Text(Day(transcript.StartedAtUtc))
-                    .FontSize(9).FontColor(ReportPalette.Secondary);
-            });
-        });
-
-    private static void Footer(IContainer container) =>
-        container.PaddingTop(8).BorderTop(1).BorderColor(ReportPalette.Divider).PaddingTop(5).Row(row =>
-        {
-            row.RelativeItem().Text(
-                    "Confidential health information · CardiTrack · AI-generated answers · Not a clinical assessment")
-                .FontSize(7.5f).FontColor(ReportPalette.Muted);
-
-            row.ConstantItem(80).AlignRight().Text(text =>
-            {
-                text.DefaultTextStyle(t => t.FontSize(7.5f).FontColor(ReportPalette.Muted));
-                text.Span("Page ");
-                text.CurrentPageNumber();
-                text.Span(" of ");
-                text.TotalPages();
-            });
-        });
+            })
+            .WithMetadata(ReportLayout.Metadata(subject, ReportLayout.ChatTranscript, data.From, data.To));
+    }
 
     // ── Content ─────────────────────────────────────────────────────────────────
 
@@ -124,8 +104,10 @@ internal static class ChatTranscriptDocument
     private static void TitleBlock(IContainer container, ReportDataSet data, ChatTranscript transcript) =>
         container.Column(column =>
         {
-            column.Item().Text(data.Title ?? transcript.Label)
-                .FontSize(17).Bold().FontColor(ReportPalette.Ink).LineHeight(1.2f);
+            column.Item().Element(e => ReportLayout.Overline(e, ReportLayout.ChatTranscript));
+
+            column.Item().PaddingTop(3).Text(data.Title ?? transcript.Label)
+                .FontSize(ReportLayout.TitleSize).Bold().FontColor(ReportPalette.Ink).LineHeight(1.1f);
 
             var member = data.Members.Count > 0 ? data.Members[0].Member : null;
             if (member is not null)
@@ -135,7 +117,7 @@ internal static class ChatTranscriptDocument
             }
 
             column.Item().PaddingTop(6).Text(Summary(transcript))
-                .FontSize(8.5f).FontColor(ReportPalette.Muted);
+                .FontSize(8.5f).FontColor(ReportPalette.Caption);
         });
 
     /// <summary>
@@ -174,7 +156,7 @@ internal static class ChatTranscriptDocument
                     .FontSize(8.5f).SemiBold()
                     .FontColor(asked ? ReportPalette.BrandDark : ReportPalette.Secondary);
                 row.RelativeItem().AlignRight().Text(Time(turn.CreatedAtUtc))
-                    .FontSize(8).FontColor(ReportPalette.Muted);
+                    .FontSize(8).FontColor(ReportPalette.Caption);
             });
 
             // The question is set on a tinted rule and the answer is indented under it, so the
@@ -182,12 +164,12 @@ internal static class ChatTranscriptDocument
             if (asked)
             {
                 column.Item().PaddingTop(3).BorderLeft(2).BorderColor(ReportPalette.Brand)
-                    .PaddingLeft(8).Element(e => Prose(e, turn.Content, ReportPalette.Ink, semiBold: true));
+                    .PaddingLeft(8).Element(e => Question(e, turn.Content));
                 return;
             }
 
             column.Item().PaddingTop(3).PaddingLeft(AnswerIndent)
-                .Element(e => Prose(e, turn.Content, ReportPalette.Body, semiBold: false));
+                .Element(e => Answer(e, turn.Content));
 
             if (turn.Charts.Count == 0)
                 return;
@@ -196,11 +178,10 @@ internal static class ChatTranscriptDocument
         });
 
     /// <summary>
-    /// The turn's text, paragraph by paragraph. A reply that came back empty — an unreadable row
-    /// under a rotated key, the fallback <c>ChatTranscriptSource</c> returns rather than failing
-    /// the export — says so rather than leaving a gap the reader has to interpret.
+    /// The caregiver's question, paragraph by paragraph and as typed. Not read as Markdown: it is
+    /// a person's own words, and an asterisk they typed is theirs to keep.
     /// </summary>
-    private static void Prose(IContainer container, string content, string color, bool semiBold) =>
+    private static void Question(IContainer container, string content) =>
         container.Column(column =>
         {
             var paragraphs = content
@@ -212,19 +193,38 @@ internal static class ChatTranscriptDocument
 
             if (paragraphs.Count == 0)
             {
-                column.Item().Text("[This message could not be read.]")
-                    .FontSize(9.5f).Italic().FontColor(ReportPalette.Muted);
+                Unreadable(column);
                 return;
             }
 
             column.Spacing(4);
             foreach (var paragraph in paragraphs)
-            {
-                var text = column.Item().Text(paragraph).FontSize(10).FontColor(color);
-                if (semiBold)
-                    text.SemiBold();
-            }
+                column.Item().Text(paragraph).FontSize(10).SemiBold().FontColor(ReportPalette.Ink);
         });
+
+    /// <summary>
+    /// The assistant's answer, with its Markdown laid out as formatting — the same layout the
+    /// health export's summary uses (<see cref="ReportLayout.Markdown"/>).
+    /// </summary>
+    private static void Answer(IContainer container, string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            container.Column(Unreadable);
+            return;
+        }
+
+        ReportLayout.Markdown(container, content);
+    }
+
+    /// <summary>
+    /// A turn that came back empty — an unreadable row under a rotated key, the fallback
+    /// <c>ChatTranscriptSource</c> returns rather than failing the export — says so rather than
+    /// leaving a gap the reader has to interpret.
+    /// </summary>
+    private static void Unreadable(ColumnDescriptor column) =>
+        column.Item().Text("[This message could not be read.]")
+            .FontSize(9.5f).Italic().FontColor(ReportPalette.Caption);
 
     // ── Charts ──────────────────────────────────────────────────────────────────
 
@@ -237,7 +237,7 @@ internal static class ChatTranscriptDocument
             {
                 var style = ChatChartStyle.For(series.Metric);
                 var chart = ReportChartRenderer.Series(
-                    series, style.Color, style.Format, ChartWidth, ChartHeight, style.TickSteps);
+                    series, style.Color, style.Format, ChartWidth, ReportLayout.ChartHeight, style.TickSteps);
                 if (chart is null)
                     continue;
 
@@ -255,7 +255,7 @@ internal static class ChatTranscriptDocument
                                 text.Span("  " + style.Unit).FontSize(8.5f).FontColor(ReportPalette.Secondary);
                         });
                         row.RelativeItem().AlignRight().Text(Span(series, style))
-                            .FontSize(8.5f).FontColor(ReportPalette.Muted);
+                            .FontSize(8.5f).FontColor(ReportPalette.Caption);
                     });
 
                     // The comparisons the reply carried, in words as well as in marks: the dashed
@@ -263,7 +263,7 @@ internal static class ChatTranscriptDocument
                     // without its source attributed would be a range this product appeared to be
                     // publishing itself.
                     if (Comparisons(series, style) is { Length: > 0 } legend)
-                        block.Item().PaddingTop(1).Text(legend).FontSize(8).FontColor(ReportPalette.Muted);
+                        block.Item().PaddingTop(1).Text(legend).FontSize(8).FontColor(ReportPalette.Caption);
 
                     block.Item().PaddingTop(4).Element(e => PdfReportRenderer.Figure(e, chart));
                 });
@@ -299,7 +299,7 @@ internal static class ChatTranscriptDocument
 
     private static void EmptyState(IContainer container, string message) =>
         container.Background(ReportPalette.Zebra).Padding(10)
-            .Text(message).FontSize(9.5f).Italic().FontColor(ReportPalette.Muted);
+            .Text(message).FontSize(9.5f).Italic().FontColor(ReportPalette.Caption);
 
     /// <summary>
     /// Who the conversation was about. Age rather than the date of birth itself, for the same
