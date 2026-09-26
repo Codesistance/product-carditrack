@@ -197,7 +197,9 @@ public partial class JournalPage : ContentPage
     /// weeks asked the same question at a different altitude, and silently dropping their filter
     /// would answer a question they did not ask. <c>_hasAnyReviews</c> does not carry over: it
     /// gates the filter row, and a member with a year of Daybooks and no Weekbooks yet would
-    /// otherwise get a filter panel over an empty week list.
+    /// otherwise get a filter panel over an empty week list. A filter or search that did carry
+    /// over keeps its controls regardless (see <see cref="ShowsFilterControls"/>), or an empty
+    /// filtered week list would hide the only way to undo it.
     /// </remarks>
     private async Task SwitchCadenceAsync(JournalCadence cadence)
     {
@@ -247,6 +249,14 @@ public partial class JournalPage : ContentPage
     }
 
     private bool HasActiveFilter => _search is not null || _filter.IsNarrowed;
+
+    /// <summary>
+    /// Whether the search box, the strip and the filter button belong on screen: once the book has
+    /// had an entry to filter, and always while something is narrowing it. The second half is
+    /// what keeps an empty filtered list undoable — after a cadence switch resets
+    /// <c>_hasAnyReviews</c>, the pills and the search box are the only controls that clear it.
+    /// </summary>
+    private bool ShowsFilterControls => _hasAnyReviews || HasActiveFilter;
 
     /// <summary>
     /// Opens the filter sheet — the Alerts list's, with the journal's questions — on whose journal
@@ -325,7 +335,7 @@ public partial class JournalPage : ContentPage
     /// so there is no "everyone" for a ✕ to widen to. It is named only once the account has more
     /// than one member — with one, "whose" has only one answer and the line keeps saying what the
     /// book is. The button waits for something to filter or someone to switch to, for the same
-    /// reason the search box waits (see <see cref="RenderReviews"/>).
+    /// reason the search box waits (see <see cref="ShowsFilterControls"/>).
     /// </remarks>
     private void PaintFilterChrome()
     {
@@ -333,7 +343,7 @@ public partial class JournalPage : ContentPage
         var narrowed = parts.Count > 0;
         var named = _members.Count > 1 && !string.IsNullOrWhiteSpace(_memberFirstName);
 
-        FilterButtonHost.IsVisible = _memberId != Guid.Empty && (_hasAnyReviews || _members.Count > 1);
+        FilterButtonHost.IsVisible = _memberId != Guid.Empty && (ShowsFilterControls || _members.Count > 1);
         FilterButton.BackgroundColor = Tinted(narrowed ? "PrimaryDark" : "White");
         FilterIcon.Source = narrowed ? "icon_filter_white.svg" : "icon_filter.svg";
         FilterCountBadge.IsVisible = narrowed;
@@ -552,7 +562,7 @@ public partial class JournalPage : ContentPage
         // The filter row appears once the member has ever had a review to filter, and then
         // stays: hiding it on an empty *filtered* result would take away the one control
         // that undoes the emptiness.
-        FilterPanel.IsVisible = _hasAnyReviews;
+        FilterPanel.IsVisible = ShowsFilterControls;
         PaintFilterChrome();
 
         // Shown as soon as there is a member to read about, empty history or not: a caregiver
