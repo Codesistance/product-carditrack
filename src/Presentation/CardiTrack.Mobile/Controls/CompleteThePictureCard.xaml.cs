@@ -28,6 +28,46 @@ public partial class CompleteThePictureCard : ContentView
         NudgeHeader.SizeChanged += (_, _) => SizeNudgeRows();
     }
 
+    /// <summary>Whether a real answer — live or saved — has been drawn since the card was built.</summary>
+    public bool HasContent { get; private set; }
+
+    /// <summary>Whether the skeleton is standing in for a first answer that has not come yet.</summary>
+    public bool IsLoading => SkeletonRows.IsVisible;
+
+    /// <summary>
+    /// Shows the card as loading — its title over two placeholder rows — while the first answer is
+    /// on its way. Does nothing once something real has been drawn: a card with content keeps it
+    /// until newer content replaces it.
+    /// </summary>
+    public void ShowLoading()
+    {
+        if (HasContent)
+            return;
+
+        SetupRingList.IsVisible = false;
+        SingleNudgeHost.IsVisible = false;
+        NudgeScroller.IsVisible = false;
+        NudgeCountBadge.IsVisible = false;
+        SeeAllLink.IsVisible = false;
+        SkeletonRows.IsVisible = true;
+        IsVisible = true;
+    }
+
+    /// <summary>
+    /// Takes the card out of its loading state when the first answer could not be had: with
+    /// nothing to show, it goes rather than pulsing forever.
+    /// </summary>
+    public void EndLoadingWithoutAnswer()
+    {
+        if (!IsLoading)
+            return;
+        SkeletonRows.IsVisible = false;
+        IsVisible = false;
+    }
+
+    /// <summary>Draws a saved summary — the device's last answer — while the live one is fetched.</summary>
+    public void ShowSaved(NotificationSummaryResponse summary) => Render(summary, summary.DashboardCards);
+
     /// <summary>
     /// Renders the summary's top items, then — when more are waiting than the summary carries —
     /// the rest from the inbox's own list, so the row can scroll through all of them.
@@ -87,6 +127,8 @@ public partial class CompleteThePictureCard : ContentView
     {
         NudgeList.Clear();
         SingleNudgeHost.Content = null;
+        SkeletonRows.IsVisible = false;
+        HasContent = true;
 
         // Set-up progress as rings, one per member with something left to do. The reminders a ring
         // stands for leave the rows, so one missing emergency contact is asked about once.

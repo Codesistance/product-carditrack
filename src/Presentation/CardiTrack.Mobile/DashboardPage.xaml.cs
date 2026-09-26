@@ -527,6 +527,7 @@ public partial class DashboardPage : ContentPage
                     // in, and the error paths then protected a skeleton instead of replacing it.
                     _lastData = data;
                     SetState(DashboardState.Loaded);
+                    _ = PrimeCompleteThePictureAsync();
                 },
                 _feedback);
 
@@ -1393,6 +1394,8 @@ public partial class DashboardPage : ContentPage
     /// </remarks>
     private async Task LoadNudgesAsync()
     {
+        await PrimeCompleteThePictureAsync();
+
         try
         {
             var summary = await _api.GetNotificationSummaryAsync();
@@ -1414,11 +1417,37 @@ public partial class DashboardPage : ContentPage
             // Only a failed summary gets here — the card swallows a failure fetching its tail, so
             // items already on screen stay. A card that is showing was fine a moment ago and is
             // left alone; with nothing showing, the banners and the indicator go too.
+            CompleteThePicture.EndLoadingWithoutAnswer();
             if (!CompleteThePicture.IsVisible)
             {
                 SafetyBannerList.IsVisible = false;
                 Header.SetNudgeIndicator(false);
             }
+        }
+    }
+
+    /// <summary>
+    /// Puts "Complete the picture" in its place as soon as the members are on screen: the saved
+    /// answer when the device has one, the skeleton when it has never had one. Only the live read
+    /// waits for the dashboard (see the call in LoadAsync) — this one is local, so it holds the
+    /// card's place from the first frame without delaying anything, and the card no longer
+    /// arrives seconds later under a screen that had already settled.
+    /// </summary>
+    private async Task PrimeCompleteThePictureAsync()
+    {
+        if (CompleteThePicture.HasContent || CompleteThePicture.IsLoading)
+            return;
+
+        try
+        {
+            if (await _api.PeekNotificationSummaryAsync() is { } saved)
+                CompleteThePicture.ShowSaved(saved);
+            else
+                CompleteThePicture.ShowLoading();
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, this, "while showing the saved set-up progress");
         }
     }
 

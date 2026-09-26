@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.CompleteThePictureCard"
              IsVisible="False">
 
@@ -52,6 +53,44 @@
                     </Label.GestureRecognizers>
                 </Label>
             </Grid>
+            <!-- The first answer's stand-in (ShowLoading): two rows the size of the rings, in the
+                 app's pulsing skeleton, so the card holds its place instead of arriving late and
+                 pushing nothing down beneath it. Only until the first answer — after that the
+                 saved copy stands in. -->
+            <VerticalStackLayout x:Name="SkeletonRows" Spacing="8" Margin="14,0,13,0" IsVisible="False">
+                <Border BackgroundColor="{StaticResource InputBackground}" StrokeThickness="0" Padding="10,7">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10"/>
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <controls:SkeletonView WidthRequest="28" HeightRequest="28" VerticalOptions="Center">
+                            <controls:SkeletonView.StrokeShape>
+                                <RoundRectangle CornerRadius="14"/>
+                            </controls:SkeletonView.StrokeShape>
+                        </controls:SkeletonView>
+                        <VerticalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                            <controls:SkeletonView WidthRequest="140" HeightRequest="11" HorizontalOptions="Start"/>
+                            <controls:SkeletonView WidthRequest="110" HeightRequest="9" HorizontalOptions="Start"/>
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+                <Border BackgroundColor="{StaticResource InputBackground}" StrokeThickness="0" Padding="10,7">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10"/>
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <controls:SkeletonView WidthRequest="28" HeightRequest="28" VerticalOptions="Center">
+                            <controls:SkeletonView.StrokeShape>
+                                <RoundRectangle CornerRadius="14"/>
+                            </controls:SkeletonView.StrokeShape>
+                        </controls:SkeletonView>
+                        <VerticalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                            <controls:SkeletonView WidthRequest="124" HeightRequest="11" HorizontalOptions="Start"/>
+                            <controls:SkeletonView WidthRequest="96" HeightRequest="9" HorizontalOptions="Start"/>
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
             <!-- One line per member with set-up left to do: a ring filled to how much is done,
                  "Pop's profile 3 of 5", and the next step, which a tap opens (SetupProgressLine).
                  The set-up reminders the rings stand for leave the rows below. -->

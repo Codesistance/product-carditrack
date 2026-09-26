@@ -806,6 +806,17 @@ public partial class AlertsPage : ContentPage
     /// </summary>
     private async Task LoadNudgeSectionAsync(LoadTicket ticket)
     {
+        // The saved answer first, when the card has nothing yet; the skeleton only when the
+        // device has never had one.
+        if (!CompleteThePicture.HasContent)
+        {
+            if (await _api.PeekNotificationSummaryAsync(ticket.Token) is { } saved)
+                CompleteThePicture.ShowSaved(saved);
+            else
+                CompleteThePicture.ShowLoading();
+            NudgeSection.IsVisible = CompleteThePicture.IsVisible;
+        }
+
         try
         {
             var summary = await _api.GetNotificationSummaryAsync(ticket.Token);
@@ -840,7 +851,8 @@ public partial class AlertsPage : ContentPage
             if (!_gate.IsCurrent(ticket))
                 return;
 
-            NudgeSection.IsVisible = false;
+            CompleteThePicture.EndLoadingWithoutAnswer();
+            NudgeSection.IsVisible = SafetyBannerList.IsVisible || CompleteThePicture.IsVisible;
         }
     }
 
