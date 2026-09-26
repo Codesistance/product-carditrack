@@ -549,12 +549,15 @@ public partial class MetricCard : ContentView
         }
 
         // Yesterday was zero: the extra is the whole bar, so it wears both rounded ends.
+        // CornerRadius runs top-left, top-right, bottom-left, bottom-right — not clockwise — so
+        // (0, 12, 0, 12) is the right end and (12, 0, 12, 0) the left. Clockwise order rounds the
+        // diagonal instead and cuts a notch into the bottom of the seam between the two fills.
         OverflowFill.StrokeShape = track.Compared <= 0
             ? new RoundRectangle { CornerRadius = 12 }
-            : new RoundRectangle { CornerRadius = new CornerRadius(0, 12, 12, 0) };
+            : new RoundRectangle { CornerRadius = new CornerRadius(0, 12, 0, 12) };
         ProgressFill.StrokeShape = track.Compared <= 0
             ? new RoundRectangle { CornerRadius = 12 }
-            : new RoundRectangle { CornerRadius = new CornerRadius(12, 0, 0, 12) };
+            : new RoundRectangle { CornerRadius = new CornerRadius(12, 0, 12, 0) };
     }
 
     /// <summary>
