@@ -144,7 +144,7 @@
                         </Border>
 
                         <!-- No device connected (M1-09d) is a modal now — NoDevicePopupPage, opened
-                             from the member card's no-device button beside Alerts. -->
+                             from the member card's no-device button on its action line. -->
 
                         <!-- One card per CardiMember the family watches, primary first, then the
                              rest by name (MemberDashboardCard) — built in code, since the family

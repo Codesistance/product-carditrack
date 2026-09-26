@@ -7,29 +7,6 @@ namespace CardiTrack.Mobile.Controls;
 
 public partial class StatusHeroCard : ContentView
 {
-    /// <summary>
-    /// The state behind the four content buttons, kept so a tap can mark what it opened as read
-    /// (see <see cref="AttentionMarks"/>). Each button says one thing: the glyph is solid and
-    /// coloured while there is something behind it the caregiver has not taken in, and plain once
-    /// they have. Nothing animates — a row of rings going round on every landing was four things
-    /// moving for a card whose whole job is to be read at a glance.
-    /// </summary>
-    private Guid _memberId;
-    private DateTime? _latestJournalEntryAt;
-    private DateTime? _adviseGeneratedAt;
-
-    /// <summary>Whether a "Something to try" suggestion is on offer — kept so the no-device gate
-    /// can put the button back when a device is connected.</summary>
-    private bool _hasAdvise;
-
-    /// <summary>
-    /// This member has no active device. The row then keeps only the pin and the no-device
-    /// button: every other button — the journal, questions, alerts, the suggestion — is about
-    /// readings a member with no device is not sending, so each was a door to an empty room.
-    /// </summary>
-    private bool _noDevice;
-    private Guid? _pendingQuestionId;
-
     /// <summary>Raised when the card body is tapped — the dashboard's route into M1-13.</summary>
     public event EventHandler? MemberTapped;
 
@@ -62,6 +39,27 @@ public partial class StatusHeroCard : ContentView
     public StatusHeroCard()
     {
         InitializeComponent();
+        NameBlock.SizeChanged += (_, _) => FitName();
+    }
+
+    /// <summary>
+    /// Caps the name at the width its column leaves once the pin beside it is paid for. The name
+    /// line is a stack so the pin can follow the name however long it is, and a stack measures its
+    /// children without a width limit — uncapped, a long name would run past the card instead of
+    /// truncating.
+    /// </summary>
+    private void FitName()
+    {
+        var available = NameBlock.Width;
+        if (available <= 0)
+            return;
+
+        // The pin's cell lays out at its face's width, 26: the rest of its 44 is tap band given
+        // back by its negative margin (see the XAML).
+        const double PinFace = 26;
+        NameLabel.MaximumWidthRequest = PinButton.IsVisible
+            ? Math.Max(0, available - PinFace - NameLine.Spacing)
+            : available;
     }
 
     public void Apply(DashboardResponse data)
@@ -80,10 +78,6 @@ public partial class StatusHeroCard : ContentView
             ? $"{data.Age} years"
             : $"{data.Age} years · {sex}";
         Avatar.Apply(data.Name, data.PhotoUrl);
-        _memberId = data.CardiMemberId;
-        ApplyDaybook(data.LatestJournalEntryAt);
-        ApplyAdvise(data.HasAdvise, data.AdviseGeneratedAt);
-        ApplyOpenAlerts(data.UnreadAlertCount);
 
         // Headline first, sentence second: the headline is the whole state in three or four
         // words, so a caregiver who reads nothing else has still read the answer.
@@ -128,105 +122,11 @@ public partial class StatusHeroCard : ContentView
         _healthStatus = data.HealthStatus;
 
         ApplyWeather(data.Weather);
-        ApplyPendingQuestionnaire(data.PendingQuestionnaire);
     }
 
-    /// <summary>
-    /// Shows or hides the Q&amp;A button beside the Daybook one, from
-    /// <see cref="DashboardResponse.PendingQuestionnaire"/> — <see cref="OnQaTapped"/> is what a
-    /// caregiver taps into to answer it.
-    /// </summary>
-    private void ApplyPendingQuestionnaire(QuestionnaireResponse? pending)
-    {
-        QaCluster.IsVisible = pending is not null && !_noDevice;
-        _pendingQuestionId = pending?.Id;
-
-        if (pending is null)
-            return;
-
-        // Coloured until this exact question has been opened — answering or dismissing it is
-        // what takes the button away altogether, so "read" here is only ever "looked at".
-        SetQaGlyph(AttentionMarks.IsQuestionUnread(_memberId, pending.Id));
-
-        // Always "1" today — at most one pending question per member (see
-        // QuestionnairesPageResponse.Pending) — but a superscript number rather than a dot, so
-        // this still reads correctly if that ever stops being true.
-        QaBadgeLabel.Text = "1";
-        SemanticProperties.SetDescription(QaBorder, "Questions, 1 waiting");
-    }
-
-    private void SetQaGlyph(bool unread) =>
-        QaIcon.Source = unread ? "icon_tab_qa_primary.svg" : "icon_tab_qa.svg";
-
-    /// <summary>
-    /// Shows or hides the Advise button at the end of the row, from
-    /// <see cref="DashboardResponse.HasAdvise"/>.
-    /// Hidden outright when there is none: the button's whole job is to open the "Something to try"
-    /// card, and that card is itself hidden on Details when nothing was suggested —
-    /// a button always on screen would be a dead end most days.
-    /// </summary>
-    private void ApplyAdvise(bool hasAdvise, DateTime? generatedAtUtc)
-    {
-        _hasAdvise = hasAdvise;
-        AdviseCluster.IsVisible = hasAdvise && !_noDevice;
-        _adviseGeneratedAt = generatedAtUtc;
-
-        if (!hasAdvise)
-            return;
-
-        // Coloured while the suggestion on offer is newer than the last one this caregiver
-        // opened; a regeneration is what makes it new again (AttentionMarks).
-        SetAdviseGlyph(AttentionMarks.IsUnread(AttentionMarks.Advise, _memberId, generatedAtUtc));
-    }
-
-    private void SetAdviseGlyph(bool unread) =>
-        AdviseIcon.Source = unread ? "icon_advise_primary.svg" : "icon_advise.svg";
-
-    /// <summary>
-    /// The CardiJournal button, from <see cref="DashboardResponse.LatestJournalEntryAt"/>. Always
-    /// on the card — it is the way to this member's journal whether or not anything is in it —
-    /// so, like Alerts, only the glyph's colour comes and goes: coloured until the caregiver has
-    /// opened an entry at least as new as the latest one (<see cref="AttentionMarks"/>).
-    /// </summary>
-    private void ApplyDaybook(DateTime? latestEntryAtUtc)
-    {
-        _latestJournalEntryAt = latestEntryAtUtc;
-
-        var unread = AttentionMarks.IsUnread(AttentionMarks.Journal, _memberId, latestEntryAtUtc);
-        SetDaybookGlyph(unread);
-        SemanticProperties.SetDescription(DaybookCluster, unread ? "CardiJournal, new entry" : "CardiJournal");
-    }
-
-    private void SetDaybookGlyph(bool unread) =>
-        DaybookIcon.Source = unread ? "icon_tab_journal_primary.svg" : "icon_tab_journal.svg";
-
-    /// <summary>
-    /// Colours the Alerts glyph while this CardiMember has an alert nobody has acknowledged —
-    /// <see cref="DashboardResponse.UnreadAlertCount"/>, which the server counts as the unresolved
-    /// alerts with no <c>AcknowledgedDate</c>, the same set the Recent Alerts strip below shows and
-    /// the header bell's badge counts. The button itself never hides: it is how a caregiver reaches
-    /// this member's alerts either way.
-    /// </summary>
-    /// <remarks>
-    /// Acknowledging is what takes the colour away, not resolving. The colour is a request for
-    /// attention, and acknowledging is the caregiver answering it; an episode they have already
-    /// answered must not keep asking, even while it stays open on the alerts list and keeps the
-    /// card's own status colour. That wider unresolved set is still what
-    /// <see cref="DashboardResponse.OpenAlertCount"/> carries, for the readers that want it.
-    /// </remarks>
-    private void ApplyOpenAlerts(int unreadCount)
-    {
-        AlertsIcon.Source = unreadCount > 0 ? "icon_tab_alerts_unread.svg" : "icon_tab_alerts.svg";
-
-        // The count lives on the header's badge, not here — but the glyph's colour is not
-        // something a screen reader can see, so this is the only place it can hear it.
-        SemanticProperties.SetDescription(AlertsCluster, unreadCount switch
-        {
-            <= 0 => "Alerts",
-            1 => "Alerts, 1 unread",
-            _ => $"Alerts, {unreadCount} unread",
-        });
-    }
+    // The card's news — alerts, the CardiJournal, "Something to try", a waiting question and the
+    // no-device warning — moved to the card's foot on 2026-09-26 and their logic with them: see
+    // MemberDashboardCard.ApplyNews. The hero is now who the member is and how they are doing.
 
     /// <summary>Icon-and-temperature chip beside the name. Hidden outright rather than shown
     /// empty — the server sends null unless the member has consented and something was derived.</summary>
@@ -243,84 +143,22 @@ public partial class StatusHeroCard : ContentView
             : string.Empty;
     }
 
-    /// <summary>Raised by the card's top-right Daybook button; the page decides the journey.</summary>
-    public event EventHandler? DaybookTapped;
-
-    /// <summary>Raised by the card's top-right Alerts button.</summary>
-    public event EventHandler? AlertsTapped;
-
-    /// <summary>Raised by the Q&amp;A button, only visible while a question is waiting. The page
-    /// decides what "answer it" means — see <see cref="IPopupService.ShowPendingQuestionAsync"/>.</summary>
-    public event EventHandler? QaTapped;
-
-    private void OnDaybookTapped(object? sender, TappedEventArgs e)
-    {
-        // Opening it is reading it: the colour goes now rather than on the next reload, so the
-        // caregiver sees the button answer their tap before the page changes under it.
-        AttentionMarks.MarkSeen(AttentionMarks.Journal, _memberId, _latestJournalEntryAt);
-        SetDaybookGlyph(false);
-        DaybookTapped?.Invoke(this, EventArgs.Empty);
-    }
-
-    private void OnAlertsTapped(object? sender, TappedEventArgs e) =>
-        AlertsTapped?.Invoke(this, EventArgs.Empty);
-
-    /// <summary>Raised by the no-device button beside Alerts; the page shows or hides its card.</summary>
-    public event EventHandler? NoDeviceTapped;
-
-    /// <summary>
-    /// Shows the no-device button while this member has no active device connection, and hides
-    /// every other button in the row but the pin (see <see cref="_noDevice"/>).
-    /// </summary>
-    public void SetNoDevice(bool noDevice)
-    {
-        _noDevice = noDevice;
-        NoDeviceButton.IsVisible = noDevice;
-        DaybookCluster.IsVisible = !noDevice;
-        AlertsCluster.IsVisible = !noDevice;
-        QaCluster.IsVisible = !noDevice && _pendingQuestionId is not null;
-        AdviseCluster.IsVisible = !noDevice && _hasAdvise;
-    }
-
     /// <summary>Raised when the caregiver taps the pin; the dashboard owns the pins and the order.</summary>
     public event EventHandler? PinTapped;
 
     /// <summary>
-    /// Shows the pin button — the dashboard does while several members stack — and whether this
-    /// member is pinned, as the filled glyph and for a screen reader.
+    /// Shows the pin after the name — the dashboard does while several members stack — and whether
+    /// this member is pinned, as the filled glyph and for a screen reader.
     /// </summary>
     public void SetPinning(bool available, bool pinned)
     {
         PinButton.IsVisible = available;
         PinIcon.Source = pinned ? "icon_pin_on.svg" : "icon_pin.svg";
         SemanticProperties.SetDescription(PinButton, pinned ? "Unpin from the top" : "Pin to the top");
+        FitName();
     }
 
     private void OnPinTapped(object? sender, TappedEventArgs e) => PinTapped?.Invoke(this, EventArgs.Empty);
-
-    private void OnNoDeviceTapped(object? sender, TappedEventArgs e) =>
-        NoDeviceTapped?.Invoke(this, EventArgs.Empty);
-
-    private void OnQaTapped(object? sender, TappedEventArgs e)
-    {
-        if (_pendingQuestionId is { } questionId)
-        {
-            AttentionMarks.MarkQuestionSeen(_memberId, questionId);
-            SetQaGlyph(false);
-        }
-        QaTapped?.Invoke(this, EventArgs.Empty);
-    }
-
-    /// <summary>Raised by the Advise button, only visible while a suggestion is waiting.
-    /// The page decides the journey — see <see cref="CardiMemberDetailPage.AdviseFocus"/>.</summary>
-    public event EventHandler? AdviseTapped;
-
-    private void OnAdviseTapped(object? sender, TappedEventArgs e)
-    {
-        AttentionMarks.MarkSeen(AttentionMarks.Advise, _memberId, _adviseGeneratedAt);
-        SetAdviseGlyph(false);
-        AdviseTapped?.Invoke(this, EventArgs.Empty);
-    }
 
     private void OnWeatherTapped(object? sender, TappedEventArgs e)
     {

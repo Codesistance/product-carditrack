@@ -3,8 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.QuickActionRow">
 
-    <!-- The four ways to act on a CardiMember, lifted out of DashboardPage so the alert detail
-         screen offers the same four rather than a second, differently-worded set of its own.
+    <!-- The three ways to reach a CardiMember, lifted out of DashboardPage so the alert detail
+         screen offers the same three rather than a second, differently-worded set of its own.
 
          Quick actions (issue #162): Call and Message reach the CardiMember's own phone directly.
          SOS is visually distinct (tinted, not a plain white tile) precisely because it dials
@@ -16,92 +16,94 @@
          a thumb lands and where the eye starts. The others are reachable in the seconds that
          emergency is not.
 
+         Details was the fourth tile until 2026-09-26. It opened Member Details, which a tap on
+         the dashboard card already does and Alert Details reaches through its own "activity data"
+         link, so the tile was a second door to one room — and the space it held on the dashboard
+         card's foot now carries the card's news (see MemberDashboardCard).
+
+         Each tile is a transparent cell carrying the tap, the tooltip and the accessible name,
+         with the tinted face drawn inside it and deaf to touch. In the full row the cell is
+         simply the face's column; compact, it is a 48 square round a smaller face, so an
+         icon-only tile is still a finger's width to hit (ApplyLayout).
+
          No inset round the grid. The tiles used to cast a shadow, and the row carried a gutter
          the shadow's size (with a matching negative margin at every call site) so Android would
          not clip it; they are raised by a gradient fill now (QuickActionTintBrush), so the grid
          fills the view and the call sites need no margin. -->
 
-    <Grid x:Name="Tiles" ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
-        <Border x:Name="EmergencyCallAction"
-                Grid.Column="0"
-                Style="{StaticResource QuickActionTile}"
-                Background="{StaticResource QuickActionTintRedBrush}"
-                SemanticProperties.Description="SOS: call emergency contact"
-                SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
-            <Border.GestureRecognizers>
+    <Grid x:Name="Tiles" ColumnDefinitions="*,*,*" ColumnSpacing="10">
+        <Grid x:Name="EmergencyCallAction"
+              Grid.Column="0"
+              BackgroundColor="Transparent"
+              SemanticProperties.Description="SOS: call emergency contact"
+              SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
+            <Grid.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnEmergencyCallTapped"/>
-            </Border.GestureRecognizers>
-            <VerticalStackLayout Spacing="10">
-                <!-- The same handset as Call, in the destructive red rather than the
-                     brand blue: this tile dials the emergency contact, and it was the
-                     only thing on it still saying "ordinary call" while the tint and
-                     the label both said otherwise. DangerRed clears 3:1 on the red
-                     tint (3.97) where the label's StatusRed does not (2.96). -->
-                <Image x:Name="SosIcon"
-                       Source="icon_action_sos.svg"
-                       WidthRequest="22" HeightRequest="22"
-                       HorizontalOptions="Center"/>
-                <Label x:Name="SosLabel"
-                       Text="SOS"
-                       Style="{StaticResource QuickActionLabel}"
-                       TextColor="{StaticResource StatusRed}"
-                       LineBreakMode="TailTruncation"/>
-            </VerticalStackLayout>
-        </Border>
-        <Border x:Name="CallAction"
-                Grid.Column="1"
-                Style="{StaticResource QuickActionTile}"
-                Background="{StaticResource QuickActionTintBrush}"
-                SemanticProperties.Description="Call">
-            <Border.GestureRecognizers>
+            </Grid.GestureRecognizers>
+            <Border x:Name="SosTile"
+                    Style="{StaticResource QuickActionTile}"
+                    Background="{StaticResource QuickActionTintRedBrush}"
+                    InputTransparent="True">
+                <VerticalStackLayout Spacing="10">
+                    <!-- The same handset as Call, in the destructive red rather than the
+                         brand blue: this tile dials the emergency contact, and it was the
+                         only thing on it still saying "ordinary call" while the tint and
+                         the label both said otherwise. DangerRed clears 3:1 on the red
+                         tint (3.97) where the label's StatusRed does not (2.96). -->
+                    <Image x:Name="SosIcon"
+                           Source="icon_action_sos.svg"
+                           WidthRequest="22" HeightRequest="22"
+                           HorizontalOptions="Center"/>
+                    <Label x:Name="SosLabel"
+                           Text="SOS"
+                           Style="{StaticResource QuickActionLabel}"
+                           TextColor="{StaticResource StatusRed}"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+        <Grid x:Name="CallAction"
+              Grid.Column="1"
+              BackgroundColor="Transparent"
+              SemanticProperties.Description="Call">
+            <Grid.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnCallTapped"/>
-            </Border.GestureRecognizers>
-            <VerticalStackLayout Spacing="10">
-                <Image x:Name="CallIcon"
-                       Source="icon_action_call.svg"
-                       WidthRequest="22" HeightRequest="22"
-                       HorizontalOptions="Center"/>
-                <Label x:Name="CallLabel"
-                       Text="Call"
-                       Style="{StaticResource QuickActionLabel}"
-                       LineBreakMode="TailTruncation"/>
-            </VerticalStackLayout>
-        </Border>
-        <Border x:Name="MessageAction"
-                Grid.Column="2"
-                Style="{StaticResource QuickActionTile}"
-                Background="{StaticResource QuickActionTintBrush}"
-                SemanticProperties.Description="Message">
-            <Border.GestureRecognizers>
+            </Grid.GestureRecognizers>
+            <Border x:Name="CallTile"
+                    Style="{StaticResource QuickActionTile}"
+                    Background="{StaticResource QuickActionTintBrush}"
+                    InputTransparent="True">
+                <VerticalStackLayout Spacing="10">
+                    <Image x:Name="CallIcon"
+                           Source="icon_action_call.svg"
+                           WidthRequest="22" HeightRequest="22"
+                           HorizontalOptions="Center"/>
+                    <Label x:Name="CallLabel"
+                           Text="Call"
+                           Style="{StaticResource QuickActionLabel}"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+        <Grid x:Name="MessageAction"
+              Grid.Column="2"
+              BackgroundColor="Transparent"
+              SemanticProperties.Description="Message">
+            <Grid.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnMessageTapped"/>
-            </Border.GestureRecognizers>
-            <VerticalStackLayout Spacing="10">
-                <Image x:Name="MessageIcon"
-                       Source="icon_action_sms.svg"
-                       WidthRequest="22" HeightRequest="22"
-                       HorizontalOptions="Center"/>
-                <Label x:Name="MessageLabel" Text="Message" Style="{StaticResource QuickActionLabel}"/>
-            </VerticalStackLayout>
-        </Border>
-        <Border x:Name="DetailsAction"
-                Grid.Column="3"
-                Style="{StaticResource QuickActionTile}"
-                Background="{StaticResource QuickActionTintBrush}"
-                SemanticProperties.Description="Details">
-            <Border.GestureRecognizers>
-                <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
-            </Border.GestureRecognizers>
-            <VerticalStackLayout Spacing="10">
-                <!-- A member card, not the bar chart: that glyph belongs to Key Metrics, which
-                     sits four rows below this tile on the same card, and two controls wearing
-                     the same icon on one screen is two controls that look like one. Details
-                     opens the person; Key Metrics opens their numbers. -->
-                <Image x:Name="DetailsIcon"
-                       Source="icon_action_profile.svg"
-                       WidthRequest="22" HeightRequest="22"
-                       HorizontalOptions="Center"/>
-                <Label x:Name="DetailsLabel" Text="Details" Style="{StaticResource QuickActionLabel}"/>
-            </VerticalStackLayout>
-        </Border>
+            </Grid.GestureRecognizers>
+            <Border x:Name="MessageTile"
+                    Style="{StaticResource QuickActionTile}"
+                    Background="{StaticResource QuickActionTintBrush}"
+                    InputTransparent="True">
+                <VerticalStackLayout Spacing="10">
+                    <Image x:Name="MessageIcon"
+                           Source="icon_action_sms.svg"
+                           WidthRequest="22" HeightRequest="22"
+                           HorizontalOptions="Center"/>
+                    <Label x:Name="MessageLabel" Text="Message" Style="{StaticResource QuickActionLabel}"/>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
     </Grid>
 </ContentView>

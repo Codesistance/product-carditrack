@@ -173,8 +173,8 @@ public partial class AccordionSection : ContentView
 
     /// <summary>
     /// Whether the section draws its own header. Off for a caller that opens the section from a
-    /// control of its own elsewhere — the dashboard's stacked member cards, whose "Metrics" link
-    /// sits on the actions line — and then drives it through <see cref="Toggle"/>.
+    /// control of its own elsewhere — the dashboard's member cards, whose Metrics button sits on
+    /// the action line — and then drives it through <see cref="Toggle"/>.
     /// </summary>
     public bool ShowHeader
     {

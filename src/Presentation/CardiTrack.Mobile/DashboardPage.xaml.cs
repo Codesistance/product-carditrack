@@ -1054,8 +1054,8 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// Both the hero card and the quick-action row's Details tile land on M1-13, for the member
-    /// whose card was tapped.
+    /// The member card lands on M1-13, for the member whose card was tapped — the card itself is
+    /// the way in, now the quick-action row no longer carries a Details tile of its own.
     /// </summary>
     private static void OpenMemberDetails(MemberDashboardCard card)
     {

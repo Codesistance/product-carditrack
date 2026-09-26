@@ -4,7 +4,45 @@
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.MemberDashboardCard">
 
-    <!-- One CardiMember on the dashboard: hero, data-freshness/baseline-progress, quick actions,
+    <ContentView.Resources>
+        <!-- The news buttons on the card's foot (ApplyNews): a white face with a Primary hairline,
+             where the contact buttons beside them wear a tint — the one set says "something
+             here to read", the other "ways to reach them". -->
+        <Style x:Key="NewsFace" TargetType="Border">
+            <Setter Property="WidthRequest" Value="30"/>
+            <Setter Property="HeightRequest" Value="30"/>
+            <Setter Property="StrokeThickness" Value="1"/>
+            <Setter Property="Stroke" Value="{StaticResource Primary}"/>
+            <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
+            <Setter Property="HorizontalOptions" Value="Center"/>
+            <Setter Property="VerticalOptions" Value="Center"/>
+            <Setter Property="InputTransparent" Value="True"/>
+            <Setter Property="StrokeShape">
+                <RoundRectangle CornerRadius="8"/>
+            </Setter>
+        </Style>
+
+        <!-- The unread dot at a news face's top-right corner: 8 of Primary inside a 1.5 white
+             ring, so it stays a separate mark where it overlaps the face's own blue edge. Centred
+             on the corner — the face spans 9 to 39 of its 48 cell, and 3.5 in from the cell's
+             edge puts the 11 of dot and ring across (39, 9). -->
+        <Style x:Key="NewsDot" TargetType="Border">
+            <Setter Property="WidthRequest" Value="11"/>
+            <Setter Property="HeightRequest" Value="11"/>
+            <Setter Property="StrokeThickness" Value="1.5"/>
+            <Setter Property="Stroke" Value="{StaticResource White}"/>
+            <Setter Property="BackgroundColor" Value="{StaticResource Primary}"/>
+            <Setter Property="HorizontalOptions" Value="End"/>
+            <Setter Property="VerticalOptions" Value="Start"/>
+            <Setter Property="Margin" Value="0,3.5,3.5,0"/>
+            <Setter Property="InputTransparent" Value="True"/>
+            <Setter Property="StrokeShape">
+                <RoundRectangle CornerRadius="5.5"/>
+            </Setter>
+        </Style>
+    </ContentView.Resources>
+
+    <!-- One CardiMember on the dashboard: hero, data-freshness/baseline-progress, the actions line,
          the poor-sleep nudge, Key Metrics and the "all quiet" line, all in one card so each
          member the family watches is another instance of it, stacked. Moved here from
          DashboardPage, which drew exactly one; the comments on each part are the ones it carried
@@ -25,8 +63,12 @@
                    TextColor="{StaticResource HeadingText}"/>
         </Border>
 
-        <Border Style="{StaticResource ElevatedCard}" Padding="16,15,16,16">
-            <VerticalStackLayout Spacing="16">
+        <!-- The card's 16 of inset is split 7 on the Border and 9 on the stack inside it. The
+             content sits where it always did; the 9 is room inside the stack's bounds for the
+             actions line's tap bands to reach into (see that line below), since Android delivers
+             no touch to a view outside its parent's bounds. -->
+        <Border Style="{StaticResource ElevatedCard}" Padding="7,15,7,7">
+            <VerticalStackLayout Spacing="16" Padding="9,0,9,9">
 
                 <controls:StatusHeroCard x:Name="Hero"/>
 
@@ -42,31 +84,207 @@
                            FontSize="14"/>
                 </VerticalStackLayout>
 
-                <!-- SOS / Call / Message / Details, and — while several members stack — the Key
-                     Metrics link on the same line, in the space the compact icons leave at the
-                     left. The accordion's own header row goes, and this opens it instead. -->
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                    <HorizontalStackLayout x:Name="MetricsLink"
-                                           Spacing="6"
-                                           VerticalOptions="Center"
-                                           IsVisible="False"
-                                           SemanticProperties.Description="Key metrics"
-                                           SemanticProperties.Hint="Shows or hides the key metrics">
-                        <HorizontalStackLayout.GestureRecognizers>
+                <!-- The actions line (2026-09-26): the Metrics button at the left; at the right,
+                     whatever is new about this member, a hairline, and SOS / Call / Message. It
+                     took over from a row of buttons at the hero's top right, which gave the name
+                     only what they left and showed the journal and alerts even with nothing in
+                     them. A news button now exists only while there is something behind it, so on
+                     a quiet day the line is Metrics and the three contact buttons, nothing more.
+
+                     Every button here is a 30 face in a 48 tap band. The bands lay out at the
+                     faces' size by way of negative margins, and the line itself carries a -9
+                     margin so its bounds take in the bands of the buttons at its ends and edges
+                     without adding a point of height or inset — the stack's spacing above it and
+                     its padding at the sides and foot are the room that margin reaches into. None of this is inside the hero, so nothing
+                     here competes with the card's own M1-13 tap. -->
+                <Grid x:Name="ActionLine" ColumnDefinitions="Auto,*" Margin="-9">
+
+                    <!-- Key Metrics' opener, for every card now — the accordion's own header row
+                         is gone, and this opens it instead (ShowMetricsControls). A chart and a
+                         chevron in a tonal pill rather than the word: the chevron turns over while
+                         the metrics are open, and the state is in the hint for a screen reader. -->
+                    <Grid x:Name="MetricsLink"
+                          Padding="9"
+                          BackgroundColor="Transparent"
+                          VerticalOptions="Center"
+                          IsVisible="False"
+                          SemanticProperties.Description="Key metrics"
+                          SemanticProperties.Hint="Shows the key metrics">
+                        <Grid.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnMetricsLinkTapped"/>
-                        </HorizontalStackLayout.GestureRecognizers>
-                        <Image Source="icon_action_details.svg" WidthRequest="18" HeightRequest="18" VerticalOptions="Center"/>
-                        <Label Text="Metrics"
-                               FontFamily="QuicksandSemiBold"
-                               FontSize="14"
-                               TextColor="{StaticResource Primary}"
-                               VerticalOptions="Center"/>
-                        <Image x:Name="MetricsChevron"
-                               Source="icon_chevron_down.svg"
-                               WidthRequest="16" HeightRequest="16"
-                               VerticalOptions="Center"/>
+                        </Grid.GestureRecognizers>
+                        <Border HeightRequest="30"
+                                Padding="9,0"
+                                StrokeThickness="0"
+                                BackgroundColor="{StaticResource ActionTintBlueBackground}"
+                                InputTransparent="True">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8"/>
+                            </Border.StrokeShape>
+                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                <Image Source="icon_action_details.svg"
+                                       WidthRequest="16" HeightRequest="16"
+                                       VerticalOptions="Center"/>
+                                <Image x:Name="MetricsChevron"
+                                       Source="icon_chevron_down.svg"
+                                       WidthRequest="14" HeightRequest="14"
+                                       VerticalOptions="Center"/>
+                            </HorizontalStackLayout>
+                        </Border>
+                    </Grid>
+
+                    <!-- A stack rather than Grid columns so a hidden button costs nothing — no
+                         column, and no spacing either side of it. Its 9 of padding holds the
+                         outermost bands, as the line's margin does for the line. -->
+                    <HorizontalStackLayout Grid.Column="1"
+                                           HorizontalOptions="End"
+                                           Spacing="4"
+                                           Padding="9">
+
+                        <!-- Alerts, while this CardiMember has one nobody has acknowledged
+                             (ApplyOpenAlerts). A tap opens the list filtered to this member. -->
+                        <Grid x:Name="AlertsCluster"
+                              WidthRequest="48" HeightRequest="48"
+                              Margin="-9"
+                              BackgroundColor="Transparent"
+                              IsVisible="False"
+                              SemanticProperties.Description="Alerts"
+                              SemanticProperties.Hint="Opens the alerts list for this CardiMember">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnAlertsTapped"/>
+                            </Grid.GestureRecognizers>
+                            <Border Style="{StaticResource NewsFace}">
+                                <Image Source="icon_tab_alerts_unread.svg"
+                                       WidthRequest="16" HeightRequest="16"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Border>
+                            <Border Style="{StaticResource NewsDot}"/>
+                        </Grid>
+
+                        <!-- CardiJournal, while an entry is newer than the last one this caregiver
+                             opened (ApplyDaybook). -->
+                        <Grid x:Name="DaybookCluster"
+                              WidthRequest="48" HeightRequest="48"
+                              Margin="-9"
+                              BackgroundColor="Transparent"
+                              IsVisible="False"
+                              SemanticProperties.Description="CardiJournal, new entry"
+                              SemanticProperties.Hint="Opens this CardiMember's CardiJournal">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnDaybookTapped"/>
+                            </Grid.GestureRecognizers>
+                            <Border Style="{StaticResource NewsFace}">
+                                <Image Source="icon_tab_journal_primary.svg"
+                                       WidthRequest="16" HeightRequest="16"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Border>
+                            <Border Style="{StaticResource NewsDot}"/>
+                        </Grid>
+
+                        <!-- "Something to try", while the suggestion on offer is newer than the last
+                             one this caregiver opened (ApplyAdvise). It was a corner badge on the
+                             avatar once — a dot that drew the eye without saying what at, and with
+                             nothing to tap; as a button it says both, and a tap lands on the
+                             suggestion itself. -->
+                        <Grid x:Name="AdviseCluster"
+                              WidthRequest="48" HeightRequest="48"
+                              Margin="-9"
+                              BackgroundColor="Transparent"
+                              IsVisible="False"
+                              SemanticProperties.Description="Something to try"
+                              SemanticProperties.Hint="Opens a suggestion the family could try with this CardiMember">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnAdviseTapped"/>
+                            </Grid.GestureRecognizers>
+                            <Border Style="{StaticResource NewsFace}">
+                                <Image Source="icon_advise_primary.svg"
+                                       WidthRequest="16" HeightRequest="16"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Border>
+                            <Border Style="{StaticResource NewsDot}"/>
+                        </Grid>
+
+                        <!-- Questions, for as long as one is waiting on this family
+                             (ApplyPendingQuestionnaire) — not only until it is first opened, since
+                             the question still wants an answer after a look. Its count badge
+                             stands in for the dot, centred on the face's corner the same way: the
+                             18 badge flush with the 48 cell's top-right corner spans 30 to 48, and
+                             the face's corner is at (39, 9). -->
+                        <Grid x:Name="QaCluster"
+                              WidthRequest="48" HeightRequest="48"
+                              Margin="-9"
+                              BackgroundColor="Transparent"
+                              IsVisible="False"
+                              SemanticProperties.Description="Questions"
+                              SemanticProperties.Hint="Opens the question waiting on this CardiMember">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnQaTapped"/>
+                            </Grid.GestureRecognizers>
+                            <Border Style="{StaticResource NewsFace}">
+                                <Image x:Name="QaIcon"
+                                       Source="icon_tab_qa_primary.svg"
+                                       WidthRequest="16" HeightRequest="16"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Border>
+
+                            <!-- Superscript count, same construction as DashboardHeader's BellBadge,
+                                 placed inside the cell rather than translated out of it. Always "1"
+                                 today — at most one pending question per member — but a number
+                                 rather than a dot so it reads the same way if that ever stops being
+                                 true. -->
+                            <Border BackgroundColor="{StaticResource StatusRed}"
+                                    StrokeThickness="0"
+                                    WidthRequest="18" HeightRequest="18"
+                                    HorizontalOptions="End" VerticalOptions="Start"
+                                    InputTransparent="True">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="9"/>
+                                </Border.StrokeShape>
+                                <Label x:Name="QaBadgeLabel"
+                                       FontSize="10"
+                                       FontFamily="QuicksandSemiBold"
+                                       TextColor="{StaticResource White}"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Border>
+                        </Grid>
+
+                        <!-- No device, while this member has no active connection (SetNoDevice).
+                             Not news so much as a standing gap, but one somebody can act on, so it
+                             sits with the news — the struck-through watch in the destructive red
+                             says "nothing is being watched", and a tap opens the full no-device
+                             card with the Connect button. No dot: tapping does not make it go
+                             away, connecting a device does. -->
+                        <Grid x:Name="NoDeviceButton"
+                              WidthRequest="48" HeightRequest="48"
+                              Margin="-9"
+                              BackgroundColor="Transparent"
+                              IsVisible="False"
+                              SemanticProperties.Description="No device connected"
+                              SemanticProperties.Hint="Shows how to connect this CardiMember's device">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnNoDeviceTapped"/>
+                            </Grid.GestureRecognizers>
+                            <Border Style="{StaticResource NewsFace}">
+                                <Image Source="icon_device_off.svg"
+                                       WidthRequest="16" HeightRequest="16"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Border>
+                        </Grid>
+
+                        <!-- Parts the news from the ways to reach the member, only while there is
+                             news to part (ShowNews). -->
+                        <BoxView x:Name="NewsDivider"
+                                 WidthRequest="1" HeightRequest="22"
+                                 Margin="3,0"
+                                 Color="{StaticResource Divider}"
+                                 VerticalOptions="Center"
+                                 IsVisible="False"/>
+
+                        <controls:QuickActionRow x:Name="QuickActions"
+                                                 Compact="True"
+                                                 Dense="True"
+                                                 VerticalOptions="Center"/>
                     </HorizontalStackLayout>
-                    <controls:QuickActionRow x:Name="QuickActions" Grid.ColumnSpan="2"/>
                 </Grid>
 
                 <!-- Poor-sleep nudge: points at the real Sleep alert the statistical pass raised.

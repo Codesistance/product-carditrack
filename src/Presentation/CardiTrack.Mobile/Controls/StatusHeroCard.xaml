@@ -9,269 +9,102 @@
          hold the action row and Key Metrics as multi-CardiMember support lands. The health status
          is still carried by the status line's colour and icon, not by any card fill. Tapping the
          row opens M1-13. -->
-    <!-- The name owns the top row on its own, starting at the card's left edge; the avatar and the
-         status block share the row under it. Previously the name sat in the avatar's column, which
+    <!-- The name owns the top of the card beside the avatar, starting at the avatar's right, with
+         the status block under both. Previously the name sat in the avatar's column, which
          indented it and left the status sentence wrapping inside whatever width remained beside a
          monogram — "today." alone on its own line was the tell. Now the sentence wraps against the
-         width the avatar leaves, and the name against the whole card. -->
+         card's whole width, and the name against its whole column: the buttons that used to share
+         the name's row at its right moved to the card's foot (2026-09-26, MemberDashboardCard),
+         all but the pin, which rides the name line itself. -->
     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
           ColumnSpacing="16" RowSpacing="8">
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnCardTapped"/>
         </Grid.GestureRecognizers>
 
-        <!-- MinimumHeightRequest, not a fixed height: the row is 46 tall whether or not the Q&amp;A
-             cluster (46) is showing beside the 40 buttons, so the card doesn't jolt when a
-             question arrives — but it still grows if a larger system font needs it to. -->
-        <Grid Grid.Row="0" Grid.Column="1"
-              ColumnDefinitions="*,Auto" ColumnSpacing="8"
-              MinimumHeightRequest="46">
-            <!-- The name is the title; what kind of person they are goes under it. Splitting
-                 "Dad, 66" this way is what frees the row below: the avatar can come up beside
-                 the name, and the summary underneath gets the card's whole width instead of
-                 whatever is left beside a 76pt monogram. -->
-            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Start">
+        <!-- The name is the title; what kind of person they are goes under it. Splitting
+             "Dad, 66" this way is what frees the row below: the avatar can come up beside
+             the name, and the summary underneath gets the card's whole width instead of
+             whatever is left beside a 76pt monogram. -->
+        <VerticalStackLayout x:Name="NameBlock"
+                             Grid.Row="0" Grid.Column="1"
+                             Spacing="1"
+                             VerticalOptions="Start">
+            <!-- The pin follows the name rather than sitting at the card's right edge, so it
+                 reads as a mark on this person instead of a control of the card's. A stack
+                 rather than a Grid, so the pin sits right after however long the name is; the
+                 name is capped in code (FitName) to the width the pin leaves, since a stack
+                 would otherwise let a long one run past the card rather than truncate.
+
+                 The bottom padding and the matching negative margin are the pin's tap band. Its
+                 face is 26 but the finger target is 44, and Android will not deliver a touch to
+                 a view outside its parent's bounds — so the line carries 18 of transparent room
+                 down into the meta line below it without taking any layout room there. The band
+                 can only reach downward: above the name is the card's own padding, outside every
+                 layout this line sits in. Where the band crosses the weather chip, the chip wins,
+                 being later in the tree. -->
+            <HorizontalStackLayout x:Name="NameLine"
+                                   Spacing="6"
+                                   Padding="0,0,0,18"
+                                   Margin="0,0,0,-18">
                 <Label x:Name="NameLabel"
                        Style="{StaticResource Heading2}"
+                       VerticalOptions="Center"
                        LineBreakMode="TailTruncation"/>
-                <HorizontalStackLayout Spacing="8">
-                    <Label x:Name="MemberMetaLabel"
-                           Style="{StaticResource Body2Dark}"
-                           VerticalOptions="Center"
-                           LineBreakMode="TailTruncation"/>
-
-            <!-- Last-session weather (EnvironmentalReading — not live, no stored coordinate).
-                 Its own TapGestureRecognizer takes taps before the row's own below, so tapping
-                 the chip opens the weather popup rather than M1-13. Hidden outright when the
-                 member has no reading, or hasn't granted environmental-context consent. -->
-                    <HorizontalStackLayout x:Name="WeatherChip"
-                                            Spacing="4"
-                                            VerticalOptions="Center"
-                                            IsVisible="False">
-                <HorizontalStackLayout.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnWeatherTapped"/>
-                </HorizontalStackLayout.GestureRecognizers>
-                        <Label x:Name="WeatherGlyphLabel" FontSize="16" VerticalOptions="Center"/>
-                        <Label x:Name="WeatherTemperatureLabel"
-                               Style="{StaticResource Body2Dark}"
-                               VerticalOptions="Center"/>
-                    </HorizontalStackLayout>
-                </HorizontalStackLayout>
-            </VerticalStackLayout>
-
-            <!-- The card's two ways onward, at its top right: this member's daybook and the
-                 alerts. Buttons here rather than links at the card's foot — the foot is where
-                 the card's own content ends, not where journeys start. Their taps must win over
-                 the card's own M1-13 tap, which they do the same way the weather chip's does. -->
-            <!-- The buttons stack rather than each taking a Grid column, because a Grid charges
-                 ColumnSpacing on both sides of a column even when the column measured to nothing.
-                 With the Q&amp;A cluster hidden — which is most of the time — its empty column still
-                 cost 8 either side, so CardiJournal sat 16 from Alerts while Alerts sat 8 from
-                 Advise. A HorizontalStackLayout skips a collapsed child and its spacing with it,
-                 so the gap is 8 between whichever buttons are actually showing. -->
-            <HorizontalStackLayout Grid.Column="1"
-                                    Spacing="8"
-                                    VerticalOptions="Start">
 
                 <!-- Pin to the top of the dashboard: only while several members stack, since one
-                     card has nowhere else to go (SetPinning). Filled blue while pinned. -->
-                <Border x:Name="PinButton"
-                        WidthRequest="40" HeightRequest="40"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource SelectedOptionBackground}"
-                        VerticalOptions="Center"
-                        IsVisible="False"
-                        SemanticProperties.Description="Pin to the top">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="10"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnPinTapped"/>
-                    </Border.GestureRecognizers>
-                    <Image x:Name="PinIcon"
-                           Source="icon_pin.svg"
-                           WidthRequest="20" HeightRequest="20"
-                           HorizontalOptions="Center" VerticalOptions="Center"/>
-                </Border>
-
-                <!-- Every button in this row now says two things (see ApplyDaybook and its
-                     siblings in the code-behind): the ring pulses while there is something behind
-                     the button to read, and the glyph is coloured until the caregiver has read
-                     it. So CardiJournal gets the same cluster-with-a-ring construction as Alerts
-                     below, and the glyph swaps between its grey and coloured assets rather than
-                     being tinted — MAUI's Image has no tint of its own. -->
-                <Grid x:Name="DaybookCluster"
-                      WidthRequest="40" HeightRequest="40"
-                      VerticalOptions="Center"
-                      SemanticProperties.Description="CardiJournal"
-                      SemanticProperties.Hint="Opens this CardiMember's CardiJournal">
-                    <Grid.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnDaybookTapped"/>
-                    </Grid.GestureRecognizers>
-
-                    <Border WidthRequest="40" HeightRequest="40"
-                            StrokeThickness="0"
-                            BackgroundColor="{StaticResource SelectedOptionBackground}"
-                            HorizontalOptions="Center" VerticalOptions="Center"
-                            InputTransparent="True">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="10"/>
-                        </Border.StrokeShape>
-                        <Image x:Name="DaybookIcon"
-                               Source="icon_tab_journal.svg"
-                               WidthRequest="20" HeightRequest="20"
-                               HorizontalOptions="Center" VerticalOptions="Center"/>
-                    </Border>
-                </Grid>
-
-                <!-- Beside the Daybook button, only while a question is waiting on this family (see
-                     Apply/ApplyPendingQuestionnaire). Button and count badge share one 46x46 cell so
-                     the badge can sit proud of the button's top-right corner without any of it
-                     crossing this control's own top edge — a superscript hung outside the layout
-                     with a negative translation was drawn half-cut, because the row it sits in is
-                     the first thing in the card and there is nothing above it to overflow into.
-                     The -3 margin is that 46 paying for itself: the cell is 3 wider than the 40
-                     face on each side, so without it this button's face would sit 11 from its
-                     neighbours where every other pair sits 8. The badge has 5 of the gap left to
-                     hang into, which is more than it uses. -->
-                <Grid x:Name="QaCluster"
-                      WidthRequest="46" HeightRequest="46"
-                      Margin="-3,0"
-                      VerticalOptions="Center"
-                      IsVisible="False">
-                    <Border x:Name="QaBorder"
-                            WidthRequest="40" HeightRequest="40"
-                            StrokeThickness="0"
-                            BackgroundColor="{StaticResource SelectedOptionBackground}"
-                            HorizontalOptions="Center" VerticalOptions="Center"
-                            SemanticProperties.Description="Questions"
-                            SemanticProperties.Hint="Opens the question waiting on this CardiMember">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="10"/>
-                        </Border.StrokeShape>
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnQaTapped"/>
-                        </Border.GestureRecognizers>
-                        <Image x:Name="QaIcon"
-                               Source="icon_tab_qa.svg"
-                               WidthRequest="20" HeightRequest="20"
-                               HorizontalOptions="Center" VerticalOptions="Center"/>
-                    </Border>
-
-                    <!-- Superscript count, same construction as DashboardHeader's BellBadge, but
-                         placed inside the cell rather than translated out of it. Always "1" today —
-                         at most one pending question per member — but a number rather than a dot so
-                         it reads the same way if that ever stops being true. -->
-                    <Border x:Name="QaBadge"
-                            BackgroundColor="{StaticResource StatusRed}"
-                            StrokeThickness="0"
-                            WidthRequest="18" HeightRequest="18"
-                            HorizontalOptions="End" VerticalOptions="Start"
-                            InputTransparent="True">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="9"/>
-                        </Border.StrokeShape>
-                        <Label x:Name="QaBadgeLabel"
-                               FontSize="10"
-                               FontFamily="QuicksandSemiBold"
-                               TextColor="{StaticResource White}"
-                               HorizontalOptions="Center" VerticalOptions="Center"/>
-                    </Border>
-                </Grid>
-
-                <!-- Alerts, pulsing while this CardiMember has one nobody has answered yet (see
-                     ApplyOpenAlerts). Same construction and same bounds as AdviseCluster below —
-                     the ring blooms over the button's own 40 rather than behind it, because a
-                     40 face is opaque and there is a neighbour on either side with nothing to
-                     spare. Unlike Advise and Q&amp;A this button is always here: it is the way to
-                     this member's alerts whether or not any are open, so only the ring comes and
-                     goes. A tap opens the list filtered to this member. -->
-                <Grid x:Name="AlertsCluster"
-                      WidthRequest="40" HeightRequest="40"
-                      VerticalOptions="Center"
-                      SemanticProperties.Description="Alerts"
-                      SemanticProperties.Hint="Opens the alerts list for this CardiMember">
-                    <Grid.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnAlertsTapped"/>
-                    </Grid.GestureRecognizers>
-
-                    <Border WidthRequest="40" HeightRequest="40"
-                            StrokeThickness="0"
-                            BackgroundColor="{StaticResource SelectedOptionBackground}"
-                            HorizontalOptions="Center" VerticalOptions="Center"
-                            InputTransparent="True">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="10"/>
-                        </Border.StrokeShape>
-                        <Image x:Name="AlertsIcon"
-                               Source="icon_tab_alerts.svg"
-                               WidthRequest="20" HeightRequest="20"
-                               HorizontalOptions="Center" VerticalOptions="Center"/>
-                    </Border>
-
-                </Grid>
-
-                <!-- No device: beside Alerts, only while this member has no active connection
-                     (SetNoDevice). The warning lives here rather than as a full card over the
-                     dashboard — a struck-through watch in the destructive red says "nothing is
-                     being watched" at the size of the other buttons, and a tap opens the full
-                     no-device card with the Connect button for anybody ready to act on it. -->
-                <Border x:Name="NoDeviceButton"
-                        WidthRequest="40" HeightRequest="40"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource PillRedBackground}"
-                        VerticalOptions="Center"
-                        IsVisible="False"
-                        SemanticProperties.Description="No device connected"
-                        SemanticProperties.Hint="Shows how to connect this CardiMember's device">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="10"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnNoDeviceTapped"/>
-                    </Border.GestureRecognizers>
-                    <Image Source="icon_device_off.svg"
-                           WidthRequest="20" HeightRequest="20"
-                           HorizontalOptions="Center" VerticalOptions="Center"/>
-                </Border>
-
-                <!-- Advise: last in the row, only while this member has a fresh "Something to try"
-                     suggestion waiting (DashboardResponse.HasAdvise). It was a corner badge on the avatar until
-                     now — a dot that drew the eye without saying what at, and with nothing to tap.
-                     As a button it says both: the same 40 face and 20 glyph as CardiJournal and Alerts
-                     beside it, and a tap that lands on the suggestion itself.
-
-                     The cell is 40, the face's own size — there is no badge to hang, so it needs
-                     no margin of its own to sit 8 from Alerts and flush with the card's right
-                     edge. -->
-                <Grid x:Name="AdviseCluster"
-                      WidthRequest="40" HeightRequest="40"
+                     card has nowhere else to go (SetPinning). Filled blue while pinned. The cell
+                     is the tap target and the accessible node; its tap wins over the card's own
+                     M1-13 tap the same way the weather chip's does. -->
+                <Grid x:Name="PinButton"
+                      WidthRequest="44" HeightRequest="44"
+                      Margin="-9,0,-9,-18"
+                      BackgroundColor="Transparent"
                       VerticalOptions="Center"
                       IsVisible="False"
-                      SemanticProperties.Description="Something to try"
-                      SemanticProperties.Hint="Opens a suggestion the family could try with this CardiMember">
+                      SemanticProperties.Description="Pin to the top">
                     <Grid.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnAdviseTapped"/>
+                        <TapGestureRecognizer Tapped="OnPinTapped"/>
                     </Grid.GestureRecognizers>
-
-                    <Border WidthRequest="40" HeightRequest="40"
+                    <Border WidthRequest="26" HeightRequest="26"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource SelectedOptionBackground}"
-                            HorizontalOptions="Center" VerticalOptions="Center"
+                            HorizontalOptions="Center" VerticalOptions="Start"
                             InputTransparent="True">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="10"/>
+                            <RoundRectangle CornerRadius="8"/>
                         </Border.StrokeShape>
-                        <Image x:Name="AdviseIcon"
-                               Source="icon_advise.svg"
-                               WidthRequest="20" HeightRequest="20"
+                        <Image x:Name="PinIcon"
+                               Source="icon_pin.svg"
+                               WidthRequest="14" HeightRequest="14"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
-
                 </Grid>
-
             </HorizontalStackLayout>
-        </Grid>
+            <HorizontalStackLayout Spacing="8">
+                <Label x:Name="MemberMetaLabel"
+                       Style="{StaticResource Body2Dark}"
+                       VerticalOptions="Center"
+                       LineBreakMode="TailTruncation"/>
+
+        <!-- Last-session weather (EnvironmentalReading — not live, no stored coordinate).
+             Its own TapGestureRecognizer takes taps before the row's own below, so tapping
+             the chip opens the weather popup rather than M1-13. Hidden outright when the
+             member has no reading, or hasn't granted environmental-context consent. -->
+                <HorizontalStackLayout x:Name="WeatherChip"
+                                        Spacing="4"
+                                        VerticalOptions="Center"
+                                        IsVisible="False">
+            <HorizontalStackLayout.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnWeatherTapped"/>
+            </HorizontalStackLayout.GestureRecognizers>
+                    <Label x:Name="WeatherGlyphLabel" FontSize="16" VerticalOptions="Center"/>
+                    <Label x:Name="WeatherTemperatureLabel"
+                           Style="{StaticResource Body2Dark}"
+                           VerticalOptions="Center"/>
+                </HorizontalStackLayout>
+            </HorizontalStackLayout>
+        </VerticalStackLayout>
 
         <!-- Member Detail's display image box, not one of this card's own: the same person must
              not be a tinted monogram here and a gradient one a tap away. Top-aligned to the status
