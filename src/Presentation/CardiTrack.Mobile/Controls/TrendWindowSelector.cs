@@ -10,7 +10,7 @@ namespace CardiTrack.Mobile.Controls;
 /// axis, not independent filters, and only one can ever be on.
 /// </summary>
 /// <remarks>
-/// Built in code rather than XAML, like <see cref="AlertFilterSheetPage"/>'s chips — it is the same segment three
+/// Built in code rather than XAML, like <see cref="FilterSheetPage"/>'s chips — it is the same segment three
 /// times over, and the selected one swaps its whole fill.
 /// </remarks>
 public sealed class TrendWindowSelector : ContentView

@@ -68,7 +68,7 @@ public partial class AlertsPage : ContentPage
     private AlertListFilter _filter = AlertListFilter.None;
 
     /// <summary>Whom the sheet last offered — the fallback when a fresh read fails.</summary>
-    private IReadOnlyList<AlertFilterMember>? _members;
+    private IReadOnlyList<FilterMember>? _members;
 
     /// <summary>
     /// Set by the query properties during navigation and spent on the next <c>OnAppearing</c>.
@@ -213,68 +213,10 @@ public partial class AlertsPage : ContentPage
 
         FilterStripHost.Clear();
         foreach (var (part, label) in parts)
-            FilterStripHost.Add(FilterPill(label, () => ApplyFilter(_filter.Without(part))));
+            FilterStripHost.Add(FilterStripPill.Create(label, () => ApplyFilter(_filter.Without(part))));
         if (parts.Count > 1)
-            FilterStripHost.Add(ClearAllLink());
+            FilterStripHost.Add(FilterStripPill.ClearAll(() => ApplyFilter(AlertListFilter.None)));
         FilterStrip.IsVisible = narrowed;
-    }
-
-    /// <summary>One applied part: its words and a ✕, the whole pill a tap that removes it.</summary>
-    private static View FilterPill(string label, Action remove)
-    {
-        var pill = new Border
-        {
-            Padding = new Thickness(12, 6, 10, 6),
-            StrokeThickness = 0,
-            BackgroundColor = Resource<Color>("SelectedOptionBackground"),
-            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
-            Content = new HorizontalStackLayout
-            {
-                Spacing = 6,
-                Children =
-                {
-                    new Label
-                    {
-                        Text = label,
-                        FontFamily = "QuicksandSemiBold",
-                        FontSize = 13,
-                        TextColor = Resource<Color>("PrimaryDark"),
-                        VerticalTextAlignment = TextAlignment.Center,
-                        LineBreakMode = LineBreakMode.TailTruncation,
-                        MaximumWidthRequest = 160,
-                    },
-                    new Label
-                    {
-                        Text = "✕",
-                        FontFamily = "QuicksandSemiBold",
-                        FontSize = 11,
-                        TextColor = Resource<Color>("PrimaryDark"),
-                        VerticalTextAlignment = TextAlignment.Center,
-                    },
-                },
-            },
-        };
-        SemanticProperties.SetDescription(pill, $"{label} filter");
-        SemanticProperties.SetHint(pill, "Double tap to remove");
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += (_, _) => remove();
-        pill.GestureRecognizers.Add(tap);
-        return pill;
-    }
-
-    private View ClearAllLink()
-    {
-        var link = new Label
-        {
-            Text = "Clear all",
-            Style = Resource<Style>("SectionLink"),
-            VerticalTextAlignment = TextAlignment.Center,
-            Padding = new Thickness(4, 6),
-        };
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += (_, _) => ApplyFilter(AlertListFilter.None);
-        link.GestureRecognizers.Add(tap);
-        return link;
     }
 
     /// <summary>
@@ -295,13 +237,13 @@ public partial class AlertsPage : ContentPage
     /// or removed since the last open has to be offered — or not — in the sheet. A failed read
     /// falls back to the last list this page had, and to none before the first.
     /// </summary>
-    private async Task<IReadOnlyList<AlertFilterMember>> MembersAsync()
+    private async Task<IReadOnlyList<FilterMember>> MembersAsync()
     {
         try
         {
             var members = await _api.GetCardiMembersAsync();
             return _members = members
-                .Select(m => new AlertFilterMember(
+                .Select(m => new FilterMember(
                     m.Id, string.IsNullOrWhiteSpace(m.FirstName) ? m.Name : m.FirstName))
                 .ToList();
         }

@@ -5,7 +5,7 @@ namespace CardiTrack.Mobile.Controls;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Built in code rather than XAML, like <see cref="NudgeMiniRow"/> and <see cref="AlertFilterSheetPage"/>'s chips:
+/// Built in code rather than XAML, like <see cref="NudgeMiniRow"/> and <see cref="FilterSheetPage"/>'s chips:
 /// there is no template to speak of, and the rows arrive from the server a handful at a time.
 /// </para>
 /// <para>

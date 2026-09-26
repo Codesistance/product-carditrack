@@ -23,9 +23,11 @@
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <!-- Back arrow, same treatment as Alerts and Settings — a tab root falls back to the
-             dashboard when there is no history of its own to pop. -->
+             dashboard when there is no history of its own to pop. The filter button opens the
+             same sheet the Alerts header does (FilterSheetPage); it replaced three chooser chips
+             under the search box, each its own popup for one question at a time. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
 
                 <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
@@ -53,6 +55,9 @@
                     <Label Text="CardiJournal"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
+                    <!-- Names whose journal this is once there is more than one it could be, and
+                         what the list is narrowed to while it is — so a filtered list can be told
+                         from a quiet one without scrolling back to the strip. -->
                     <Label x:Name="HeaderSubtitle"
                            Text="Daybooks of finished days"
                            FontFamily="Quicksand"
@@ -61,6 +66,44 @@
                            Opacity="0.85"
                            LineBreakMode="TailTruncation"/>
                 </VerticalStackLayout>
+
+                <!-- The Alerts header's filter square, unchanged: HeaderActionSquare, filled
+                     PrimaryDark with a white glyph while a filter is on, and a count of the parts
+                     narrowing the list on its corner. Hidden until there is something to filter
+                     or someone else to switch to — see PaintFilterChrome. -->
+                <Grid x:Name="FilterButtonHost"
+                      Grid.Column="2"
+                      VerticalOptions="Start"
+                      IsVisible="False">
+                    <Border x:Name="FilterButton"
+                            SemanticProperties.Description="Filter the journal"
+                            Style="{StaticResource HeaderActionSquare}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnFilterTapped"/>
+                        </Border.GestureRecognizers>
+                        <Image x:Name="FilterIcon"
+                               Source="icon_filter.svg"
+                               WidthRequest="24" HeightRequest="24"/>
+                    </Border>
+                    <Border x:Name="FilterCountBadge"
+                            IsVisible="False"
+                            BackgroundColor="{StaticResource White}"
+                            Stroke="{StaticResource PrimaryDark}"
+                            StrokeThickness="1"
+                            WidthRequest="18" HeightRequest="18"
+                            HorizontalOptions="End" VerticalOptions="Start"
+                            TranslationX="6" TranslationY="-6"
+                            InputTransparent="True">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="9"/>
+                        </Border.StrokeShape>
+                        <Label x:Name="FilterCountLabel"
+                               FontSize="10"
+                               FontFamily="QuicksandSemiBold"
+                               TextColor="{StaticResource PrimaryDark}"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Border>
+                </Grid>
             </Grid>
         </controls:HeaderBand>
 
@@ -164,14 +207,14 @@
                 Tapped="OnExportTapped"/>
         </Grid>
 
-        <!-- Search and the two filter chips sit outside the scroller so narrowing the list stays
-             reachable while it is scrolled — the same reason the alert chips do. Hidden until the
-             member has any entry at all: a filter row over a first-days empty state is a control
-             with nothing to do. -->
-        <!-- The chips sit closer to the search box than to whatever the list starts with, and
-             the panel keeps a little padding under them. With twelve above and none below they
-             were flush against the panel's edge, so the first card's own margin was the only
-             thing between a chip and the list — which reads as the chips belonging to the card
+        <!-- Search and the applied-filter strip sit outside the scroller so what narrows the list
+             stays in view while it is scrolled — the same reason the Alerts strip does. Hidden
+             until the member has any entry at all: a search box over a first-days empty state is
+             a control with nothing to do. -->
+        <!-- The strip sits closer to the search box than to whatever the list starts with, and
+             the panel keeps a little padding under it. With twelve above and none below the old
+             chips were flush against the panel's edge, so the first card's own margin was the
+             only thing between them and the list — which read as the chips belonging to the card
              rather than to the search above them. -->
         <VerticalStackLayout x:Name="FilterPanel"
                              Grid.Row="2"
@@ -214,56 +257,17 @@
                 </Grid>
             </Border>
 
-            <!-- Two chooser chips rather than a row per option: five urgencies and four windows
-                 as flat chips is a control panel, and the popup chooser is the pattern the app
-                 already has (M1-13's pause durations). -->
-            <HorizontalStackLayout Spacing="9">
-                <!-- Which CardiMember's daybook. Hidden while the account has only one member —
-                     a chooser with one choice is a control with nothing to do. -->
-                <Border x:Name="MemberChip"
-                        Style="{StaticResource OutlinedCard}"
-                        Padding="16,8"
+            <!-- What the list is narrowed to, one removable pill per part and a way to clear them
+                 all — only while a filter is on. The Alerts strip's pills, built by the same
+                 code (FilterStripPill). Run to the screen's edges so a long strip scrolls under
+                 them rather than stopping short at the panel's padding. -->
+            <ScrollView x:Name="FilterStrip"
+                        Orientation="Horizontal"
+                        HorizontalScrollBarVisibility="Never"
+                        Margin="-20,0"
                         IsVisible="False">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="10"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnMemberChipTapped"/>
-                    </Border.GestureRecognizers>
-                    <Label x:Name="MemberChipLabel"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="14"
-                           TextColor="{StaticResource HeadingText}"/>
-                </Border>
-
-                <Border x:Name="UrgencyChip" Style="{StaticResource OutlinedCard}" Padding="16,8">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="10"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnUrgencyChipTapped"/>
-                    </Border.GestureRecognizers>
-                    <Label x:Name="UrgencyChipLabel"
-                           Text="Any urgency"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="14"
-                           TextColor="{StaticResource HeadingText}"/>
-                </Border>
-
-                <Border x:Name="WindowChip" Style="{StaticResource OutlinedCard}" Padding="16,8">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="10"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnWindowChipTapped"/>
-                    </Border.GestureRecognizers>
-                    <Label x:Name="WindowChipLabel"
-                           Text="All time"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="14"
-                           TextColor="{StaticResource HeadingText}"/>
-                </Border>
-            </HorizontalStackLayout>
+                <HorizontalStackLayout x:Name="FilterStripHost" Spacing="8" Padding="20,0"/>
+            </ScrollView>
         </VerticalStackLayout>
 
         <RefreshView x:Name="Refresher"

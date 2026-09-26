@@ -114,26 +114,42 @@ public sealed class PopupService : IPopupService
 
     public Task<AlertListFilter?> ChooseAlertFilterAsync(
         AlertListFilter current,
-        IReadOnlyList<AlertFilterMember> members,
+        IReadOnlyList<FilterMember> members,
         bool archived,
         Func<AlertListFilter, CancellationToken, Task<int?>> count) =>
+        ShowFilterSheetAsync(() => AlertFilterSheet.Create(current, members, archived, count));
+
+    public Task<JournalFilterChoice?> ChooseJournalFilterAsync(
+        JournalFilterChoice current,
+        IReadOnlyList<FilterMember> members,
+        JournalCadence cadence,
+        int pageLimit,
+        Func<JournalFilterChoice, CancellationToken, Task<int?>> count) =>
+        ShowFilterSheetAsync(() => JournalFilterSheet.Create(current, members, cadence, pageLimit, count));
+
+    /// <summary>
+    /// Raises a list's filter sheet and returns its draft if the caregiver asked to see the
+    /// results, or null when they dismissed it. Built on the main thread, as every page must be.
+    /// </summary>
+    private Task<T?> ShowFilterSheetAsync<T>(Func<(FilterSheetPage Page, Func<T> Draft)> create)
+        where T : class =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {
             var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
             if (page is null)
                 return null;
 
-            var sheet = new AlertFilterSheetPage(current, members, archived, count);
+            var (sheet, draft) = create();
             Interlocked.Increment(ref _open);
             try
             {
                 await page.Navigation.PushModalAsync(sheet, animated: false);
-                return await sheet.Result;
+                return await sheet.Result ? draft() : null;
             }
             finally
             {
                 // Released once the sheet has left the stack — the same handshake as the drawer
-                // above; the Alerts page reads IsShowing to know it never left.
+                // above; the list underneath reads IsShowing to know it never left.
                 Interlocked.Decrement(ref _open);
             }
         });
