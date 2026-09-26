@@ -268,6 +268,8 @@ public partial class JournalPage : ContentPage
         if (_memberId == Guid.Empty)
             return;
 
+        await RefreshMembersAsync();
+
         var current = new JournalFilterChoice(CurrentMember(), _filter);
         var chosen = await _popups.ChooseJournalFilterAsync(
             current,
@@ -308,6 +310,24 @@ public partial class JournalPage : ContentPage
         catch (ApiException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads the account's members again before the sheet offers them, as the Alerts list does on
+    /// every open: Shell keeps this page for the app's life, so a member added or removed since
+    /// the first load has to be offered — or not — under "Whose". A failed read keeps the list
+    /// already held, which the sheet tops up with the member on screen.
+    /// </summary>
+    private async Task RefreshMembersAsync()
+    {
+        try
+        {
+            _members = await _api.GetCardiMembersAsync();
+            PaintFilterChrome();
+        }
+        catch (ApiException)
+        {
         }
     }
 
