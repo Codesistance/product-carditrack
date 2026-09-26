@@ -265,6 +265,19 @@ jobs:
             apple_cert_password:${{ needs.env.outputs.gcp_project_id }}/carditrack-apple-cert-password
             apple_provisioning_profile:${{ needs.env.outputs.gcp_project_id }}/carditrack-app-store-provisioning-profile
             app_store_connect_key:${{ needs.env.outputs.gcp_project_id }}/carditrack-app-store-connect-api-key
+            firebase_ios_config:${{ needs.env.outputs.gcp_project_id }}/carditrack-common-firebase-ios-config
+      # GoogleService-Info.plist is not in git (it carries a Google API key); the
+      # csproj includes it only when present and errors on an archive without it.
+      # Same step as build-mobile-ios-device in deploy-apps-dev.yml.
+      - name: Write Firebase config
+        env:
+          FIREBASE_CONFIG: ${{ steps.secrets.outputs.firebase_ios_config }}
+        run: |
+          if [ -z "$FIREBASE_CONFIG" ] || [ "$FIREBASE_CONFIG" = "REPLACE_ME" ]; then
+            echo "::error::carditrack-common-firebase-ios-config is not populated — see docs/apps/mobile/store_provisioning.md"
+            exit 1
+          fi
+          printf '%s\n' "$FIREBASE_CONFIG" > src/Presentation/CardiTrack.Mobile/Platforms/iOS/GoogleService-Info.plist
       - name: Install Apple certificate and provisioning profile
         run: |
           echo '${{ steps.secrets.outputs.apple_cert_p12 }}' | base64 --decode > cert.p12

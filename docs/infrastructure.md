@@ -279,7 +279,7 @@ See [llm_design.md](./llm_design.md) for the AI architecture.
 
 - **Artifact Registry** `carditrack-common` — central Docker repository (cleanup policy keeps the last 50 versions)
 - **Builds bucket** `carditrack-common-builds` — mobile build artifacts (10-day lifecycle delete)
-- **9 store distribution secrets** (`carditrack-common-*`) — Apple distribution cert/password, App Store provisioning profile and Connect API credentials, Android keystore/password, Play service account key
+- **Common secrets** (`carditrack-common-*`) — 11 read by the mobile workflows (Apple distribution cert/password, App Store provisioning profile and Connect API credentials, Android keystore/password, Play service account key, and the two Firebase client configs `google-services.json` / `GoogleService-Info.plist`, which are not in git), 2 Slack secrets read by the digest workflow, and 3 operator-only APNs secrets with no CI accessor grant
 - **MedGemma GPU service** `carditrack-common-medgemma` — one L4 in `europe-west1` serving every environment, with the `europe-west1` Artifact Registry repo its image is pulled from and the public-exposure IAM alert that moved with it
 - **Cross-stack invoker IAM** — `medgemma_invoker_members` in `common.tfvars`, constructed service-account emails rather than a lookup, because this root cannot read the environment stacks' state. An entry for an account that does not exist applies cleanly and grants nothing, so prod's go in only once its accounts do
 

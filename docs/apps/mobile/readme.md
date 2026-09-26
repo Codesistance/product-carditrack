@@ -217,7 +217,7 @@ The device half of the push spine (`docs/technical/notification_engine.md` Phase
 - **Channels** (Android): `carditrack.safety.v2` at IMPORTANCE_HIGH (wakes from Doze, bundled `carditrack_alert` sound + vibration), `carditrack.health.v4` at HIGH (same sound, no vibration; v3 was Default and often silent), `carditrack.nudges.v2` at Default (`carditrack_nudge` ding, no vibration). Channel ids are versioned because Android freezes a channel's sound/vibration on first create. iOS plays `carditrack_alert.wav` for Safety/Health and `carditrack_nudge.wav` for Nudges.
 - **Receipt**: the background handler acks with `POST api/v1/notifications/{deliveryId}/delivered` **before any user interaction** — a missed ack is what the escalation ladder keys off, so it must not wait for a tap. Tapping parses the payload's deep link through `NudgeLinkParser` and navigates.
 - **Payloads are PHI-free teasers** via `PushTeaser` (e.g. "Heart rate alert" / "Open CardiTrack to check on this.") — no names or metrics cross APNs or FCM. The iOS Notification Service Extension that would rewrite them into richer copy on-device is **deferred** (§17), so iOS shows the teaser as sent.
-- **Firebase config**: `Platforms/Android/google-services.json` and `Platforms/iOS/GoogleService-Info.plist`, wired as `GoogleServicesJson` / `BundleResource` items in the csproj. They were missing from the build until 2026-08-13 — the frameworks shipped without them, `GetTokenAsync()` threw *"Default FirebaseApp is not initialized"* on every launch, and no device ever registered. If push silently stops working, check those items first.
+- **Firebase config**: `Platforms/Android/google-services.json` and `Platforms/iOS/GoogleService-Info.plist`, wired as `GoogleServicesJson` / `BundleResource` items in the csproj. **Neither file is in git** (since 2026-09-22): each carries a Google API key that GitHub secret scanning flagged, so both are git-ignored and live in Secret Manager as `carditrack-common-firebase-android-config` and `carditrack-common-firebase-ios-config`. The signed Android and iOS device jobs in `deploy-apps-dev.yml` (and the iOS prod job) fetch them and write them into place before publishing; the csproj includes each file only when it exists, and its `_CardiTrackRequireFirebaseConfig` target fails a signed Android publish or an iOS archive that has no config. That guard exists because the files were missing from the build until 2026-08-13 — the frameworks shipped without them, `GetTokenAsync()` threw *"Default FirebaseApp is not initialized"* on every launch, and no device ever registered. A local Debug build without the files still compiles and runs; push just never registers. To get push on the emulator, fetch the file once per worktree (see the [emulator runbook's prerequisites](../../technical/android_emulator_runbook.md#1-prerequisites)).
 
 ## Localization
 
@@ -257,9 +257,11 @@ Starting the emulator, unlocking it, deploying, driving it from `adb`, screensho
 
 ### Store builds
 
-Signed store builds are normally produced by CI (below). For a local signed Android AAB, use the same properties CI uses (note the plural `-p:AndroidPackageFormats=aab`):
+Signed store builds are normally produced by CI (below). For a local signed Android AAB, use the same properties CI uses (note the plural `-p:AndroidPackageFormats=aab`). A signed publish refuses to run without the git-ignored Firebase config, so fetch it first:
 
 ```bash
+gcloud secrets versions access latest --secret=carditrack-common-firebase-android-config \
+  --project=carditrack-490120 --out-file=src/Presentation/CardiTrack.Mobile/Platforms/Android/google-services.json
 dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
   -f net10.0-android -c Release \
   -p:AndroidPackageFormats=aab -p:AndroidKeyStore=true \
@@ -345,17 +347,20 @@ Signing material and store credentials live in GCP Secret Manager (`carditrack-c
 | `carditrack-common-android-keystore` | Upload keystore (.jks, base64, key alias `carditrack`) |
 | `carditrack-common-android-keystore-password` | Keystore and key password |
 | `carditrack-common-play-service-account-key` | Google Play service account key (JSON) |
+| `carditrack-common-firebase-android-config` | Firebase `google-services.json` for the app (JSON text) |
+| `carditrack-common-firebase-ios-config` | Firebase `GoogleService-Info.plist` for the app (plist XML text) |
 
 The common secrets file also defines three **operator-only** secrets (no deploy-workflow accessor grant; loaded and read manually by an operator): `carditrack-common-apns-auth-key-p8` (APNs auth key, .p8 PEM contents), `carditrack-common-apns-key-id`, and `carditrack-common-apple-team-id`.
 
-Until a secret is populated (i.e. still holds the `REPLACE_ME` placeholder), the corresponding signed-build/upload jobs skip with a warning instead of failing, so the pipeline stays green during initial setup.
+Until a secret is populated (i.e. still holds the `REPLACE_ME` placeholder), the signed-build jobs in `deploy-apps-dev.yml` skip with a warning instead of failing, so the pipeline stays green during initial setup; a push requested from `deploy-mobile-dev.yml` for that platform then fails, on purpose, because there is no signed artifact to upload. The prod iOS job in `deploy-apps-prod.yml` has no such gate: an unpopulated `carditrack-common-firebase-ios-config` fails it at "Write Firebase config", because a production build that cannot register for push is not one to ship.
 
 One-time setup before the first store upload — full step-by-step commands in
 **[store_provisioning.md](./store_provisioning.md)**. In summary:
 
 1. **Apple**: distribution certificate (.p12), App Store provisioning profile named **CardiTrack Distribution**, app record for `com.codesistance.carditrack.mobile` in App Store Connect, App Store Connect API key (App Manager role), internal-tester group in TestFlight.
 2. **Google**: upload keystore (alias `carditrack`), app in Play Console with Play App Signing, **first AAB uploaded manually** (required before the Play API accepts uploads), publisher service account with *Release to testing tracks*, internal testers.
-3. Run *Deploy Infrastructure → Common* to create the secrets, then populate each (base64-encode binary payloads).
+3. Run *Deploy Infrastructure → Common* to create the secrets (seeded `REPLACE_ME`), then populate each (base64-encode binary payloads).
+4. **Firebase**: both client config files downloaded from the Firebase console, their keys restricted, and loaded into the secrets step 3 created — before the manual first AAB in step 2, because a signed publish fails without the config.
 
 ## Testing
 

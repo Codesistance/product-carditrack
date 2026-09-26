@@ -87,6 +87,10 @@ local.settings.json
 secrets/
 .env
 .env.local
+# Firebase client config for CardiTrack.Mobile: carries a Google API key, lives in Secret
+# Manager (carditrack-common-firebase-{android,ios}-config), written by CI before a store build.
+src/Presentation/CardiTrack.Mobile/Platforms/Android/google-services.json
+src/Presentation/CardiTrack.Mobile/Platforms/iOS/GoogleService-Info.plist
 
 # Terraform
 **/.terraform/*

@@ -636,7 +636,7 @@ jobs:
           PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
         run: |
           MISSING=""
-          for SECRET in carditrack-common-android-keystore carditrack-common-android-keystore-password; do
+          for SECRET in carditrack-common-android-keystore carditrack-common-android-keystore-password carditrack-common-firebase-android-config; do
             VALUE=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PROJECT" 2>/dev/null || true)
             if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then MISSING="$MISSING $SECRET"; fi
           done
@@ -662,12 +662,30 @@ jobs:
             apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
             mobile_diagnostics_key:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-mobile-diagnostics-key
+            firebase_android_config:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-firebase-android-config
 
       - name: Decode keystore
         if: steps.gate.outputs.available == 'true'
         env:
           KEYSTORE_B64: ${{ steps.secrets.outputs.keystore }}
         run: echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/carditrack.keystore"
+
+      # google-services.json is not in git: it carries a Google API key that GitHub
+      # secret scanning flags (alerts #1/#2, 2026-09-22). The csproj only includes
+      # the file when it exists and errors on a signed publish without it, so a
+      # store build can never again ship without a Firebase project to register
+      # against (the 2026-08-13 incident). The gate above already skips the job on
+      # REPLACE_ME; the empty check here just names the cause before MSBuild does.
+      - name: Write Firebase config
+        if: steps.gate.outputs.available == 'true'
+        env:
+          FIREBASE_CONFIG: ${{ steps.secrets.outputs.firebase_android_config }}
+        run: |
+          if [ -z "$FIREBASE_CONFIG" ]; then
+            echo "::error::carditrack-common-firebase-android-config is empty — see docs/apps/mobile/store_provisioning.md"
+            exit 1
+          fi
+          printf '%s\n' "$FIREBASE_CONFIG" > src/Presentation/CardiTrack.Mobile/Platforms/Android/google-services.json
 
       - name: Install MAUI workload
         if: steps.gate.outputs.available == 'true'
@@ -768,7 +786,7 @@ jobs:
           PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
         run: |
           MISSING=""
-          for SECRET in carditrack-common-apple-distribution-cert-p12 carditrack-common-apple-cert-password carditrack-common-appstore-provisioning-profile; do
+          for SECRET in carditrack-common-apple-distribution-cert-p12 carditrack-common-apple-cert-password carditrack-common-appstore-provisioning-profile carditrack-common-firebase-ios-config; do
             VALUE=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PROJECT" 2>/dev/null || true)
             if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then MISSING="$MISSING $SECRET"; fi
           done
@@ -795,6 +813,7 @@ jobs:
             apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
             mobile_diagnostics_key:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-mobile-diagnostics-key
+            firebase_ios_config:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-firebase-ios-config
 
       - name: Install certificate and provisioning profile
         if: steps.gate.outputs.available == 'true'
@@ -817,6 +836,20 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "$PROFILE_B64" | base64 --decode \
             > ~/Library/MobileDevice/Provisioning\ Profiles/carditrack-appstore.mobileprovision
+
+      # Same arrangement as the signed Android build's "Write Firebase config":
+      # GoogleService-Info.plist is not in git, the csproj includes it only when
+      # present and errors on an archive without it.
+      - name: Write Firebase config
+        if: steps.gate.outputs.available == 'true'
+        env:
+          FIREBASE_CONFIG: ${{ steps.secrets.outputs.firebase_ios_config }}
+        run: |
+          if [ -z "$FIREBASE_CONFIG" ]; then
+            echo "::error::carditrack-common-firebase-ios-config is empty — see docs/apps/mobile/store_provisioning.md"
+            exit 1
+          fi
+          printf '%s\n' "$FIREBASE_CONFIG" > src/Presentation/CardiTrack.Mobile/Platforms/iOS/GoogleService-Info.plist
 
       - name: Select Xcode
         if: steps.gate.outputs.available == 'true'
