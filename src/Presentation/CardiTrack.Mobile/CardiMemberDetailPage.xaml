@@ -300,7 +300,8 @@
                                      the message to the caregiver, and in regular type this one read
                                      as the lighter of the two cards though the ink is the same. -->
                                 <Label x:Name="SummaryLabel"
-                                       Style="{StaticResource Message}"/>
+                                       Style="{StaticResource Message}"
+                                       HorizontalTextAlignment="Justify"/>
 
                                 <!-- The model's own urgency read, alongside — never instead of —
                                      the card's dashboard-driven status colour above. Hidden when
@@ -336,7 +337,8 @@
                                             <Label x:Name="InsightSummaryLabel"
                                                    Style="{StaticResource Body2Dark}"
                                                    IsVisible="False"
-                                                   LineBreakMode="WordWrap"/>
+                                                   LineBreakMode="WordWrap"
+                                                   HorizontalTextAlignment="Justify"/>
                                             <!-- One card per metric that moved, each with the
                                                  figures, what the grade was given on, and an
                                                  alert on that reading. -->
@@ -407,7 +409,8 @@
                                      muted — they are about the message, not the message. -->
                                 <Label x:Name="AdviseSummaryLabel"
                                        Style="{StaticResource Message}"
-                                       LineBreakMode="WordWrap"/>
+                                       LineBreakMode="WordWrap"
+                                       HorizontalTextAlignment="Justify"/>
                                 <Label x:Name="AdviseSuggestionLabel"
                                        Style="{StaticResource Message}"
                                        LineBreakMode="WordWrap"/>
@@ -466,7 +469,8 @@
                                 <Label x:Name="InsightTrendLabel"
                                        Style="{StaticResource Body2Dark}"
                                        IsVisible="False"
-                                       LineBreakMode="WordWrap"/>
+                                       LineBreakMode="WordWrap"
+                                       HorizontalTextAlignment="Justify"/>
 
                                 <!-- The trend's own points. The payload has carried these all
                                      along (MemberInsightComposer sets TrendFindings from the

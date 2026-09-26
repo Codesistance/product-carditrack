@@ -131,7 +131,7 @@
                                                FontSize="12"/>
                                     </Grid>
 
-                                    <!-- The four ways to reach this person, inside their card and under a
+                                    <!-- The ways to reach this person, inside their card and under a
                                          hairline: icon-only and packed to the right, where they sat as a
                                          full row of labelled tiles further down the page. Same control as
                                          the Dashboard's (Compact) — tints, dimming and taps unchanged. -->
@@ -232,7 +232,8 @@
                         <Border Style="{StaticResource ElevatedCard}">
                             <Label x:Name="MessageLabel"
                                    Style="{StaticResource Body2Dark}"
-                                   LineBreakMode="WordWrap"/>
+                                   LineBreakMode="WordWrap"
+                                   HorizontalTextAlignment="Justify"/>
                         </Border>
 
                         <Border x:Name="ChartCard"
@@ -384,7 +385,8 @@
                                        LineBreakMode="WordWrap"/>
                                 <Label x:Name="EvidenceWhyLabel"
                                        Style="{StaticResource Body2}"
-                                       LineBreakMode="WordWrap"/>
+                                       LineBreakMode="WordWrap"
+                                       HorizontalTextAlignment="Justify"/>
                                 <!-- The line the reading crossed, as a chip so it reads as a
                                      figure rather than as another sentence. -->
                                 <Border x:Name="EvidenceThresholdChip"
@@ -415,7 +417,8 @@
                                        Style="{StaticResource DashboardSectionTitle}"/>
                                 <Label x:Name="NarrativeLabel"
                                        Style="{StaticResource Body2}"
-                                       LineBreakMode="WordWrap"/>
+                                       LineBreakMode="WordWrap"
+                                       HorizontalTextAlignment="Justify"/>
                                 <Label x:Name="NarrativeActionLabel"
                                        Style="{StaticResource Body2Dark}"
                                        IsVisible="False"

@@ -149,7 +149,8 @@
 
                                 <Label x:Name="TextLabel"
                                        Style="{StaticResource Body2Dark}"
-                                       LineBreakMode="WordWrap"/>
+                                       LineBreakMode="WordWrap"
+                                       HorizontalTextAlignment="Justify"/>
 
                                 <BoxView x:Name="SuggestionDivider"
                                          HeightRequest="1"
@@ -158,7 +159,8 @@
                                        x:Name="SuggestionTitle"
                                        Style="{StaticResource DashboardSectionTitle}"/>
                                 <Label x:Name="SuggestionLabel"
-                                       Style="{StaticResource Body2Dark}"/>
+                                       Style="{StaticResource Body2Dark}"
+                                       HorizontalTextAlignment="Justify"/>
 
                                 <Label x:Name="GeneratedLabel"
                                        Style="{StaticResource MetricRowCaption}"
