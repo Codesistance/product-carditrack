@@ -37,13 +37,15 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
         return session;
     }
 
-    private static MemberChatTurn Turn(Guid sessionId, ChatTurnRole role, string content, DateTime createdAtUtc) => new()
+    private static MemberChatTurn Turn(
+        Guid sessionId, ChatTurnRole role, string content, DateTime createdAtUtc, MemberChatWorkflow? workflow = null) => new()
     {
         Id = Guid.NewGuid(),
         SessionId = sessionId,
         Role = role,
         Content = content,
         CreatedAtUtc = createdAtUtc,
+        Workflow = workflow,
     };
 
     /// <summary>
@@ -294,5 +296,66 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
 
         Assert.NotNull(loaded);
         Assert.Equal(new[] { first.Id, second.Id }, loaded!.Turns.Select(t => t.Id));
+    }
+
+    /// <summary>
+    /// The chips' one read: this caregiver's questions about this member, across the open session
+    /// and closed ones, newest first — kept only when the reply that followed was stamped with an
+    /// allowed rung, and bounded by the window and the limit. The pairing and the workflow filter
+    /// run in SQL, so this is the query worth proving against the database it runs on.
+    /// </summary>
+    [Fact]
+    public async Task ListRecentQuestionsAsync_ReturnsThisPairsAnsweredQuestions_NewestFirst_ForAllowedRungsOnly()
+    {
+        using var scope = fixture.CreateScope();
+        var userId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        var current = Session(userId, memberId, now);
+        var older = Closed(userId, memberId, now.AddDays(-2));
+        var ancient = Closed(userId, memberId, now.AddDays(-100));
+        var otherCaregivers = Session(Guid.NewGuid(), memberId, now);
+        var aboutSomeoneElse = Session(userId, Guid.NewGuid(), now);
+
+        var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
+        var turnRepo = scope.ServiceProvider.GetRequiredService<IMemberChatTurnRepository>();
+        foreach (var s in new[] { current, older, ancient, otherCaregivers, aboutSomeoneElse })
+            await sessionRepo.AddAsync(s);
+
+        async Task Exchange(MemberChatSession s, string question, DateTime at, MemberChatWorkflow? answeredBy, bool replied = true)
+        {
+            await turnRepo.AddAsync(Turn(s.Id, ChatTurnRole.User, question, at));
+            if (replied)
+                await turnRepo.AddAsync(Turn(s.Id, ChatTurnRole.Assistant, "reply", at.AddSeconds(20), answeredBy));
+        }
+
+        await Exchange(current, "How did she sleep?", now.AddMinutes(-10), MemberChatWorkflow.Analysis);
+        await Exchange(current, "hello there", now.AddMinutes(-8), MemberChatWorkflow.SteerCasual);
+        await Exchange(current, "What's the weather in Paris?", now.AddMinutes(-6), MemberChatWorkflow.SteerOffTopic);
+        await Exchange(current, "hmm the thing", now.AddMinutes(-5), MemberChatWorkflow.Clarify);
+        await Exchange(current, "Show me yesterday's Daybook", now.AddMinutes(-3), MemberChatWorkflow.Journal);
+        await Exchange(current, "A send that failed", now.AddMinutes(-1), null, replied: false);
+        await Exchange(older, "Any alerts yesterday?", now.AddDays(-2).AddMinutes(-5), MemberChatWorkflow.AlertSettings);
+        await Exchange(older, "Before workflows were stamped", now.AddDays(-2).AddMinutes(-2), null);
+        await Exchange(ancient, "Too long ago", now.AddDays(-100), MemberChatWorkflow.Status);
+        await Exchange(otherCaregivers, "Not this caregiver's", now.AddMinutes(-2), MemberChatWorkflow.Status);
+        await Exchange(aboutSomeoneElse, "Not this member's", now.AddMinutes(-2), MemberChatWorkflow.Status);
+        await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync();
+
+        MemberChatWorkflow[] allowed =
+        [
+            MemberChatWorkflow.Status, MemberChatWorkflow.Analysis, MemberChatWorkflow.Inference,
+            MemberChatWorkflow.Investigation, MemberChatWorkflow.Advise, MemberChatWorkflow.Journal,
+            MemberChatWorkflow.AlertSettings,
+        ];
+
+        var all = await sessionRepo.ListRecentQuestionsAsync(userId, memberId, allowed, now.AddDays(-90), 50);
+        var limited = await sessionRepo.ListRecentQuestionsAsync(userId, memberId, allowed, now.AddDays(-90), 2);
+
+        Assert.Equal(
+            new[] { "Show me yesterday's Daybook", "How did she sleep?", "Any alerts yesterday?" },
+            all.Select(q => q.Content));
+        Assert.Equal(new[] { "Show me yesterday's Daybook", "How did she sleep?" }, limited.Select(q => q.Content));
     }
 }

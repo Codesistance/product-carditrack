@@ -406,8 +406,10 @@ public class MemberChatController : BaseApiController
         }
     }
 
-    /// <summary>Question chips for the chat's empty state — deterministic from the member's data
-    /// state (an unresolved alert earns an alert chip), no model call, instant.</summary>
+    /// <summary>Question chips for the chat's empty state — the caller's own recent questions
+    /// about this member when they have any (<c>source</c> "recent"), else a standard set
+    /// deterministic from the member's data state (an unresolved alert earns an alert chip); no
+    /// model call, instant.</summary>
     [HttpGet("members/{cardiMemberId:guid}/suggestions")]
     [ProducesResponseType(typeof(ApiResponse<MemberChatSuggestionsResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]

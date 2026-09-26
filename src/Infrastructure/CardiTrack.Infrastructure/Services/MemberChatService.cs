@@ -2220,30 +2220,118 @@ public class MemberChatService : IMemberChatService
         }
     }
 
+    /// <summary>How many chips the empty state offers — recent questions and standard ones alike.</summary>
+    internal const int SuggestionChipCount = 3;
+
+    /// <summary>How far back a caregiver's own questions can come from to become chips.</summary>
+    internal static readonly TimeSpan RecentQuestionLookback = TimeSpan.FromDays(90);
+
     /// <summary>
-    /// Deterministic, not generated: the chips teach the vocabulary of what the assistant can
-    /// answer, and a fixed set does that better than a model's variations — instantly, for free,
-    /// and with nothing new sent anywhere. The one data-driven chip is the first: the alert
-    /// question when there is an unresolved alert to ask about, else "has anything come through
-    /// yet?" when no reading has arrived in a week, else the general watch-out question.
+    /// How many of the caregiver's most recent qualifying questions are read to find
+    /// <see cref="SuggestionChipCount"/> distinct ones — enough to survive a run of repeats and
+    /// "yes" answers, few enough that opening the chat never reads a long history.
     /// </summary>
+    internal const int RecentQuestionScanLimit = 50;
+
+    /// <summary>A chip is re-sent verbatim, so a longer question is skipped, never truncated.</summary>
+    internal const int MaxSuggestionChipLength = 120;
+
+    /// <summary>Below this a question is almost always a bare follow-up ("why?", "and today") that
+    /// means nothing outside the conversation it was part of.</summary>
+    internal const int MinSuggestionChipLength = 8;
+
+    /// <summary>
+    /// The rungs whose questions are worth asking again: the ones that read the member
+    /// (status through advise) and the two that act (the journal and the alert settings). Not the
+    /// steers — a greeting or an off-topic ask is not a question about this person — and not
+    /// <see cref="MemberChatWorkflow.Clarify"/>, which by definition could not be placed. An
+    /// allow-list, so a workflow added later is not offered until someone decides it should be.
+    /// </summary>
+    internal static readonly IReadOnlyCollection<MemberChatWorkflow> SuggestibleWorkflows =
+    [
+        MemberChatWorkflow.Status,
+        MemberChatWorkflow.Analysis,
+        MemberChatWorkflow.Inference,
+        MemberChatWorkflow.Investigation,
+        MemberChatWorkflow.Advise,
+        MemberChatWorkflow.Journal,
+        MemberChatWorkflow.AlertSettings,
+    ];
+
+    /// <summary>
+    /// Deterministic, not generated: nothing new is sent anywhere, no model runs, and the answer
+    /// is instant. Three chips, chosen by one rule (decision 2026-09-26):
+    /// <list type="bullet">
+    /// <item>When this caregiver has asked about this member before, the chips pick up where
+    /// they left off — their own last three distinct questions, newest first, in their own
+    /// wording, and <see cref="MemberChatSuggestionsResponse.Source"/> says so, so the app can
+    /// caption them. A caregiver who keeps coming back to the same few questions gets exactly
+    /// those, one tap away, instead of a generic menu they have already outgrown.</item>
+    /// <item>Otherwise the standard three: the data-driven first chip (the alert question when
+    /// there is an unresolved alert to ask about, else "has anything come through yet?" when no
+    /// reading has arrived in a week, else the general watch-out question), "how are they doing
+    /// today?", and yesterday's Daybook. A fixed set teaches the vocabulary of what the assistant
+    /// can answer better than a model's variations would.</item>
+    /// </list>
+    /// Fewer than three recent questions are topped up from the standard three, skipping any the
+    /// caregiver already asked, so the row is always three long. See
+    /// <see cref="SelectRecentQuestionChips"/> for what counts as a question worth offering.
+    /// </summary>
+    /// <remarks>
+    /// Privacy: history is read for <paramref name="userId"/> and <paramref name="cardiMemberId"/>
+    /// together. Several caregivers can share a member, and one caregiver's questions are never
+    /// offered to another — they are that caregiver's conversation, not the member's record.
+    /// </remarks>
     public async Task<MemberChatSuggestionsResponse> GetSuggestionsAsync(
         Guid userId, Guid cardiMemberId, CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
 
+        var utcNow = DateTime.UtcNow;
+        var asked = await _unitOfWork.MemberChatSessions.ListRecentQuestionsAsync(
+            userId, cardiMemberId, SuggestibleWorkflows, utcNow - RecentQuestionLookback,
+            RecentQuestionScanLimit, ct);
+        var chips = SelectRecentQuestionChips(asked.Select(q => Reveal(q.Content)));
+        var fromHistory = chips.Count;
+
+        if (chips.Count < SuggestionChipCount)
+        {
+            var taken = chips.Select(SuggestionChipKey).ToHashSet(StringComparer.Ordinal);
+            foreach (var standard in await StandardSuggestionChipsAsync(cardiMemberId, utcNow, ct))
+            {
+                if (chips.Count == SuggestionChipCount)
+                    break;
+                if (taken.Add(SuggestionChipKey(standard)))
+                    chips.Add(standard);
+            }
+        }
+
+        return new MemberChatSuggestionsResponse
+        {
+            Suggestions = chips,
+            Source = fromHistory > 0
+                ? MemberChatSuggestionsResponse.SourceRecent
+                : MemberChatSuggestionsResponse.SourceStandard,
+        };
+    }
+
+    /// <summary>
+    /// The standard three, read only when the caregiver's own questions do not fill the row —
+    /// a caregiver with three recent questions never pays for the alert and readings reads.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> StandardSuggestionChipsAsync(
+        Guid cardiMemberId, DateTime utcNow, CancellationToken ct)
+    {
         // The unresolved-only read, not the tracked activeOnly one: this runs on every chat open,
         // and there is nothing here to resolve or mutate — filtering in SQL keeps a member with
         // years of alert history from paying for that history to open a conversation.
         var hasUnresolvedAlert = (await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId))
             .Count > 0;
 
-        // Always six chips: the alert question replaces the general watch-out one rather than
-        // adding to it. A row that changes length with the member's state reads as something
-        // having gone missing, and "anything I should keep an eye on?" is a weaker question to
-        // offer when there is already a specific alert to ask about. The last two teach the
-        // rungs that act rather than read — the journal and the alert settings — which no
-        // reading question would ever lead a caregiver to discover.
+        // The alert question replaces the general watch-out one rather than adding to it. A row
+        // that changes length with the member's state reads as something having gone missing, and
+        // "anything I should keep an eye on?" is a weaker question to offer when there is already
+        // a specific alert to ask about.
         //
         // With nothing to read, the watch-out question is one chat can only answer "nothing to go
         // on", and a chip is a promise of an answer: it offered a member who had never synced
@@ -2252,22 +2340,72 @@ public class MemberChatService : IMemberChatService
         // it in code from the same week-wide read.
         var firstChip = hasUnresolvedAlert
             ? "What's behind the current alert?"
-            : await HasNoRecentReadingsAsync(cardiMemberId, DateTime.UtcNow, ct)
+            : await HasNoRecentReadingsAsync(cardiMemberId, utcNow, ct)
                 ? "Has anything come through yet?"
                 : "Anything I should keep an eye on?";
 
-        var suggestions = new List<string>
-        {
-            firstChip,
-            "How are they doing today?",
-            "How did they sleep last night?",
-            "How active have they been this week?",
-            "Show me yesterday's Daybook",
-            "Which alerts are switched on?",
-        };
-
-        return new MemberChatSuggestionsResponse { Suggestions = suggestions };
+        // Yesterday's Daybook keeps one chip on a rung that acts rather than reads — the journal —
+        // which no reading question would ever lead a caregiver to discover.
+        return [firstChip, "How are they doing today?", "Show me yesterday's Daybook"];
     }
+
+    /// <summary>
+    /// The caregiver's decrypted questions, newest first, reduced to at most
+    /// <see cref="SuggestionChipCount"/> chips worth re-sending as they stand. Kept: text with a
+    /// letter in it, <see cref="MinSuggestionChipLength"/> to <see cref="MaxSuggestionChipLength"/>
+    /// characters long, that is not a yes or no. Repeats collapse to the newest wording (see
+    /// <see cref="SuggestionChipKey"/>). Internal whitespace is collapsed for display — a line
+    /// break inside a chip is layout, not wording.
+    /// </summary>
+    /// <remarks>
+    /// A yes or no is how the caregiver answered a pending journal or alert-settings offer, and
+    /// the reply to it is stamped with that rung, so the workflow filter alone lets it through.
+    /// Nothing on the stored turn marks it as an answer — both rungs recognise one with
+    /// <see cref="ConfirmationVocabulary"/> at send time — so the same closed list recognises it
+    /// here. Re-sent from a chip, "yes" would confirm nothing, or worse, whatever offer happened
+    /// to be standing. The length and letter floors are the belt-and-braces behind that list.
+    /// </remarks>
+    internal static List<string> SelectRecentQuestionChips(IEnumerable<string> newestFirst)
+    {
+        var chips = new List<string>(SuggestionChipCount);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var raw in newestFirst)
+        {
+            var text = CollapseWhitespace(raw);
+            if (text.Length is < MinSuggestionChipLength or > MaxSuggestionChipLength
+                || !text.Any(char.IsLetter)
+                || ConfirmationVocabulary.Read(text) is not null)
+            {
+                continue;
+            }
+
+            if (seen.Add(SuggestionChipKey(text)))
+            {
+                chips.Add(text);
+                if (chips.Count == SuggestionChipCount)
+                    break;
+            }
+        }
+
+        return chips;
+    }
+
+    /// <summary>
+    /// What makes two questions the same chip: case, spacing, trailing punctuation and the curly
+    /// apostrophe a phone keyboard substitutes all ignored — "how did she sleep" and "How did
+    /// she sleep?" are one question asked twice.
+    /// </summary>
+    internal static string SuggestionChipKey(string text)
+    {
+        var key = CollapseWhitespace(text).Replace('’', '\'').ToLowerInvariant();
+        var end = key.Length;
+        while (end > 0 && (char.IsPunctuation(key[end - 1]) || char.IsWhiteSpace(key[end - 1])))
+            end--;
+        return key[..end];
+    }
+
+    private static string CollapseWhitespace(string text) =>
+        string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     public async Task<MemberChatHistoryResponse?> GetCurrentSessionAsync(
         Guid userId, Guid cardiMemberId, CancellationToken ct = default)
