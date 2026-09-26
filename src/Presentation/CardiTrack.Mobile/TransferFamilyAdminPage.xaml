@@ -54,13 +54,11 @@
 
                 <VerticalStackLayout x:Name="ErrorPanel" Spacing="10" IsVisible="False" Padding="0,60,0,0">
                     <Label Text="We couldn't load this family"
-                           Style="{StaticResource Heading3}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Heading3}"/>
                     <Label x:Name="ErrorDetailLabel"
-                           Style="{StaticResource Body2}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Body2}"/>
                     <controls:AppButton Text="Try again"
-                                        HorizontalOptions="Center"
+                                        HorizontalOptions="Start"
                                         Clicked="OnRetryClicked"
                                         Tone="Secondary"
                                         Size="L"/>

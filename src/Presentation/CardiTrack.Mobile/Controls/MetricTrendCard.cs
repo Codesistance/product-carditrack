@@ -237,7 +237,6 @@ public sealed class MetricTrendCard : ContentView
 
         ApplyStyle(_empty, "Body2");
         _empty.Text = "Not enough readings in this window yet.";
-        _empty.HorizontalTextAlignment = TextAlignment.Center;
         _empty.VerticalOptions = LayoutOptions.Center;
         _empty.IsVisible = false;
 

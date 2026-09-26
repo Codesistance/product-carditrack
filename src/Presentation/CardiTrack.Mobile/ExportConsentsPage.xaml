@@ -75,10 +75,9 @@
 
                 <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="10" Margin="0,24">
                     <Label Text="Couldn't load your export confirmations."
-                           Style="{StaticResource Body1SemiBoldDark}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Body1SemiBoldDark}"/>
                     <controls:AppButton Text="Try again"
-                                        HorizontalOptions="Center"
+                                        HorizontalOptions="Start"
                                         Clicked="OnRetryClicked"
                                         Tone="Primary"
                                         Size="L"/>

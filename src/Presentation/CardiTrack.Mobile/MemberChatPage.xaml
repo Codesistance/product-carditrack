@@ -148,14 +148,12 @@
             <VerticalStackLayout x:Name="ErrorPanel" Grid.Row="0" Grid.RowSpan="5"
                                   Spacing="12" Padding="20,60,20,20" IsVisible="False">
                 <Label Text="We couldn't load this"
-                       Style="{StaticResource Heading3}"
-                       HorizontalTextAlignment="Center"/>
+                       Style="{StaticResource Heading3}"/>
                 <Label x:Name="ErrorDetailLabel"
                        Style="{StaticResource Body2}"
-                       TextColor="{StaticResource BodyText}"
-                       HorizontalTextAlignment="Center"/>
+                       TextColor="{StaticResource BodyText}"/>
                 <controls:AppButton Text="Try again"
-                                    HorizontalOptions="Center"
+                                    HorizontalOptions="Start"
                                     Clicked="OnRetryClicked"
                                     Tone="Secondary"
                                     Size="L"/>
@@ -449,12 +447,10 @@
                 <CollectionView.EmptyView>
                     <VerticalStackLayout Padding="20,60,20,20" Spacing="8">
                         <Label Text="No past conversations yet"
-                               Style="{StaticResource Heading3}"
-                               HorizontalTextAlignment="Center"/>
+                               Style="{StaticResource Heading3}"/>
                         <Label Text="Conversations you finish here are kept, so you can come back to an answer later."
                                Style="{StaticResource Body2}"
-                               TextColor="{StaticResource BodyText}"
-                               HorizontalTextAlignment="Center"/>
+                               TextColor="{StaticResource BodyText}"/>
                     </VerticalStackLayout>
                 </CollectionView.EmptyView>
 

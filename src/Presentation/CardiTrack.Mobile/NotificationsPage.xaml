@@ -87,24 +87,26 @@
                     </VerticalStackLayout>
 
                     <!-- Empty state. "Nothing needed" rather than "no notifications": the absence
-                         is the good outcome here, and should read like one. -->
+                         is the good outcome here, and should read like one. The tick sits beside
+                         the words rather than above them, and the words are left-aligned, as on
+                         every status card. -->
                     <Border x:Name="EmptyPanel"
                             IsVisible="False"
                             Style="{StaticResource ElevatedCard}"
                             Margin="0,40,0,0"
                             Padding="24,32">
-                        <VerticalStackLayout Spacing="10" HorizontalOptions="Center">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
                             <Label Text="✓"
                                    FontSize="34"
                                    TextColor="{StaticResource StatusGreen}"
-                                   HorizontalOptions="Center"/>
-                            <Label Text="Nothing needed right now"
-                                   Style="{StaticResource Heading3}"
-                                   HorizontalTextAlignment="Center"/>
-                            <Label Text="CardiTrack has everything it needs to keep watching."
-                                   Style="{StaticResource Body2}"
-                                   HorizontalTextAlignment="Center"/>
-                        </VerticalStackLayout>
+                                   VerticalOptions="Start"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="10">
+                                <Label Text="Nothing needed right now"
+                                       Style="{StaticResource Heading3}"/>
+                                <Label Text="CardiTrack has everything it needs to keep watching."
+                                       Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                        </Grid>
                     </Border>
 
                     <Border x:Name="ErrorPanel"
@@ -112,14 +114,13 @@
                             Style="{StaticResource ElevatedCard}"
                             Margin="0,40,0,0"
                             Padding="24,28">
-                        <VerticalStackLayout Spacing="12" HorizontalOptions="Center">
+                        <VerticalStackLayout Spacing="12">
                             <Label Text="Couldn't load your list"
-                                   Style="{StaticResource Heading3}"
-                                   HorizontalTextAlignment="Center"/>
+                                   Style="{StaticResource Heading3}"/>
                             <Label x:Name="ErrorDetailLabel"
-                                   Style="{StaticResource Body2}"
-                                   HorizontalTextAlignment="Center"/>
+                                   Style="{StaticResource Body2}"/>
                             <controls:AppButton Text="Try again"
+                                                HorizontalOptions="Start"
                                                 Clicked="OnRetryClicked"
                                                 Tone="Primary"
                                                 Size="M"/>

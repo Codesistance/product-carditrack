@@ -132,38 +132,44 @@
                                 <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
                             </Border.Shadow>
 
-                            <VerticalStackLayout Spacing="14">
-                                <Border WidthRequest="78" HeightRequest="78"
+                            <!-- The picture beside the copy rather than above it, and the copy
+                                 left-aligned, as on every status card: the button sits in the
+                                 text's column so it lines up with the words it acts on. -->
+                            <Grid ColumnDefinitions="Auto,*"
+                                  RowDefinitions="Auto,Auto"
+                                  ColumnSpacing="14">
+                                <Border WidthRequest="64" HeightRequest="64"
                                         StrokeThickness="0"
                                         BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                        HorizontalOptions="Center">
+                                        VerticalOptions="Start">
                                     <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="20"/>
+                                        <RoundRectangle CornerRadius="16"/>
                                     </Border.StrokeShape>
                                     <Image Source="icon_refresh.svg"
-                                           WidthRequest="42" HeightRequest="42"/>
+                                           WidthRequest="34" HeightRequest="34"/>
                                 </Border>
 
-                                <Label Text="Syncing with Device…"
-                                       Style="{StaticResource Heading2}"
-                                       HorizontalTextAlignment="Center"/>
+                                <VerticalStackLayout Grid.Column="1" Spacing="6">
+                                    <Label Text="Syncing with Device…"
+                                           Style="{StaticResource Heading2}"/>
 
-                                <Label Text="We are fetching your latest cardiac health data from your wearable. This usually takes a few seconds."
-                                       Style="{StaticResource Body2}"
-                                       TextColor="{StaticResource HeadingText}"
-                                       HorizontalTextAlignment="Center"/>
+                                    <Label Text="We are fetching your latest cardiac health data from your wearable. This usually takes a few seconds."
+                                           Style="{StaticResource Body2}"
+                                           TextColor="{StaticResource HeadingText}"/>
+                                </VerticalStackLayout>
 
                                 <!-- Re-triggers the fetch; the designed affordance for a load
                                      that is taking longer than it should. -->
                                 <controls:AppButton x:Name="SyncRefreshButton"
+                                                    Grid.Row="1" Grid.Column="1"
                                                     Text="Refresh Now"
                                                     Icon="icon_refresh_white.svg"
                                                     Tone="Primary"
                                                     Size="S"
                                                     Margin="0,13,0,0"
-                                                    HorizontalOptions="Center"
+                                                    HorizontalOptions="Start"
                                                     Clicked="OnRefreshClicked"/>
-                            </VerticalStackLayout>
+                            </Grid>
                         </Border>
 
                         <VerticalStackLayout Spacing="11">
@@ -180,14 +186,12 @@
                                          IsVisible="False"
                                          Padding="0,60,0,0">
                         <Label Text="We couldn't load your alerts"
-                               Style="{StaticResource Heading3}"
-                               HorizontalTextAlignment="Center"/>
+                               Style="{StaticResource Heading3}"/>
                         <Label x:Name="ErrorDetailLabel"
                                Style="{StaticResource Body2}"
-                               TextColor="{StaticResource BodyText}"
-                               HorizontalTextAlignment="Center"/>
+                               TextColor="{StaticResource BodyText}"/>
                         <controls:AppButton Text="Try again"
-                                            HorizontalOptions="Center"
+                                            HorizontalOptions="Start"
                                             Clicked="OnRefreshClicked"
                                             Tone="Secondary"
                                             Size="L"/>
@@ -201,23 +205,25 @@
                         <controls:SavedDataBanner x:Name="SavedBanner"/>
 
                         <!-- M1-10b empty / M1-10c filtered empty. One card, two sets of copy:
-                             which one shows depends on whether a filter is doing the emptying. -->
+                             which one shows depends on whether a filter is doing the emptying.
+                             The bell sits beside the copy at 64 rather than above it at 128, and
+                             the copy is left-aligned, as on every status card. -->
                         <Border x:Name="EmptyPanel"
                                 Style="{StaticResource ElevatedCard}"
                                 Padding="20,17,20,20"
                                 IsVisible="False">
-                            <VerticalStackLayout Spacing="4">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
                                 <Image Source="illustration_alerts_bell.png"
-                                       WidthRequest="128" HeightRequest="128"
-                                       HorizontalOptions="Center"/>
-                                <Label x:Name="EmptyTitleLabel"
-                                       Style="{StaticResource Heading2}"
-                                       HorizontalTextAlignment="Center"/>
-                                <Label x:Name="EmptyDetailLabel"
-                                       Style="{StaticResource Body2}"
-                                       TextColor="{StaticResource HeadingText}"
-                                       HorizontalTextAlignment="Center"/>
-                            </VerticalStackLayout>
+                                       WidthRequest="64" HeightRequest="64"
+                                       VerticalOptions="Start"/>
+                                <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                    <Label x:Name="EmptyTitleLabel"
+                                           Style="{StaticResource Heading2}"/>
+                                    <Label x:Name="EmptyDetailLabel"
+                                           Style="{StaticResource Body2}"
+                                           TextColor="{StaticResource HeadingText}"/>
+                                </VerticalStackLayout>
+                            </Grid>
                         </Border>
 
                         <VerticalStackLayout x:Name="GroupsStack" Spacing="20"/>

@@ -67,13 +67,11 @@
 
                 <VerticalStackLayout x:Name="ErrorPanel" Spacing="10" IsVisible="False" Padding="0,60,0,0">
                     <Label Text="We couldn't open export"
-                           Style="{StaticResource Heading3}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Heading3}"/>
                     <Label x:Name="ErrorDetailLabel"
-                           Style="{StaticResource Body2}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Body2}"/>
                     <controls:AppButton Text="Try again"
-                                        HorizontalOptions="Center"
+                                        HorizontalOptions="Start"
                                         Clicked="OnRetryClicked"
                                         Tone="Secondary"
                                         Size="L"/>
@@ -184,7 +182,6 @@
                          where it is read at the moment of tapping. -->
                     <Label x:Name="EstimateLabel"
                            Style="{StaticResource Body2}"
-                           HorizontalTextAlignment="Center"
                            IsVisible="False"
                            PropertyChanged="OnEstimateLabelPropertyChanged"/>
 
@@ -197,15 +194,14 @@
 
                 <!-- M1-17b — generating -->
                 <VerticalStackLayout x:Name="GeneratingPanel" Spacing="14" IsVisible="False" Padding="0,60,0,0">
-                    <ActivityIndicator IsRunning="True" Color="{StaticResource Primary}" HeightRequest="36"/>
+                    <ActivityIndicator IsRunning="True" Color="{StaticResource Primary}" HeightRequest="36"
+                                       HorizontalOptions="Start"/>
                     <Label Text="Generating export…"
-                           Style="{StaticResource Heading3}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Heading3}"/>
                     <Label x:Name="GeneratingDetailLabel"
-                           Style="{StaticResource Body2}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Body2}"/>
                     <controls:AppButton Text="Cancel"
-                                        HorizontalOptions="Center"
+                                        HorizontalOptions="Start"
                                         Clicked="OnCancelGenerationClicked"
                                         Tone="Secondary"
                                         Size="L"/>
@@ -214,11 +210,9 @@
                 <!-- M1-17c — complete -->
                 <VerticalStackLayout x:Name="CompletePanel" Spacing="12" IsVisible="False" Padding="0,50,0,0">
                     <Label Text="Export complete"
-                           Style="{StaticResource Heading3}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Heading3}"/>
                     <Label x:Name="CompleteDetailLabel"
-                           Style="{StaticResource Body2}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Body2}"/>
                     <!-- Two places the file can go, and they are different things. This panel
                          offered "Save or share" — one button naming two actions — so a caregiver
                          who wanted a copy on their phone had to know the share sheet hides a
@@ -247,11 +241,9 @@
                 <!-- M1-17d — error -->
                 <VerticalStackLayout x:Name="FailedPanel" Spacing="12" IsVisible="False" Padding="0,60,0,0">
                     <Label Text="That didn't work — let's try again"
-                           Style="{StaticResource Heading3}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Heading3}"/>
                     <Label x:Name="FailedDetailLabel"
-                           Style="{StaticResource Body2}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Body2}"/>
                     <controls:AppButton Text="Try again"
                                         Clicked="OnStartOverClicked"
                                         Tone="Primary"
