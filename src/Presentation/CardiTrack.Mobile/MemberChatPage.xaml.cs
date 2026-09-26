@@ -857,7 +857,7 @@ public partial class MemberChatPage : ContentView
 
     /// <summary>
     /// A chart carousel's edge arrow: advance one chart the way a swipe would, wrap-around
-    /// included. The carousel is found by walking up from the tapped disc to the Grid that
+    /// included. The carousel is found by walking up from the tapped arrow to the Grid that
     /// holds them both rather than by name — the pair live inside a DataTemplate, whose
     /// namescope is per-bubble, so there is no field for the code-behind to hold.
     /// </summary>
@@ -877,9 +877,9 @@ public partial class MemberChatPage : ContentView
         carousel.Position = (carousel.Position + direction + items.Count) % items.Count;
     }
 
-    private void OnChartPrevTapped(object? sender, TappedEventArgs e) => MoveChartCarousel(sender, -1);
+    private void OnChartPrevTapped(object? sender, EventArgs e) => MoveChartCarousel(sender, -1);
 
-    private void OnChartNextTapped(object? sender, TappedEventArgs e) => MoveChartCarousel(sender, +1);
+    private void OnChartNextTapped(object? sender, EventArgs e) => MoveChartCarousel(sender, +1);
 
     /// <summary>
     /// Ends the current conversation and clears the window for a fresh one. The ended

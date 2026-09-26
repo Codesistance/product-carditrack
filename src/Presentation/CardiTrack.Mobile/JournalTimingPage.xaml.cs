@@ -323,14 +323,18 @@ public partial class JournalTimingPage : ContentPage
         if (_settings is null || _saving)
             return;
 
-        var options = SelectableTimes(_settings).Select(Format).ToArray();
-        var choice = await _popups.ChooseAsync(title, "Cancel", options);
-        if (choice is null)
+        // The scrolling sheet rather than the chooser's buttons: the half-hour ladder runs to
+        // dozens of rows, and the sheet opens on the time already set and marks it (-1, no mark,
+        // for a stored time the ladder does not hold).
+        var times = SelectableTimes(_settings).ToArray();
+        var index = await _popups.ChooseIndexAsync(
+            title,
+            [.. times.Select(Format)],
+            current is { } set ? Array.IndexOf(times, set) : -1);
+        if (index is not { } pick || pick < 0 || pick >= times.Length)
             return;
 
-        if (!TimeOnly.TryParseExact(choice, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var picked))
-            return;
-
+        var picked = times[pick];
         if (current == picked)
             return;
 

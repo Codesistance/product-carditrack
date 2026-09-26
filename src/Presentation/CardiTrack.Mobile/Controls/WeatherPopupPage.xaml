@@ -31,7 +31,31 @@
             </Border.GestureRecognizers>
 
             <VerticalStackLayout Spacing="16">
-                <Label x:Name="GlyphLabel" FontSize="40" HorizontalTextAlignment="Center"/>
+                <!-- The sky as the app's own drawn glyph in the tinted round badge the other
+                     popups lead with (AppPopupPage), rather than an emoji drawn in each platform's
+                     colours. The ✕ in the corner is the way out: this popup asks nothing, so it has
+                     no Cancel to close with. -->
+                <Grid>
+                    <Border x:Name="IconBadge"
+                            StrokeThickness="0"
+                            WidthRequest="56"
+                            HeightRequest="56"
+                            HorizontalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="28"/>
+                        </Border.StrokeShape>
+                        <Image x:Name="GlyphImage"
+                               WidthRequest="30"
+                               HeightRequest="30"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"/>
+                    </Border>
+                    <controls:DismissButton Margin="0,-8,-8,0"
+                                            HorizontalOptions="End"
+                                            VerticalOptions="Start"
+                                            SemanticProperties.Description="Close"
+                                            Clicked="OnCloseClicked"/>
+                </Grid>
 
                 <VerticalStackLayout Spacing="2">
                     <Label x:Name="TemperatureLabel"
@@ -53,13 +77,6 @@
                        TextColor="{StaticResource MutedText}"
                        HorizontalTextAlignment="Center"
                        Margin="0,4,0,0"/>
-
-                <controls:AppButton x:Name="CloseBtn"
-                        Text="Close"
-                        Tone="Text"
-                        Size="M"
-                        Margin="0,4,0,0"
-                        Clicked="OnCloseClicked"/>
             </VerticalStackLayout>
         </Border>
     </Grid>

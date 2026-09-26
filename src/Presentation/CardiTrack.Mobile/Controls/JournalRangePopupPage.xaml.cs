@@ -98,7 +98,8 @@ public partial class JournalRangePopupPage : ContentPage
 
     private async void OnScrimTapped(object? sender, TappedEventArgs e) => await CloseAsync(null);
 
-    private async void OnCloseTapped(object? sender, EventArgs e) => await CloseAsync(null);
+    /// <summary>Cancel closes as dismissed, the same null the scrim and back give.</summary>
+    private async void OnCancelClicked(object? sender, EventArgs e) => await CloseAsync(null);
 
     private async void OnExportClicked(object? sender, EventArgs e) => await CloseAsync(Range());
 

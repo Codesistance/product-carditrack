@@ -342,54 +342,33 @@
                                             <!-- The pager row: arrows either side of the dots,
                                                  not floating over the plot — the line never
                                                  passes under a control, and the three pieces
-                                                 read as one pager. Tonal discs like the sheet's
-                                                 other quiet controls (the white-with-shadow
-                                                 treatment vanished against the white bubble);
-                                                 a tap advances the carousel the way a swipe
-                                                 would, wrap-around included. -->
+                                                 read as one pager. The app's small tonal button
+                                                 with a drawn chevron, like the sheet's other quiet
+                                                 controls (the white-with-shadow treatment vanished
+                                                 against the white bubble, and a text ‹ sat off
+                                                 its own centre); a tap advances the carousel the
+                                                 way a swipe would, wrap-around included. The
+                                                 button is described by its caption, so an arrow
+                                                 with none is named here instead. -->
                                             <HorizontalStackLayout Grid.Row="1"
                                                                    IsVisible="{Binding ChartsLoop}"
                                                                    Spacing="12"
                                                                    HorizontalOptions="Center">
-                                                <Border WidthRequest="32" HeightRequest="32"
-                                                        StrokeThickness="0"
-                                                        BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                                        SemanticProperties.Description="Previous chart">
-                                                    <Border.StrokeShape>
-                                                        <RoundRectangle CornerRadius="10"/>
-                                                    </Border.StrokeShape>
-                                                    <Border.GestureRecognizers>
-                                                        <TapGestureRecognizer Tapped="OnChartPrevTapped"/>
-                                                    </Border.GestureRecognizers>
-                                                    <Label Text="‹"
-                                                           FontFamily="QuicksandSemiBold"
-                                                           FontSize="22"
-                                                           TextColor="{StaticResource Primary}"
-                                                           HorizontalOptions="Center" VerticalOptions="Center"
-                                                           Margin="0,0,0,3"/>
-                                                </Border>
+                                                <controls:AppButton Icon="icon_btn_chevron_left_tint.svg"
+                                                                    Tone="Tonal"
+                                                                    Size="S"
+                                                                    SemanticProperties.Description="Previous chart"
+                                                                    Clicked="OnChartPrevTapped"/>
                                                 <IndicatorView x:Name="ChartDots"
                                                                IndicatorSize="6"
                                                                IndicatorColor="{StaticResource MutedText}"
                                                                SelectedIndicatorColor="{StaticResource Primary}"
                                                                VerticalOptions="Center"/>
-                                                <Border WidthRequest="32" HeightRequest="32"
-                                                        StrokeThickness="0"
-                                                        BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                                        SemanticProperties.Description="Next chart">
-                                                    <Border.StrokeShape>
-                                                        <RoundRectangle CornerRadius="10"/>
-                                                    </Border.StrokeShape>
-                                                    <Border.GestureRecognizers>
-                                                        <TapGestureRecognizer Tapped="OnChartNextTapped"/>
-                                                    </Border.GestureRecognizers>
-                                                    <Label Text="›"
-                                                           FontFamily="QuicksandSemiBold"
-                                                           FontSize="22"
-                                                           TextColor="{StaticResource Primary}"
-                                                           HorizontalOptions="Center" VerticalOptions="Center"
-                                                           Margin="0,0,0,3"/>
-                                                </Border>
+                                                <controls:AppButton Icon="icon_btn_chevron_right_tint.svg"
+                                                                    Tone="Tonal"
+                                                                    Size="S"
+                                                                    SemanticProperties.Description="Next chart"
+                                                                    Clicked="OnChartNextTapped"/>
                                             </HorizontalStackLayout>
                                         </Grid>
                                         <!-- Was 12pt at 0.75 opacity over a white bubble, which
@@ -676,8 +655,14 @@
                                         SemanticProperties.Hint="Double tap to select conversations to delete"/>
                 </HorizontalStackLayout>
 
+                <!-- The popups' order: the way out on the left, the act on the right. -->
                 <HorizontalStackLayout x:Name="SelectionActions" Spacing="10" HorizontalOptions="Center"
                                        IsVisible="False">
+                    <controls:AppButton Text="Cancel"
+                                        Tone="Neutral"
+                                        Size="M"
+                                        Clicked="OnCancelSelectTapped"
+                                        SemanticProperties.Hint="Double tap to stop selecting conversations"/>
                     <!-- Red for what it is: the one permanently destructive act on this sheet.
                          The confirmation popup carries the "can't be undone" warning; this button
                          carries the count, so the caregiver always deletes a number they've
@@ -689,11 +674,6 @@
                                         Size="M"
                                         Clicked="OnDeleteSelectedTapped"
                                         SemanticProperties.Hint="Double tap to permanently delete the selected conversations"/>
-                    <controls:AppButton Text="Cancel"
-                                        Tone="Neutral"
-                                        Size="M"
-                                        Clicked="OnCancelSelectTapped"
-                                        SemanticProperties.Hint="Double tap to stop selecting conversations"/>
                 </HorizontalStackLayout>
             </Grid>
 

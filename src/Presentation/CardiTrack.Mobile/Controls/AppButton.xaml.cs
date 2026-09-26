@@ -168,13 +168,26 @@ public partial class AppButton : ContentView
     private void ApplyText(string? text)
     {
         Caption.Text = text;
-        ApplyDescription();
+        // The whole look, not just the name: whether there is a caption decides the glyph's gap.
+        ApplyLook();
     }
 
-    /// <summary>The caption, and the detail after it when there is one, as a screen reader's name.</summary>
-    private void ApplyDescription() =>
+    /// <summary>An icon with no words — the chat's chart arrows.</summary>
+    private bool IsIconOnly => string.IsNullOrEmpty(Text) && string.IsNullOrEmpty(Detail);
+
+    /// <summary>
+    /// The caption, and the detail after it when there is one, as a screen reader's name. An
+    /// icon-only button has no caption to be named by, so it keeps the description its caller
+    /// set rather than having it wiped to nothing.
+    /// </summary>
+    private void ApplyDescription()
+    {
+        if (IsIconOnly)
+            return;
+
         SemanticProperties.SetDescription(
             this, string.IsNullOrEmpty(Detail) ? Text : $"{Text}, {Detail}");
+    }
 
     private void ApplyLook()
     {
@@ -199,7 +212,8 @@ public partial class AppButton : ContentView
         ApplyDescription();
         Glyph.WidthRequest = glyph;
         Glyph.HeightRequest = glyph;
-        Row.Spacing = gap;
+        // No gap after a glyph with no words beside it, or it sits that far off the button's centre.
+        Row.Spacing = IsIconOnly ? 0 : gap;
         Glyph.Source = Icon;
         Glyph.IsVisible = Icon is not null;
 

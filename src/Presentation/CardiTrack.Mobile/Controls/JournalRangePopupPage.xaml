@@ -34,22 +34,16 @@
 
             <VerticalStackLayout Spacing="16">
 
-                <Grid>
-                    <VerticalStackLayout Spacing="2">
-                        <Label Text="Export range"
-                               Style="{StaticResource Heading3}"/>
-                        <Label x:Name="SubtitleLabel"
-                               Style="{StaticResource Body2}"
-                               TextColor="{StaticResource BodyText}"/>
-                    </VerticalStackLayout>
-
-                    <!-- Dismissal as a mark, in the corner, the same one the sync popup uses. -->
-                    <controls:DismissButton Margin="0,-8,-8,0"
-                                            HorizontalOptions="End"
-                                            VerticalOptions="Start"
-                                            SemanticProperties.Description="Close"
-                                            Clicked="OnCloseTapped"/>
-                </Grid>
+                <!-- No ✕ in the corner: the Cancel beside Export is the way out, and a popup that
+                     asks something closes with its Cancel rather than offering two exits. -->
+                <VerticalStackLayout Spacing="2">
+                    <Label Text="Export range"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="SubtitleLabel"
+                           Style="{StaticResource Body2}"
+                           TextColor="{StaticResource BodyText}"/>
+                </VerticalStackLayout>
 
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                     <VerticalStackLayout Grid.Column="0" Spacing="2">
@@ -81,11 +75,20 @@
                            LineBreakMode="WordWrap"/>
                 </Border>
 
-                <controls:AppButton x:Name="ExportBtn"
-                                    Text="Export"
-                                    Clicked="OnExportClicked"
-                                    Tone="Primary"
-                                    Size="L"/>
+                <!-- The popups' action pair: backing out on the left, going ahead on the right,
+                     two equal halves at M. -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                    <controls:AppButton Text="Cancel"
+                                        Clicked="OnCancelClicked"
+                                        Tone="Neutral"
+                                        Size="M"/>
+                    <controls:AppButton x:Name="ExportBtn"
+                                        Grid.Column="1"
+                                        Text="Export"
+                                        Clicked="OnExportClicked"
+                                        Tone="Primary"
+                                        Size="M"/>
+                </Grid>
             </VerticalStackLayout>
         </Border>
     </Grid>

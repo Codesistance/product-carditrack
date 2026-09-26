@@ -56,11 +56,25 @@ public partial class AppPasswordPage : ContentPage
     private async void OnCancelClicked(object? sender, EventArgs e) =>
         await CloseAsync(null);
 
+    private void OnPasswordChanged(object? sender, TextChangedEventArgs e)
+    {
+        ConfirmBtn.IsDimmed = string.IsNullOrWhiteSpace(e.NewTextValue);
+        PasswordError.IsVisible = false;
+    }
+
+    /// <summary>
+    /// Confirm, and the keyboard's Done. With the field empty it says so rather than closing: a
+    /// tap that silently did nothing read as a frozen popup.
+    /// </summary>
     private async void OnConfirmClicked(object? sender, EventArgs e)
     {
         var password = PasswordEntry.Text ?? string.Empty;
         if (string.IsNullOrWhiteSpace(password))
+        {
+            PasswordError.Text = "Enter your password";
+            PasswordError.IsVisible = true;
             return;
+        }
         await CloseAsync(password);
     }
 

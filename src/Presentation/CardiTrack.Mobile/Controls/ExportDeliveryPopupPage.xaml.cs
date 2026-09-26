@@ -101,7 +101,7 @@ public partial class ExportDeliveryPopupPage : ContentPage
     private async void OnShareTapped(object? sender, TappedEventArgs e) =>
         await CloseAsync(ExportDelivery.Share);
 
-    private async void OnOpenTapped(object? sender, TappedEventArgs e) =>
+    private async void OnOpenTapped(object? sender, EventArgs e) =>
         await CloseAsync(ExportDelivery.Open);
 
     private async Task CloseAsync(ExportDelivery? result)

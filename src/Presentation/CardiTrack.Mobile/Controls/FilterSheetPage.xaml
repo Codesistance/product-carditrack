@@ -43,8 +43,22 @@
                          HorizontalOptions="Center"
                          Margin="0,0,0,12"/>
 
-                <Label x:Name="TitleLabel"
-                       Style="{StaticResource Heading3}"/>
+                <!-- The title centred like every popup's, in the space left of the ✕ (36 clear on
+                     the right only, so a normal-length title stays on one line). The ✕ is this
+                     sheet's only way out without showing results — it has no Cancel, Reset only
+                     clears the draft — and closes as the scrim does. -->
+                <Grid>
+                    <Label x:Name="TitleLabel"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"
+                           VerticalOptions="Center"
+                           Margin="0,0,36,0"/>
+                    <controls:DismissButton Margin="0,-8,-8,0"
+                                            HorizontalOptions="End"
+                                            VerticalOptions="Start"
+                                            SemanticProperties.Description="Close"
+                                            Clicked="OnCloseClicked"/>
+                </Grid>
 
                 <ScrollView x:Name="SectionsScroll" HorizontalScrollBarVisibility="Never">
                     <VerticalStackLayout x:Name="SectionsHost" Spacing="4"/>
@@ -54,9 +68,10 @@
                      shows the results, so trying a combination costs nothing. The primary button
                      counts what the draft would show, so a combination that matches nothing is
                      seen before it is applied rather than after. -->
-                <!-- The popups' action pair (MedicalSortPopupPage, ContactEditPopupPage): dark for
-                     backing out, blue for going ahead, glyph first. -->
-                <Grid ColumnDefinitions="*,2*" ColumnSpacing="10" Margin="0,16,0,4">
+                <!-- The popups' action pair (MedicalSortPopupPage, ContactEditPopupPage): two equal
+                     halves, dark for backing out on the left, blue for going ahead on the right,
+                     glyph first. -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,16,0,4">
                     <controls:AppButton Text="Reset"
                                         Icon="icon_btn_reset.svg"
                                         Clicked="OnResetClicked"

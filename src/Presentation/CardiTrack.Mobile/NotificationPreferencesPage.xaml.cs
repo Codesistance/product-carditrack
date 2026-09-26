@@ -203,28 +203,44 @@ public partial class NotificationPreferencesPage : ContentPage
             return;
 
         // Two questions rather than a range picker: "from when" then "until when", each an hour
-        // on the hour, with Off as the way out. Turning them off asks nothing further.
-        var startChoice = await _popups.ChooseAsync("Quiet from", "Cancel", ["Off", .. Hours()]);
-        if (startChoice is null)
+        // on the hour, with Off as the way out. Turning them off asks nothing further. A scrolling
+        // sheet rather than the chooser's buttons: twenty-five hours is a list, not a question,
+        // and the sheet opens on the hour already set and marks it.
+        // Read before the first sheet: a reload while it is up can take _prefs away under it.
+        var (setFrom, setUntil) = (_prefs.QuietHoursStart, _prefs.QuietHoursEnd);
+
+        // "Off" is row 0, so every hour sits one below its own index in Hours().
+        var startIndex = await _popups.ChooseIndexAsync(
+            "Quiet from",
+            ["Off", .. Hours()],
+            setFrom is not { } quietFrom ? 0 : HourIndex(quietFrom) is var hour and >= 0 ? hour + 1 : -1);
+        if (startIndex is not { } startPick)
             return;
 
-        if (startChoice == "Off")
+        if (startPick == 0)
         {
             await SaveAsync(p => { p.QuietHoursStart = null; p.QuietHoursEnd = null; });
             return;
         }
 
-        var endChoice = await _popups.ChooseAsync("Quiet until", "Cancel", Hours());
-        if (endChoice is null)
+        var endIndex = await _popups.ChooseIndexAsync(
+            "Quiet until", Hours(), setUntil is { } quietUntil ? HourIndex(quietUntil) : -1);
+        if (endIndex is not { } endPick)
             return;
 
-        var start = TimeOnly.ParseExact(startChoice, "HH:mm");
-        var end = TimeOnly.ParseExact(endChoice, "HH:mm");
+        var start = new TimeOnly(startPick - 1, 0);
+        var end = new TimeOnly(endPick, 0);
         await SaveAsync(p => { p.QuietHoursStart = start; p.QuietHoursEnd = end; });
     }
 
     private static string[] Hours() =>
         [.. Enumerable.Range(0, 24).Select(h => new TimeOnly(h, 0).ToString("HH:mm"))];
+
+    /// <summary>
+    /// Where <paramref name="time"/> sits in <see cref="Hours"/>, or -1 — no row marked — for a
+    /// time off the hour, which this page never sets but the API would accept from elsewhere.
+    /// </summary>
+    private static int HourIndex(TimeOnly time) => time.Minute == 0 && time.Second == 0 ? time.Hour : -1;
 
     private async void OnLockScreenToggled(object? sender, ToggledEventArgs e)
     {

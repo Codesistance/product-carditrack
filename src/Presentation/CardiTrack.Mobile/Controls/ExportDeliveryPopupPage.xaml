@@ -40,16 +40,19 @@
             <VerticalStackLayout Spacing="16">
 
                 <Grid>
-                    <VerticalStackLayout Spacing="2" Margin="0,0,28,0">
+                    <!-- Like every popup's title, but centred in the space left of the ✕ (36 clear
+                         on the right only): held clear of both edges it lost 80dp and wrapped a
+                         normal-length title onto two lines. -->
+                    <VerticalStackLayout Spacing="2" Margin="0,0,36,0">
                         <Label Text="Your export is ready"
-                               Style="{StaticResource Heading3}"/>
+                               Style="{StaticResource Heading3}"
+                               HorizontalTextAlignment="Center"/>
                         <!-- The filename, quietly: it is what the caregiver will look for in
                              Files or in the app they send it to, and it names the format they
                              picked a moment ago without asking them to remember it. -->
                         <Label x:Name="FileNameLabel"
-                               FontFamily="Quicksand"
-                               FontSize="12"
-                               TextColor="{StaticResource MutedText}"
+                               Style="{StaticResource Caption}"
+                               HorizontalTextAlignment="Center"
                                LineBreakMode="MiddleTruncation"/>
                     </VerticalStackLayout>
 
@@ -111,36 +114,21 @@
                 </Grid>
 
                 <!-- Not a third tile. Save and Share are the two places the file can go; Open
-                     is a look at it before deciding, and it puts it nowhere. Under the pair, in
-                     the same surface, so it reads as the quieter thing it is — and so three
-                     40-point glyphs are not squeezed across a 296-point card. -->
-                <Border x:Name="OpenRow"
-                        Style="{StaticResource FormatRow}"
-                        SemanticProperties.Description="Open"
-                        SemanticProperties.Hint="Looks at the file now without keeping it">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnOpenTapped"/>
-                    </Border.GestureRecognizers>
-                    <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
-                        <Image Source="icon_open.svg"
-                               WidthRequest="20" HeightRequest="20"
-                               VerticalOptions="Center"/>
-                        <Label Text="Open"
-                               Style="{StaticResource FormatTileLabel}"
-                               VerticalOptions="Center"/>
-                        <Label Text="just look at it"
-                               Style="{StaticResource FormatTileHint}"
-                               VerticalOptions="Center"/>
-                    </HorizontalStackLayout>
-                </Border>
+                     is a look at it before deciding, and it puts it nowhere. Under the pair, as
+                     the everyday tonal button rather than a tile, so it reads as the quieter thing
+                     it is — and so three 40-point glyphs are not squeezed across a 296-point card.
+                     No glyph: the icon set has no blue-ink "open" to sit on the tonal fill. -->
+                <controls:AppButton Text="Open – just look at it"
+                                    Tone="Tonal"
+                                    Size="M"
+                                    SemanticProperties.Hint="Looks at the file now without keeping it"
+                                    Clicked="OnOpenTapped"/>
 
                 <!-- The responsibility line, once more and briefly. This is the moment the file
                      actually leaves CardiTrack's keeping, and it is the last screen before it
                      does. -->
                 <Label Text="This file is a named health record. You're responsible for who sees it."
-                       FontFamily="Quicksand"
-                       FontSize="11"
-                       TextColor="{StaticResource MutedText}"
+                       Style="{StaticResource Caption}"
                        HorizontalTextAlignment="Start"/>
             </VerticalStackLayout>
         </Border>

@@ -2,7 +2,6 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Members;
 using Microsoft.Maui.Controls.PlatformConfiguration;
 using Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific;
-using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -35,7 +34,7 @@ public partial class MedicalSortPopupPage : ContentPage
     {
         public required string Text { get; init; }
         public MedicalEntryKind? Kind { get; set; } = MedicalEntryKind.Other;
-        public List<(MedicalEntryKind? Kind, Border Chip, Label Label)> Chips { get; } = [];
+        public List<(MedicalEntryKind? Kind, SelectChip Chip)> Chips { get; } = [];
     }
 
     public MedicalSortPopupPage(IReadOnlyList<string> statements)
@@ -111,65 +110,45 @@ public partial class MedicalSortPopupPage : ContentPage
             TextColor = Resource<Color>("HeadingText"),
         };
 
-        // Two rows of chips rather than five across: at 12pt five labels do not fit a phone's card
-        // without cutting "Medication" short, and a cut label is a wrong one.
-        var chips = new Grid
+        // The app's pick-one chips (SelectChip), wrapped rather than laid in a fixed grid: at the
+        // chip's 14 points five words do not fit across a phone's card, nor does "Medication" fit a
+        // third of it, and a cut label is a wrong one. Wrapping, never squeezing — FlexLayout
+        // shrinks children by default, the same trap the filter sheet's chips fell into.
+        var chips = new FlexLayout
         {
-            ColumnDefinitions = { new(GridLength.Star), new(GridLength.Star), new(GridLength.Star) },
-            RowDefinitions = { new(GridLength.Auto), new(GridLength.Auto) },
-            ColumnSpacing = 6,
-            RowSpacing = 6,
+            Wrap = Microsoft.Maui.Layouts.FlexWrap.Wrap,
+            Direction = Microsoft.Maui.Layouts.FlexDirection.Row,
+            AlignItems = Microsoft.Maui.Layouts.FlexAlignItems.Start,
         };
-        for (var i = 0; i < Choices.Count; i++)
+        foreach (var kind in Choices)
         {
-            var kind = Choices[i];
-            var label = new Label
+            var chip = new SelectChip
             {
                 Text = kind is { } k ? MedicalLedgerLines.KindName(k) : "Skip",
-                FontFamily = "QuicksandSemiBold",
-                FontSize = 12,
-                HorizontalTextAlignment = TextAlignment.Center,
-                VerticalTextAlignment = TextAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 8),
             };
-            var chip = new Border
-            {
-                HeightRequest = 32,
-                StrokeThickness = 1,
-                StrokeShape = new RoundRectangle { CornerRadius = 10 },
-                Content = label,
-            };
-            SemanticProperties.SetDescription(chip, $"{label.Text}: {piece.Text}");
-            var tap = new TapGestureRecognizer();
-            tap.Tapped += (_, _) =>
+            SemanticProperties.SetDescription(chip, $"{chip.Text}: {piece.Text}");
+            chip.Tapped += (_, _) =>
             {
                 piece.Kind = kind;
                 Show(piece);
             };
-            chip.GestureRecognizers.Add(tap);
-            Grid.SetColumn(chip, i % 3);
-            Grid.SetRow(chip, i / 3);
+            FlexLayout.SetShrink(chip, 0);
             chips.Add(chip);
-            piece.Chips.Add((kind, chip, label));
+            piece.Chips.Add((kind, chip));
         }
 
         return new VerticalStackLayout { Spacing = 8, Children = { text, chips } };
     }
 
     /// <summary>
-    /// The set choice filled: blue for a kind, dark for Skip — the same colours the action buttons
-    /// give moving forward and backing out.
+    /// The set choice filled, Skip included: skipping a part is a choice like the others, not a
+    /// way out of the form — that is the Cancel button's.
     /// </summary>
     private static void Show(Piece piece)
     {
-        foreach (var (kind, chip, label) in piece.Chips)
-        {
-            var set = kind == piece.Kind;
-            var fill = kind is null ? "OffBlack" : "Primary";
-            chip.BackgroundColor = set ? Resource<Color>(fill) : Resource<Color>("White");
-            chip.Stroke = set ? Resource<Color>(fill) : Resource<Color>("Divider");
-            label.TextColor = set ? Resource<Color>("White") : Resource<Color>("HeadingText");
-            SemanticProperties.SetHint(chip, set ? "Selected" : string.Empty);
-        }
+        foreach (var (kind, chip) in piece.Chips)
+            chip.IsSelected = kind == piece.Kind;
     }
 
     private static T Resource<T>(string key) =>

@@ -23,18 +23,22 @@
              the app wore a header from a different app. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <!-- Down, not back, the same close the chat sheet wears (MemberChatPage): this page
+                     is presented modally over a half-filled form, so the affordance is putting the
+                     document away, not stepping back through the app. -->
                 <controls:SquareBorder Grid.Column="0"
                         MinimumHeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource HeaderButtonTint}"
-                        VerticalOptions="Fill">
+                        VerticalOptions="Fill"
+                        SemanticProperties.Description="Close">
                     <controls:SquareBorder.StrokeShape>
                         <RoundRectangle CornerRadius="99"/>
                     </controls:SquareBorder.StrokeShape>
                     <controls:SquareBorder.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnCloseTapped"/>
                     </controls:SquareBorder.GestureRecognizers>
-                    <Image Source="icon_back_white.svg"
+                    <Image Source="icon_chevron_down_white.svg"
                            WidthRequest="20" HeightRequest="20"
                            VerticalOptions="Center" HorizontalOptions="Center"/>
                 </controls:SquareBorder>

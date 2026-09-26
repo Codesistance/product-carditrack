@@ -1,3 +1,4 @@
+using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Services;
 using Microsoft.Maui.Controls.PlatformConfiguration;
 using Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific;
@@ -21,7 +22,16 @@ public partial class AppPopupPage : ContentPage
     private readonly bool _isConfirmation;
     private bool _closing;
 
-    public AppPopupPage(PopupSeverity severity, string title, string message, string confirmText, string? cancelText)
+    /// <param name="confirmLook">The confirm button's look, in place of the one its words give; null for those.</param>
+    /// <param name="cancelLook">The cancel button's look, in place of the dark way out; null for that.</param>
+    public AppPopupPage(
+        PopupSeverity severity,
+        string title,
+        string message,
+        string confirmText,
+        string? cancelText,
+        ActionLook? confirmLook = null,
+        ActionLook? cancelLook = null)
     {
         InitializeComponent();
         // Without OverFullScreen, iOS removes the page underneath and the transparent
@@ -45,18 +55,46 @@ public partial class AppPopupPage : ContentPage
         MessageLabel.Text = Truncate(message);
 
         ConfirmBtn.Text = confirmText;
-        ActionButtons.Dress(ConfirmBtn);
+        ActionButtons.Dress(ConfirmBtn, confirmLook ?? ActionLooks.For(confirmText));
         if (_isConfirmation)
         {
             CancelBtn.Text = cancelText ?? string.Empty;
-            ActionButtons.Dress(CancelBtn, isDismiss: true);
+            ActionButtons.Dress(CancelBtn, cancelLook ?? ActionLooks.For(cancelText, isDismiss: true));
             CancelBtn.IsVisible = true;
-            CancelColumn.Width = GridLength.Star;
-            // Only now is there a second button for the gutter to separate — see the row's
-            // comment in XAML for what an always-on gutter did to the single-button case.
-            ButtonRow.ColumnSpacing = ButtonGap;
+
+            if (NeedsStacking(confirmText, cancelText))
+            {
+                // Too long for half the card: the go-ahead takes the full width on top and the
+                // way out sits under it, rather than either being cut off mid-word — the export
+                // consent's "I accept responsibility for this copy" is recorded wording, so the
+                // layout gives way, not the words.
+                ButtonRow.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                ButtonRow.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                ButtonRow.RowSpacing = ButtonGap;
+                Grid.SetRow(ConfirmBtn, 0);
+                Grid.SetColumn(CancelBtn, 1);
+                Grid.SetRow(CancelBtn, 1);
+            }
+            else
+            {
+                CancelColumn.Width = GridLength.Star;
+                // Only now is there a second button for the gutter to separate — see the row's
+                // comment in XAML for what an always-on gutter did to the single-button case.
+                ButtonRow.ColumnSpacing = ButtonGap;
+            }
         }
     }
+
+    /// <summary>
+    /// The longest caption that fits a half-width M button on the narrowest card PopupCard
+    /// allows, glyph included: about 15 characters of 14pt QuicksandSemiBold in ~120dp.
+    /// </summary>
+    private const int SideBySideCaptionLimit = 15;
+
+    /// <summary>Whether either caption is too long to sit beside the other.</summary>
+    private static bool NeedsStacking(string confirmText, string? cancelText) =>
+        confirmText.Length > SideBySideCaptionLimit
+        || (cancelText?.Length ?? 0) > SideBySideCaptionLimit;
 
     /// <summary>Completes when the popup is dismissed; true unless Cancel/back dismissed it.</summary>
     public Task<bool> Result => _result.Task;

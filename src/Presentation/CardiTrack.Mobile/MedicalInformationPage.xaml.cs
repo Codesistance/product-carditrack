@@ -223,8 +223,10 @@ public partial class MedicalInformationPage : ContentPage
         if (!CanEdit || _isSaving)
             return;
 
+        // Only Delete permanently in red. Remove sends the line to the history, where it can still
+        // be read, so it is an ordinary choice — red on both said they weighed the same.
         var choice = await _popups.ChooseAsync(
-            Shorten(line.Text), "Cancel", StillAccurate, Change, Remove, DeletePermanently);
+            Shorten(line.Text), "Cancel", [StillAccurate, Change, Remove, DeletePermanently], danger: [DeletePermanently]);
 
         switch (choice)
         {

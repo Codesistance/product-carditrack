@@ -2068,7 +2068,8 @@ public partial class CardiMemberDetailPage : ContentPage
             $"Monitoring stops immediately and {firstName}'s devices are disconnected. " +
             "Their health history is kept for the retention period.",
             $"Remove {_member.DisplayFirstName()}?",
-            "Yes, remove");
+            "Yes, remove",
+            "Keep them");
         if (!confirmed)
             return;
 

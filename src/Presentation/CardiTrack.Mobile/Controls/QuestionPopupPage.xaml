@@ -5,29 +5,132 @@
              x:Class="CardiTrack.Mobile.Controls.QuestionPopupPage"
              BackgroundColor="Transparent">
 
-    <!-- Same shell as WeatherPopupPage/AppPopupPage (scrim, card, entry animation). The "Card"
-         Border here is transparent and carries no chrome of its own — QuestionCard already draws
-         its own white, shadowed, rounded surface, and doubling that chrome around it would be the
-         same mistake QuestionCard's own comment warns against for the page behind it. -->
+    <!-- Same shell and card as AppPopupPage and WeatherPopupPage (scrim, white card, entry
+         animation), with a layout of its own rather than the inline QuestionCard set inside a
+         transparent frame. QuestionCard is a card on a page: its own shadowed surface, a 💬
+         heading, an Answer button that drops a box open, a ✕ to skip. Inside a popup that read as a
+         card floating on nothing with no way out but the scrim. Here the popup is the act of
+         answering — the question, the box, and the popups' Cancel / Save pair — with skipping as the
+         quiet line under them. QuestionCard itself is unchanged, for the member page it lives on. -->
     <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnScrimTapped"/>
         </Grid.GestureRecognizers>
 
         <Border x:Name="Card"
-                BackgroundColor="Transparent"
-                StrokeThickness="0"
-                Padding="0"
-                Margin="24,0"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24"
+                Margin="32,0"
                 Scale="0.92"
                 HorizontalOptions="Center"
                 VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
             <Border.GestureRecognizers>
                 <!-- Swallows taps so they don't fall through to the scrim. -->
                 <TapGestureRecognizer/>
             </Border.GestureRecognizers>
 
-            <controls:QuestionCard x:Name="Question"/>
+            <VerticalStackLayout>
+                <!-- The tinted round badge the other popups lead with. Decorative: the title says
+                     what this is. -->
+                <Border x:Name="IconBadge"
+                        StrokeThickness="0"
+                        WidthRequest="56"
+                        HeightRequest="56"
+                        HorizontalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="28"/>
+                    </Border.StrokeShape>
+                    <Image Source="icon_question.svg"
+                           WidthRequest="30"
+                           HeightRequest="30"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center"
+                           AutomationProperties.IsInAccessibleTree="False"/>
+                </Border>
+
+                <Label x:Name="TitleLabel"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"
+                       Margin="0,16,0,0"/>
+
+                <Label x:Name="QuestionLabel"
+                       Style="{StaticResource Body1SemiBoldDark}"
+                       LineBreakMode="WordWrap"
+                       Margin="0,12,0,0"/>
+
+                <!-- Why this is being asked, set apart as QuestionCard sets it, so a question never
+                     arrives looking arbitrary. -->
+                <Border x:Name="RationaleCard"
+                        IsVisible="False"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}"
+                        StrokeThickness="0"
+                        Padding="12,10"
+                        Margin="0,8,0,0">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <Label x:Name="RationaleLabel"
+                           Style="{StaticResource Body2Medium}"
+                           TextColor="{StaticResource PrimaryDark}"
+                           LineBreakMode="WordWrap"/>
+                </Border>
+
+                <!-- Just-for-the-moment vs we'll-keep-this-here, and that answering is optional. -->
+                <Label x:Name="OptionalLabel"
+                       Style="{StaticResource Caption}"
+                       LineBreakMode="WordWrap"
+                       Margin="0,8,0,0"/>
+
+                <!-- Open from the start: in the popup, answering is what the caregiver came for, so
+                     there is no Answer button to open the box first. -->
+                <Border Style="{StaticResource AuthEntryBorder}"
+                        HeightRequest="100"
+                        Padding="16,8"
+                        Margin="0,16,0,0">
+                    <Editor x:Name="AnswerEditor"
+                            FontFamily="Quicksand"
+                            FontSize="14"
+                            PlaceholderColor="{StaticResource BodyText}"
+                            TextColor="{StaticResource HeadingText}"
+                            BackgroundColor="Transparent"
+                            Placeholder="Type your answer…"
+                            AutoSize="Disabled"
+                            TextChanged="OnAnswerChanged"/>
+                </Border>
+
+                <!-- Cancel on the left, the way out of the popup; Save on the right, the step
+                     forward. -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,20,0,0">
+                    <controls:AppButton Grid.Column="0"
+                                        Text="Cancel"
+                                        Icon="icon_btn_close.svg"
+                                        Clicked="OnCancelClicked"
+                                        Tone="Neutral"
+                                        Size="M"/>
+                    <controls:AppButton x:Name="SaveButton"
+                                        Grid.Column="1"
+                                        Text="Save"
+                                        Icon="icon_btn_save.svg"
+                                        IsEnabled="False"
+                                        Clicked="OnSaveClicked"
+                                        Tone="Primary"
+                                        Size="M"/>
+                </Grid>
+
+                <!-- Skipping, the quiet line under the pair: it is asked for less often than an
+                     answer and it is confirmed before it happens. -->
+                <controls:AppButton Text="Dismiss question"
+                                    Tone="Text"
+                                    Size="M"
+                                    Margin="0,4,0,0"
+                                    SemanticProperties.Hint="We won't ask it again"
+                                    Clicked="OnDismissClicked"/>
+            </VerticalStackLayout>
         </Border>
     </Grid>
 </ContentPage>

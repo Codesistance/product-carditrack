@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
@@ -188,7 +189,12 @@ public sealed class PostLoginRouter
                   + "Do you want to keep it?",
             "Your account is being deleted",
             confirmText: "Keep my account",
-            cancelText: "Go on deleting it");
+            cancelText: "Go on deleting it",
+            // Turned round from the usual confirmation: here the go-ahead is the safe answer and
+            // the way out is the one that loses the account, so each says so in its own colour
+            // rather than what "Keep" (dark) and a Cancel slot (dark) would make them.
+            confirmLook: new ActionLook(ActionTone.Blue, null),
+            cancelLook: new ActionLook(ActionTone.Red, "icon_btn_delete.svg"));
 
         if (!keep)
         {

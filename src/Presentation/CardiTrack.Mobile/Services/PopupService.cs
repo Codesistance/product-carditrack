@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Mobile.Services;
@@ -27,8 +28,16 @@ public sealed class PopupService : IPopupService
     public Task ShowErrorAsync(string message, string? title = null, string? buttonText = null) =>
         ShowAsync(PopupSeverity.Error, title ?? "Something went wrong", message, buttonText ?? "Okay", cancelText: null);
 
-    public Task<bool> ConfirmWarningAsync(string message, string? title = null, string? confirmText = null, string? cancelText = null) =>
-        ShowAsync(PopupSeverity.Warning, title ?? "Are you sure?", message, confirmText ?? "Yes, continue", cancelText ?? "Cancel");
+    public Task<bool> ConfirmWarningAsync(
+        string message,
+        string? title = null,
+        string? confirmText = null,
+        string? cancelText = null,
+        ActionLook? confirmLook = null,
+        ActionLook? cancelLook = null) =>
+        ShowAsync(
+            PopupSeverity.Warning, title ?? "Are you sure?", message, confirmText ?? "Yes, continue", cancelText ?? "Cancel",
+            confirmLook, cancelLook);
 
     public Task<bool> ConfirmInfoAsync(string message, string? title = null, string? confirmText = null, string? cancelText = null) =>
         ShowAsync(PopupSeverity.Info, title ?? "Just so you know", message, confirmText ?? "Yes, continue", cancelText ?? "Not now");
@@ -41,13 +50,21 @@ public sealed class PopupService : IPopupService
     /// everywhere else. AppChooserPage keeps the list and drops the borrowed styling.
     /// </summary>
     public Task<string?> ChooseAsync(string title, string cancelText, params string[] options) =>
+        ShowChooserAsync(title, cancelText, options, danger: null);
+
+    public Task<string?> ChooseAsync(
+        string title, string cancelText, IReadOnlyList<string> options, IReadOnlyCollection<string> danger) =>
+        ShowChooserAsync(title, cancelText, options, danger);
+
+    private Task<string?> ShowChooserAsync(
+        string title, string cancelText, IReadOnlyList<string> options, IReadOnlyCollection<string>? danger) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {
             var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
             if (page is null)
                 return null;
 
-            var chooser = new AppChooserPage(title, cancelText, options);
+            var chooser = new AppChooserPage(title, cancelText, options, danger);
             Interlocked.Increment(ref _open);
             try
             {
@@ -407,14 +424,21 @@ public sealed class PopupService : IPopupService
         });
 
     // Not static: the open count it keeps is this service's own state.
-    private Task<bool> ShowAsync(PopupSeverity severity, string title, string message, string confirmText, string? cancelText) =>
+    private Task<bool> ShowAsync(
+        PopupSeverity severity,
+        string title,
+        string message,
+        string confirmText,
+        string? cancelText,
+        ActionLook? confirmLook = null,
+        ActionLook? cancelLook = null) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {
             var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
             if (page is null)
                 return false; // No window yet (early startup) — nothing to attach to.
 
-            var popup = new AppPopupPage(severity, title, message, confirmText, cancelText);
+            var popup = new AppPopupPage(severity, title, message, confirmText, cancelText, confirmLook, cancelLook);
             Interlocked.Increment(ref _open);
             try
             {
