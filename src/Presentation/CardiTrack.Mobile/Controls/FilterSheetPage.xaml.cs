@@ -1,24 +1,39 @@
-using System.Globalization;
-using CardiTrack.Mobile.Core.Alerts;
 using Microsoft.Maui.Controls.PlatformConfiguration;
 using Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific;
 using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile.Controls;
 
-/// <summary>A CardiMember the sheet can narrow the list to.</summary>
-public sealed record AlertFilterMember(Guid Id, string Name);
+/// <summary>A CardiMember a filter sheet can narrow a list to.</summary>
+public sealed record FilterMember(Guid Id, string Name);
 
 /// <summary>
-/// The Alerts list's filter sheet: whose alerts, which of them, how serious, and since when.
-/// Completes <see cref="Result"/> with the filter to apply, or null when dismissed.
+/// One chip in a <see cref="FilterSheetPage"/> section. The draft it reads and writes is the
+/// caller's, held in the closures, so the sheet never needs to know what kind of filter it edits.
+/// </summary>
+/// <param name="Dot">A colour shown before the words (a severity, an urgency); null for none.</param>
+public sealed record FilterChoice(string Text, Color? Dot, Func<bool> IsSet, Action Set);
+
+/// <summary>One question in a <see cref="FilterSheetPage"/>, answered by exactly one chip.</summary>
+public sealed record FilterSection(string Title, IReadOnlyList<FilterChoice> Choices);
+
+/// <summary>
+/// A list's filter sheet: a stack of single-choice sections over a Reset and a Show button that
+/// counts what the draft would show. Completes <see cref="Result"/> with true when the caregiver
+/// asked to see the results, false when they dismissed it.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The caregiver edits a draft. Nothing reaches the list until "Show", so the count on that
 /// button — the draft asked of the API as it changes — is the only thing that moves while the
 /// sheet is up.
+/// </para>
+/// <para>
+/// Only the shell. What the sections ask, what the draft is and how it is counted belong to the
+/// list it filters — see <see cref="AlertFilterSheet"/> and <see cref="JournalFilterSheet"/>.
+/// </para>
 /// </remarks>
-public partial class AlertFilterSheetPage : ContentPage
+public partial class FilterSheetPage : ContentPage
 {
     /// <summary>How much of the page the sections may take before they scroll.</summary>
     private const double SectionsShareOfPage = 0.6;
@@ -29,78 +44,48 @@ public partial class AlertFilterSheetPage : ContentPage
     /// </summary>
     private static readonly TimeSpan CountDebounce = TimeSpan.FromMilliseconds(250);
 
-    private readonly TaskCompletionSource<AlertListFilter?> _result = new();
-    private readonly Func<AlertListFilter, CancellationToken, Task<int?>> _count;
+    private readonly TaskCompletionSource<bool> _result = new();
+    private readonly Action _reset;
+    private readonly Func<CancellationToken, Task<string?>> _countLabel;
+    private readonly string _idleLabel;
     private readonly List<Action> _repaints = [];
-    private AlertListFilter _draft;
     private CancellationTokenSource? _countCts;
     private bool _closing;
 
-    /// <param name="current">The filter the list is showing now — the draft starts as it.</param>
-    /// <param name="members">Whom the list can be narrowed to, in the order to offer them.</param>
-    /// <param name="archived">
-    /// Whether the list is the archive, where "which" does not apply: every alert there is
-    /// resolved, so the section is left out rather than offered and ignored.
+    /// <param name="title">What the sheet filters, as its heading.</param>
+    /// <param name="sections">The questions, in the order to ask them.</param>
+    /// <param name="reset">Puts the caller's draft back to nothing narrowed.</param>
+    /// <param name="countLabel">
+    /// The Show button's words for the draft as it is when called — "Show 3 alerts" — or null when
+    /// the count cannot be had, which leaves <paramref name="idleLabel"/> up rather than a number
+    /// the sheet does not know.
     /// </param>
-    /// <param name="count">How many alerts a filter would show, or null when that is not known.</param>
-    public AlertFilterSheetPage(
-        AlertListFilter current,
-        IReadOnlyList<AlertFilterMember> members,
-        bool archived,
-        Func<AlertListFilter, CancellationToken, Task<int?>> count)
+    /// <param name="idleLabel">The Show button's words while nothing is counted.</param>
+    public FilterSheetPage(
+        string title,
+        IReadOnlyList<FilterSection> sections,
+        Action reset,
+        Func<CancellationToken, Task<string?>> countLabel,
+        string idleLabel)
     {
         InitializeComponent();
         // Without OverFullScreen, iOS removes the page underneath and the transparent modal
         // renders over black.
         On<iOS>().SetModalPresentationStyle(UIModalPresentationStyle.OverFullScreen);
 
-        _draft = current;
-        _count = count;
+        _reset = reset;
+        _countLabel = countLabel;
+        _idleLabel = idleLabel;
+        TitleLabel.Text = title;
+        ShowButton.Text = idleLabel;
 
-        // The member the list is already narrowed to is always offered, even when the member list
-        // could not be read or no longer has them — otherwise the sheet could not show what is set.
-        var offered = members.ToList();
-        if (current.MemberId is { } setId && offered.All(m => m.Id != setId))
-            offered.Insert(0, new AlertFilterMember(setId, current.MemberName ?? AlertListFilter.UnnamedMemberLabel));
-
-        SectionsHost.Add(Section(
-            "Whose",
-            [
-                Choice("Everyone", null, () => _draft.MemberId is null, () => _draft = _draft with { MemberId = null, MemberName = null }),
-                .. offered.Select(m => Choice(
-                    m.Name, null,
-                    () => _draft.MemberId == m.Id,
-                    () => _draft = _draft with { MemberId = m.Id, MemberName = m.Name })),
-            ]));
-
-        if (!archived)
-        {
-            SectionsHost.Add(Section(
-                "Which",
-                [.. Enum.GetValues<AlertStatusChoice>().Select(s => Choice(
-                    AlertListFilter.StatusLabel(s), null,
-                    () => _draft.Status == s,
-                    () => _draft = _draft with { Status = s }))]));
-        }
-
-        SectionsHost.Add(Section(
-            "How serious",
-            [.. Enum.GetValues<AlertSeverityChoice>().Select(s => Choice(
-                AlertListFilter.SeverityLabel(s), SeverityColour(s),
-                () => _draft.Severity == s,
-                () => _draft = _draft with { Severity = s }))]));
-
-        SectionsHost.Add(Section(
-            "When",
-            [.. Enum.GetValues<AlertWindow>().Select(w => Choice(
-                AlertListFilter.WindowLabel(w), null,
-                () => _draft.Window == w,
-                () => _draft = _draft with { Window = w }))]));
+        foreach (var section in sections)
+            SectionsHost.Add(Section(section.Title, [.. section.Choices.Select(Choice)]));
 
         Repaint();
     }
 
-    public Task<AlertListFilter?> Result => _result.Task;
+    public Task<bool> Result => _result.Task;
 
     protected override void OnSizeAllocated(double width, double height)
     {
@@ -125,26 +110,26 @@ public partial class AlertFilterSheetPage : ContentPage
         if (!_closing && !Navigation.ModalStack.Contains(this))
         {
             _countCts?.Cancel();
-            _result.TrySetResult(null);
+            _result.TrySetResult(false);
         }
     }
 
     protected override bool OnBackButtonPressed()
     {
-        _ = CloseAsync(null);
+        _ = CloseAsync(false);
         return true;
     }
 
-    private async void OnScrimTapped(object? sender, TappedEventArgs e) => await CloseAsync(null);
+    private async void OnScrimTapped(object? sender, TappedEventArgs e) => await CloseAsync(false);
 
     private void OnResetClicked(object? sender, EventArgs e)
     {
-        _draft = AlertListFilter.None;
+        _reset();
         Repaint();
         _ = CountDraftAsync(debounce: false);
     }
 
-    private async void OnShowClicked(object? sender, EventArgs e) => await CloseAsync(_draft);
+    private async void OnShowClicked(object? sender, EventArgs e) => await CloseAsync(true);
 
     private static View Section(string title, IReadOnlyList<View> chips)
     {
@@ -182,15 +167,14 @@ public partial class AlertFilterSheetPage : ContentPage
 
     /// <summary>
     /// One choice as a pill: the gradient fill and white label when set, a hairline PrimaryDark
-    /// outline when not — the chip language the list's filter row used, so a caregiver who knew
-    /// that row knows these.
+    /// outline when not — the chip language the Alerts list's old filter row used, so a caregiver
+    /// who knew that row knows these.
     /// </summary>
-    /// <param name="dot">A severity's colour, shown before its word; null for none.</param>
-    private View Choice(string text, Color? dot, Func<bool> isSet, Action set)
+    private View Choice(FilterChoice choice)
     {
         var label = new Label
         {
-            Text = text,
+            Text = choice.Text,
             FontFamily = "QuicksandSemiBold",
             FontSize = 14,
             VerticalTextAlignment = TextAlignment.Center,
@@ -199,7 +183,7 @@ public partial class AlertFilterSheetPage : ContentPage
         };
 
         var content = new HorizontalStackLayout { Spacing = 6 };
-        if (dot is not null)
+        if (choice.Dot is { } dot)
         {
             content.Add(new Ellipse
             {
@@ -219,14 +203,14 @@ public partial class AlertFilterSheetPage : ContentPage
             StrokeShape = new RoundRectangle { CornerRadius = 10 },
             Content = content,
         };
-        SemanticProperties.SetDescription(chip, text);
+        SemanticProperties.SetDescription(chip, choice.Text);
 
         var tap = new TapGestureRecognizer();
         tap.Tapped += (_, _) =>
         {
-            if (isSet())
+            if (choice.IsSet())
                 return;
-            set();
+            choice.Set();
             Repaint();
             _ = CountDraftAsync(debounce: true);
         };
@@ -234,7 +218,7 @@ public partial class AlertFilterSheetPage : ContentPage
 
         _repaints.Add(() =>
         {
-            var on = isSet();
+            var on = choice.IsSet();
             chip.Background = on ? Resource<Brush>("GradientButtonBrush") : null;
             chip.BackgroundColor = on ? null : Resource<Color>("White");
             chip.Stroke = on ? null : Resource<Color>("PrimaryDark");
@@ -252,9 +236,8 @@ public partial class AlertFilterSheetPage : ContentPage
     }
 
     /// <summary>
-    /// Asks how many alerts the draft would show and puts it on the button. Superseded counts are
-    /// cancelled, so the button can only ever describe the draft as it is now; a count that
-    /// cannot be had leaves the button saying "Show alerts" rather than a number it does not know.
+    /// Asks what the draft would show and puts it on the button. Superseded counts are cancelled,
+    /// so the button can only ever describe the draft as it is now.
     /// </summary>
     private async Task CountDraftAsync(bool debounce)
     {
@@ -264,44 +247,28 @@ public partial class AlertFilterSheetPage : ContentPage
             previous.Dispose();
         }
         var cts = _countCts = new CancellationTokenSource();
-        var draft = _draft;
-        ShowButton.Text = "Show alerts";
+        ShowButton.Text = _idleLabel;
 
         try
         {
             if (debounce)
                 await Task.Delay(CountDebounce, cts.Token);
 
-            var total = await _count(draft, cts.Token);
-            if (cts.IsCancellationRequested || total is not { } n)
+            var text = await _countLabel(cts.Token);
+            if (cts.IsCancellationRequested || text is null)
                 return;
 
-            ShowButton.Text = n switch
-            {
-                0 => "No alerts match",
-                1 => "Show 1 alert",
-                _ => string.Create(CultureInfo.CurrentCulture, $"Show {n} alerts"),
-            };
+            ShowButton.Text = text;
         }
         catch (OperationCanceledException)
         {
         }
     }
 
-    /// <summary>The colour the alert cards give a severity; none for "Any".</summary>
-    private static Color? SeverityColour(AlertSeverityChoice severity) => severity switch
-    {
-        AlertSeverityChoice.Critical => Resource<Color>("StatusRed"),
-        AlertSeverityChoice.Urgent => Resource<Color>("StatusOrange"),
-        AlertSeverityChoice.Notice => Resource<Color>("StatusYellow"),
-        AlertSeverityChoice.Info => Resource<Color>("StatusGreen"),
-        _ => null,
-    };
-
-    private static T Resource<T>(string key) =>
+    internal static T Resource<T>(string key) =>
         (T)Microsoft.Maui.Controls.Application.Current!.Resources[key];
 
-    private async Task CloseAsync(AlertListFilter? filter)
+    private async Task CloseAsync(bool show)
     {
         if (_closing)
             return;
@@ -317,7 +284,7 @@ public partial class AlertFilterSheetPage : ContentPage
         }
         finally
         {
-            _result.TrySetResult(filter);
+            _result.TrySetResult(show);
         }
     }
 }

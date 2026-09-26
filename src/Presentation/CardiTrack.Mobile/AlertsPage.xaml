@@ -18,7 +18,7 @@
     <Grid RowDefinitions="Auto,Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <!-- Back arrow, title, and the filter button Figma's header carried. The button opens
-             the filter sheet (AlertFilterSheetPage); it replaced the row of five chips that sat
+             the filter sheet (FilterSheetPage); it replaced the row of five chips that sat
              under the header, which could hold one choice at a time out of three different
              questions and put a caret on every chip that opened nothing. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">

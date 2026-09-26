@@ -76,18 +76,4 @@ internal static class JournalPresentation
             ? null
             : (Color)Microsoft.Maui.Controls.Application.Current!.Resources[key];
     }
-
-    /// <summary>
-    /// The wire word for an urgency filter choice a caregiver made by its display name, or null
-    /// for the "any" choice. The inverse of <see cref="UrgencyPill"/>'s vocabulary, kept beside
-    /// it so the two lists cannot drift.
-    /// </summary>
-    internal static string? UrgencyWireValue(string displayChoice) => displayChoice switch
-    {
-        "Watch" => "watch",
-        "Check in" => "check-in",
-        "Concerning" => "concerning",
-        "Act now" => "act-now",
-        _ => null,
-    };
 }

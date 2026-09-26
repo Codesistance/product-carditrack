@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Export;
+using CardiTrack.Mobile.Core.Journal;
 using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
@@ -53,18 +54,6 @@ public partial class JournalPage : ContentPage
 
     private static readonly TimeSpan SearchDebounce = TimeSpan.FromMilliseconds(350);
 
-    /// <summary>The window chooser's vocabulary, and what each choice means in days back.</summary>
-    private static readonly (string Label, int? Days)[] Windows =
-    [
-        ("All time", null),
-        ("Last 7 days", 7),
-        ("Last 30 days", 30),
-        ("Last 90 days", 90),
-    ];
-
-    private static readonly string[] UrgencyChoices =
-        ["Any urgency", "Watch", "Check in", "Concerning", "Act now"];
-
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
     private readonly IJournalExportFlow _export;
@@ -78,7 +67,7 @@ public partial class JournalPage : ContentPage
 
     /// <summary>
     /// The list on screen, saved or live — null until there is one, and nulled again whenever the
-    /// question changes (cadence, member, search, urgency, window), so the next load peeks the new
+    /// question changes (cadence, member, search, filter), so the next load peeks the new
     /// question's saved answer rather than leaving the old list under a new filter.
     /// </summary>
     private IReadOnlyList<DigestResponse>? _lastReviews;
@@ -95,8 +84,9 @@ public partial class JournalPage : ContentPage
     private Guid _memberId;
     private string? _memberFirstName;
     private string? _search;
-    private string? _urgency;
-    private int? _windowDays;
+
+    /// <summary>How the list is narrowed — urgency and window, from the filter sheet.</summary>
+    private JournalListFilter _filter = JournalListFilter.None;
 
     /// <summary>
     /// A member to land filtered to, passed by the dashboard's member card and the member detail
@@ -207,7 +197,9 @@ public partial class JournalPage : ContentPage
     /// weeks asked the same question at a different altitude, and silently dropping their filter
     /// would answer a question they did not ask. <c>_hasAnyReviews</c> does not carry over: it
     /// gates the filter row, and a member with a year of Daybooks and no Weekbooks yet would
-    /// otherwise get a filter panel over an empty week list.
+    /// otherwise get a filter panel over an empty week list. A filter or search that did carry
+    /// over keeps its controls regardless (see <see cref="ShowsFilterControls"/>), or an empty
+    /// filtered week list would hide the only way to undo it.
     /// </remarks>
     private async Task SwitchCadenceAsync(JournalCadence cadence)
     {
@@ -227,12 +219,7 @@ public partial class JournalPage : ContentPage
         PaintSegment(WeeksSegment, WeeksSegmentLabel, JournalCadence.Weekbook, "week");
         PaintSegment(MonthsSegment, MonthsSegmentLabel, JournalCadence.Monthbook, "month");
 
-        HeaderSubtitle.Text = _cadence switch
-        {
-            JournalCadence.Weekbook => "Weekbooks of finished weeks",
-            JournalCadence.Monthbook => "Monthbooks of finished months",
-            _ => "Daybooks of finished days",
-        };
+        PaintFilterChrome();
 
         SearchEntry.Placeholder = $"Search the {_cadence.EntryName()}s";
 
@@ -261,62 +248,202 @@ public partial class JournalPage : ContentPage
                 : $"Shows one entry for each finished {period}");
     }
 
-    private async void OnUrgencyChipTapped(object? sender, TappedEventArgs e)
-    {
-        var choice = await _popups.ChooseAsync("How soon it asked you to act", "Cancel", UrgencyChoices);
-        if (choice is null)
-            return;
-
-        _urgency = JournalPresentation.UrgencyWireValue(choice);
-        UrgencyChipLabel.Text = _urgency is null ? "Any urgency" : choice;
-        await ReloadForNewQuestionAsync();
-    }
-
-    private async void OnWindowChipTapped(object? sender, TappedEventArgs e)
-    {
-        var choice = await _popups.ChooseAsync(
-            "How far back to look", "Cancel", Windows.Select(w => w.Label).ToArray());
-        if (choice is null)
-            return;
-
-        _windowDays = Windows.First(w => w.Label == choice).Days;
-        WindowChipLabel.Text = choice;
-        await ReloadForNewQuestionAsync();
-    }
-
-    private bool HasActiveFilter => _search is not null || _urgency is not null || _windowDays is not null;
+    private bool HasActiveFilter => _search is not null || _filter.IsNarrowed;
 
     /// <summary>
-    /// Which CardiMember's daybook to show. The chooser offers every member on the account; a
-    /// choice clears nothing else — a caregiver comparing two members' weeks wants the same
-    /// filters over both.
+    /// Whether the search box, the strip and the filter button belong on screen: once the book has
+    /// had an entry to filter, and always while something is narrowing it. The second half is
+    /// what keeps an empty filtered list undoable — after a cadence switch resets
+    /// <c>_hasAnyReviews</c>, the pills and the search box are the only controls that clear it.
     /// </summary>
-    private async void OnMemberChipTapped(object? sender, TappedEventArgs e)
+    private bool ShowsFilterControls => _hasAnyReviews || HasActiveFilter;
+
+    /// <summary>
+    /// Opens the filter sheet — the Alerts list's, with the journal's questions — on whose journal
+    /// this is and how it is narrowed, and applies what comes back. Changing member clears nothing
+    /// else: a caregiver comparing two members' weeks wants the same filters over both.
+    /// </summary>
+    private async void OnFilterTapped(object? sender, TappedEventArgs e)
     {
-        var options = _members
-            .Select(m => m.DisplayFirstName() ?? "Unnamed")
-            .ToArray();
-
-        var choice = await _popups.ChooseAsync("Whose journal", "Cancel", options);
-        if (choice is null)
+        if (_memberId == Guid.Empty)
             return;
 
-        var index = Array.IndexOf(options, choice);
-        if (index < 0 || _members[index].Id == _memberId)
+        FlushPendingSearch();
+
+        // A fresh read that no longer has the member on screen means they have left the account:
+        // the page moves to the primary member rather than letting the sheet offer — and submit —
+        // a journal nobody here can read any more. The sheet's own fallback of keeping the member
+        // on screen is for a read that failed, not for one that succeeded without them.
+        if (await RefreshMembersAsync() && _members.All(m => m.Id != _memberId))
+        {
+            if (PrimaryCardiMember.From(_members) is not { } primary)
+            {
+                // Nobody left to read about: the search and the strip go with the member, since
+                // the no-member empty state has nothing for them to narrow.
+                SelectMember(Guid.Empty, null);
+                FilterPanel.IsVisible = false;
+                await ReloadForNewQuestionAsync();
+                return;
+            }
+
+            SelectMember(primary.Id, primary.DisplayFirstName());
+            _ = ReloadForNewQuestionAsync();
+        }
+
+        var current = new JournalFilterChoice(CurrentMember(), _filter);
+        var chosen = await _popups.ChooseJournalFilterAsync(
+            current,
+            [.. _members.Select(ToFilterMember)],
+            _cadence,
+            HistoryLimit,
+            CountAsync);
+        if (chosen is null || chosen == current)
             return;
 
-        _memberId = _members[index].Id;
-        _memberFirstName = _members[index].DisplayFirstName();
+        if (chosen.Member.Id != _memberId)
+            SelectMember(chosen.Member.Id, _members.FirstOrDefault(m => m.Id == chosen.Member.Id)?.DisplayFirstName());
+
+        ApplyFilter(chosen.Filter);
+    }
+
+    /// <summary>Shows the list under <paramref name="filter"/>, from its saved answer if it has one.</summary>
+    private void ApplyFilter(JournalListFilter filter)
+    {
+        _filter = filter;
+        PaintFilterChrome();
+        _ = ReloadForNewQuestionAsync();
+    }
+
+    /// <summary>
+    /// How many entries a choice would list, for the sheet's button — the same page the list would
+    /// load, search included, since the journal endpoint has no total to ask for instead.
+    /// </summary>
+    private async Task<int?> CountAsync(JournalFilterChoice choice, CancellationToken ct)
+    {
+        try
+        {
+            var (urgency, from) = choice.Filter.ToQuery(DateOnly.FromDateTime(DateTime.Now));
+            var entries = await _api.GetJournalEntriesAsync(
+                choice.Member.Id, _cadence, HistoryLimit, _search, from, urgency, ct);
+            return entries.Count;
+        }
+        catch (ApiException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads the account's members again before the sheet offers them, as the Alerts list does on
+    /// every open: Shell keeps this page for the app's life, so a member added or removed since
+    /// the first load has to be offered — or not — under "Whose". A failed read keeps the list
+    /// already held, which the sheet tops up with the member on screen.
+    /// </summary>
+    /// <returns>Whether the read succeeded, so the caller can tell "gone" from "not known".</returns>
+    private async Task<bool> RefreshMembersAsync()
+    {
+        try
+        {
+            _members = await _api.GetCardiMembersAsync();
+            PaintFilterChrome();
+            return true;
+        }
+        catch (ApiException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Applies words typed within the search debounce before the sheet opens. The sheet counts
+    /// what its choices would list under the current search, so a caregiver who typed and went
+    /// straight to the filter would otherwise be shown a count for the words before theirs.
+    /// </summary>
+    private void FlushPendingSearch()
+    {
+        _searchDebounceCts?.Cancel();
+
+        var typed = string.IsNullOrWhiteSpace(SearchEntry.Text) ? null : SearchEntry.Text.Trim();
+        if (typed == _search)
+            return;
+
+        _search = typed;
+        _ = ReloadForNewQuestionAsync();
+    }
+
+    private FilterMember CurrentMember() => new(_memberId, _memberFirstName ?? "Unnamed");
+
+    private static FilterMember ToFilterMember(CardiMemberResponse member) =>
+        new(member.Id, member.DisplayFirstName() ?? "Unnamed");
+
+    /// <summary>Points the page, and the chat launcher on it, at one member.</summary>
+    /// <remarks>
+    /// <c>_hasAnyReviews</c> starts over for the same reason it does on a cadence switch: it says
+    /// whether <em>this</em> member's book has had an entry to filter, and another member's history
+    /// would otherwise put a search box over someone whose first entry has not been written.
+    /// </remarks>
+    private void SelectMember(Guid id, string? firstName)
+    {
+        if (id != _memberId)
+            _hasAnyReviews = false;
+        _memberId = id;
+        _memberFirstName = firstName;
         ChatBot.MemberId = _memberId;
         ChatBot.MemberFirstName = _memberFirstName;
-        MemberChipLabel.Text = choice;
-        await ReloadForNewQuestionAsync();
+        PaintFilterChrome();
+    }
+
+    /// <summary>
+    /// The header button, its count, the subtitle, and the strip — everything that says whose
+    /// journal this is and what it is narrowed to.
+    /// </summary>
+    /// <remarks>
+    /// The member names the subtitle rather than wearing a pill: the list is always one member's,
+    /// so there is no "everyone" for a ✕ to widen to. It is named only once the account has more
+    /// than one member — with one, "whose" has only one answer and the line keeps saying what the
+    /// book is. The button waits for something to filter or someone to switch to, for the same
+    /// reason the search box waits (see <see cref="ShowsFilterControls"/>).
+    /// </remarks>
+    private void PaintFilterChrome()
+    {
+        var parts = _filter.Parts();
+        var narrowed = parts.Count > 0;
+        var named = _members.Count > 1 && !string.IsNullOrWhiteSpace(_memberFirstName);
+
+        FilterButtonHost.IsVisible = _memberId != Guid.Empty && (ShowsFilterControls || _members.Count > 1);
+        FilterButton.BackgroundColor = Tinted(narrowed ? "PrimaryDark" : "White");
+        FilterIcon.Source = narrowed ? "icon_filter_white.svg" : "icon_filter.svg";
+        FilterCountBadge.IsVisible = narrowed;
+        FilterCountLabel.Text = parts.Count.ToString(System.Globalization.CultureInfo.CurrentCulture);
+        SemanticProperties.SetDescription(
+            FilterButton,
+            narrowed ? $"Filter the journal, {parts.Count} on" : "Filter the journal");
+
+        var book = _cadence switch
+        {
+            JournalCadence.Weekbook => "Weekbooks of finished weeks",
+            JournalCadence.Monthbook => "Monthbooks of finished months",
+            _ => "Daybooks of finished days",
+        };
+        var said = parts.Select(p => p.Label).ToList();
+        if (named)
+            said.Insert(0, _memberFirstName!);
+        HeaderSubtitle.Text = narrowed || named
+            ? string.Join(" · ", narrowed ? said : [.. said, book])
+            : book;
+
+        FilterStripHost.Clear();
+        foreach (var (part, label) in parts)
+            FilterStripHost.Add(FilterStripPill.Create(label, () => ApplyFilter(_filter.Without(part))));
+        if (parts.Count > 1)
+            FilterStripHost.Add(FilterStripPill.ClearAll(() => ApplyFilter(JournalListFilter.None)));
+        FilterStrip.IsVisible = narrowed;
     }
 
     // ── Loading ──────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// A different question — cadence, member, search, urgency or window — drops the list on
+    /// A different question — cadence, member, search or filter — drops the list on
     /// screen first, so the load that follows puts up the saved answer to the new question (or
     /// the loading panel) rather than leaving the old list under a filter it does not match. It
     /// supersedes whatever is running: the caregiver has just asked something else, and a tap
@@ -358,19 +485,12 @@ public partial class JournalPage : ContentPage
                 }
 
                 if (_members.FirstOrDefault(m => m.Id == pending) is { } chosen)
-                {
-                    _memberId = chosen.Id;
-                    _memberFirstName = chosen.DisplayFirstName();
-                    ChatBot.MemberId = _memberId;
-                    ChatBot.MemberFirstName = _memberFirstName;
-                    MemberChipLabel.Text = _memberFirstName ?? "Member";
-                    MemberChip.IsVisible = _members.Count > 1;
-                }
+                    SelectMember(chosen.Id, chosen.DisplayFirstName());
             }
 
             // The same rule the dashboard and the device-setup launcher use for "which member",
             // so the three cannot drift apart about who the app means when it has not been told —
-            // and the full list is kept, because the chooser above offers every member on the
+            // and the full list is kept, because the filter sheet offers every member on the
             // account once there is more than one to choose between.
             if (_memberId == Guid.Empty)
             {
@@ -386,20 +506,17 @@ public partial class JournalPage : ContentPage
                     return;
                 }
 
-                _memberId = member.Id;
-                _memberFirstName = member.DisplayFirstName();
-                MemberChipLabel.Text = _memberFirstName ?? "Member";
-                MemberChip.IsVisible = _members.Count > 1;
+                // Through SelectMember like every other way a member is chosen, so the chat
+                // launcher opens about the journal on screen rather than asking again.
+                SelectMember(member.Id, member.DisplayFirstName());
             }
 
-            var from = _windowDays is { } days
-                ? DateOnly.FromDateTime(DateTime.Now).AddDays(-(days - 1))
-                : (DateOnly?)null;
+            var (urgency, from) = _filter.ToQuery(DateOnly.FromDateTime(DateTime.Now));
 
             // The question is captured before the awaits: a caregiver who taps Weeks while Days
             // is still in flight must not have the day list painted over their week list when the
             // slower call lands — the gate drops the superseded load.
-            var (memberId, cadence, search, urgency) = (_memberId, _cadence, _search, _urgency);
+            var (memberId, cadence, search) = (_memberId, _cadence, _search);
 
             // The saved list for exactly this question goes up first when nothing is on screen;
             // the live one replaces it under the overlay. Finished days do not change, so when
@@ -478,8 +595,8 @@ public partial class JournalPage : ContentPage
     /// must not itself be a round trip: it happens before the entries can even be peeked, so a
     /// network call here would put the whole screen back behind the network on a cold start —
     /// the wait this page exists to remove. The saved list is enough to name the primary member
-    /// and to size the chooser; the entries fetched under it are the live read, and the next
-    /// load's own member fetch corrects the list if it has changed.
+    /// and to size the filter sheet's "Whose"; the entries fetched under it are the live read,
+    /// and the next load's own member fetch corrects the list if it has changed.
     /// </summary>
     /// <remarks>
     /// A saved <em>empty</em> list deliberately does not count, unlike every other peek in the
@@ -512,7 +629,8 @@ public partial class JournalPage : ContentPage
         // The filter row appears once the member has ever had a review to filter, and then
         // stays: hiding it on an empty *filtered* result would take away the one control
         // that undoes the emptiness.
-        FilterPanel.IsVisible = _hasAnyReviews;
+        FilterPanel.IsVisible = ShowsFilterControls;
+        PaintFilterChrome();
 
         // Shown as soon as there is a member to read about, empty history or not: a caregiver
         // waiting on their first entries is the one who most needs to see that weeks exist.

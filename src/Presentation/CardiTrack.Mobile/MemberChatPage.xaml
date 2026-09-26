@@ -615,7 +615,7 @@
                  this assistant can be asked, in its own words, tappable. Deterministic server
                  copy (no model call), so they appear instantly with the sheet. A horizontal
                  scroller rather than a wrap panel — same pill language as the Alerts filter
-                 sheet's chips (AlertFilterSheetPage), which this deliberately mirrors rather than
+                 sheet's chips (FilterSheetPage), which this deliberately mirrors rather than
                  shares, since those are built for its four fixed questions. -->
             <!-- Stacked, three at most, every question readable in full: a sideways row showed
                  one and a half of six and hid the rest behind a swipe nobody was told about.

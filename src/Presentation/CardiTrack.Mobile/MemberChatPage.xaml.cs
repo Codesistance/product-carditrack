@@ -1240,7 +1240,7 @@ public partial class MemberChatPage : ContentView
 
     /// <summary>
     /// One tappable question pill. Built in code rather than XAML, following the same convention
-    /// as <see cref="Controls.AlertFilterSheetPage"/>'s chips — whose pill language these
+    /// as <see cref="Controls.FilterSheetPage"/>'s chips — whose pill language these
     /// deliberately match in radius and type — because those are built for the sheet's four fixed
     /// questions and cannot serve free-text labels without being generalised for one caller.
     /// </summary>

@@ -2,16 +2,18 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
-             x:Class="CardiTrack.Mobile.Controls.AlertFilterSheetPage"
+             x:Class="CardiTrack.Mobile.Controls.FilterSheetPage"
              BackgroundColor="Transparent">
 
-    <!-- The Alerts list's filter, opened from the header button. A sheet from the bottom like the
-         family switcher (FamilySwitcherPage), whose shell this borrows — scrim, a card that
-         swallows its own taps, a Result the caller awaits — because it is opened from the top of
-         the screen and every choice in it has to be in reach of a thumb. Radius on the top
-         corners only: the sheet runs to the bottom edge of the screen.
+    <!-- A list's filter, opened from its header button — the Alerts list's and the CardiJournal's.
+         A sheet from the bottom like the family switcher (FamilySwitcherPage), whose shell this
+         borrows — scrim, a card that swallows its own taps, a Result the caller awaits — because
+         it is opened from the top of the screen and every choice in it has to be in reach of a
+         thumb. Radius on the top corners only: the sheet runs to the bottom edge of the screen.
 
-         One question per section, each a single choice, all combining. No Figma frame: the
+         One question per section, each a single choice, all combining. What the sections are is
+         the caller's (AlertFilterSheet, JournalFilterSheet); this page is only the shell, so the
+         two lists' filters cannot drift apart in how they look or behave. No Figma frame: the
          design's header carried a filter button but never drew what it opened. -->
     <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
         <Grid.GestureRecognizers>
@@ -41,7 +43,7 @@
                          HorizontalOptions="Center"
                          Margin="0,0,0,12"/>
 
-                <Label Text="Filter alerts"
+                <Label x:Name="TitleLabel"
                        Style="{StaticResource Heading3}"/>
 
                 <ScrollView x:Name="SectionsScroll" HorizontalScrollBarVisibility="Never">
@@ -62,7 +64,6 @@
                                         Size="M"/>
                     <controls:AppButton x:Name="ShowButton"
                                         Grid.Column="1"
-                                        Text="Show alerts"
                                         Icon="icon_btn_resolve.svg"
                                         Clicked="OnShowClicked"
                                         Tone="Primary"

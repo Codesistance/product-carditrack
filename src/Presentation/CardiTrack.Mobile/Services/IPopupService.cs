@@ -131,9 +131,24 @@ public interface IPopupService
     /// <param name="count">How many alerts a filter would show, for the sheet's button; null when unknown.</param>
     Task<AlertListFilter?> ChooseAlertFilterAsync(
         AlertListFilter current,
-        IReadOnlyList<AlertFilterMember> members,
+        IReadOnlyList<FilterMember> members,
         bool archived,
         Func<AlertListFilter, CancellationToken, Task<int?>> count);
+
+    /// <summary>
+    /// The CardiJournal list's filter sheet — the Alerts sheet's shell with the journal's
+    /// questions — starting from <paramref name="current"/>. Returns whose journal to show and
+    /// how to narrow it, or null when the caregiver closed it without showing results.
+    /// </summary>
+    /// <param name="cadence">The book on screen, which the sheet counts in.</param>
+    /// <param name="pageLimit">How many entries the list loads; a count at it reads "the latest".</param>
+    /// <param name="count">How many entries a choice would show, for the sheet's button; null when unknown.</param>
+    Task<JournalFilterChoice?> ChooseJournalFilterAsync(
+        JournalFilterChoice current,
+        IReadOnlyList<FilterMember> members,
+        JournalCadence cadence,
+        int pageLimit,
+        Func<JournalFilterChoice, CancellationToken, Task<int?>> count);
 
     /// <summary>
     /// Opens the M1-13 contact carousel's own edit form on one record: the emergency contact, or

@@ -7,7 +7,10 @@
     <!-- Which file to take away, as two things to look at rather than two lines to read. The
          generic chooser stacked them as outlined rows of text, which made a choice between two
          familiar file types — one everybody recognises by its red sheet, one by its green grid —
-         into a reading task. The glyphs are the ones those formats wear everywhere else. -->
+         into a reading task. Both glyphs are the same folded page, so the pair reads as one family
+         of files, marked inside with what each holds — a heartbeat for the report, a grid for the
+         data — and told apart at a glance by the red and the green. No Figma frame: picked from
+         samples (I1), design sync pending. -->
     <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnScrimTapped"/>
