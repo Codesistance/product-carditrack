@@ -80,9 +80,13 @@
                            SemanticProperties.Description="Close"/>
                 </controls:SquareBorder>
 
-                <!-- The subtitle names who this conversation is about. With more than one member
-                     it is also the way to change that: a tap puts the "who" question back in the
-                     conversation area, and the chevron beside it says so. -->
+                <!-- Who this conversation is about, as a pill under the title: their photo and
+                     name in PrimaryDark on white, the one solid thing in the band, so it cannot be
+                     missed the way a faded line of subtitle was. With more than one member it is
+                     also the way to change that: a tap puts the "who" question back in the
+                     conversation area, and the chevron in the pill says so. The plain subtitle
+                     stays for the states that are not about one member — choosing someone,
+                     browsing past conversations. -->
                 <VerticalStackLayout x:Name="TitleBlock" Grid.Column="1" Spacing="1" VerticalOptions="Start">
                     <VerticalStackLayout.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnSubtitleTapped"/>
@@ -90,10 +94,11 @@
                     <Label Text="Chat"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
-                    <!-- A Grid, not a HorizontalStackLayout: a stack measures its children with
-                         unbounded width, so the subtitle never truncated and its overflow squeezed
-                         the header's round buttons out of shape. -->
-                    <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="4" HorizontalOptions="Start">
+                    <!-- The label is in a Grid, not a HorizontalStackLayout: a stack measures its
+                         children with unbounded width, so the subtitle never truncated and its
+                         overflow squeezed the header's round buttons out of shape. The pill's
+                         name is capped for the same reason. -->
+                    <Grid HorizontalOptions="Start">
                         <Label x:Name="SubtitleLabel"
                                Text="What would you like to know?"
                                FontFamily="Quicksand"
@@ -102,13 +107,34 @@
                                Opacity="0.85"
                                LineBreakMode="TailTruncation"
                                VerticalOptions="Center"/>
-                        <Image x:Name="SwitchChevron"
-                               Grid.Column="1"
-                               Source="icon_chevron_down_white.svg"
-                               WidthRequest="12" HeightRequest="12"
-                               Opacity="0.85"
-                               VerticalOptions="Center"
-                               IsVisible="False"/>
+                        <Border x:Name="MemberPill"
+                                IsVisible="False"
+                                Margin="0,4,0,0"
+                                Padding="3,3,10,3"
+                                BackgroundColor="{StaticResource White}"
+                                StrokeThickness="0"
+                                HorizontalOptions="Start">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="14"/>
+                            </Border.StrokeShape>
+                            <HorizontalStackLayout Spacing="6">
+                                <controls:MemberAvatar x:Name="PillAvatar"
+                                                       BoxWidth="22"
+                                                       VerticalOptions="Center"/>
+                                <Label x:Name="PillName"
+                                       FontFamily="QuicksandSemiBold"
+                                       FontSize="14"
+                                       TextColor="{StaticResource PrimaryDark}"
+                                       LineBreakMode="TailTruncation"
+                                       MaximumWidthRequest="160"
+                                       VerticalOptions="Center"/>
+                                <Image x:Name="SwitchChevron"
+                                       Source="icon_chevron_down.svg"
+                                       WidthRequest="12" HeightRequest="12"
+                                       VerticalOptions="Center"
+                                       IsVisible="False"/>
+                            </HorizontalStackLayout>
+                        </Border>
                     </Grid>
                 </VerticalStackLayout>
 
@@ -212,15 +238,36 @@
                          row below (SuggestionsPanel) rather than in here: they have to survive
                          the first send long enough to be tappable while a reply is in flight,
                          and an EmptyView is torn down the instant the first turn lands. -->
+                    <!-- The greeting a new conversation opens on: the bot springs in and waves
+                         (PlayGreeting), says hello by name, and offers one thing it can do — a
+                         different one each conversation (ChatFunFacts), where this used to be one
+                         fixed paragraph listing everything at once. -->
                     <CollectionView.EmptyView>
-                        <VerticalStackLayout Padding="20,60,20,20" Spacing="8">
-                            <Label Text="I'm here to help"
+                        <VerticalStackLayout Padding="20,44,20,20" Spacing="12">
+                            <Image x:Name="GreetingBot"
+                                   Source="icon_chatbot.svg"
+                                   WidthRequest="72" HeightRequest="72"
+                                   HorizontalOptions="Center"
+                                   Opacity="0"
+                                   Scale="0.4"
+                                   AnchorY="1"/>
+                            <Label x:Name="GreetingTitle"
+                                   Text="I'm here to help"
                                    Style="{StaticResource Heading3}"
                                    HorizontalTextAlignment="Center"/>
-                            <Label Text="Ask how they've been sleeping and moving, what's behind an alert, or for a look at their journal. I can switch alerts on or off and set alarms for you, too."
-                                   Style="{StaticResource Body2}"
-                                   TextColor="{StaticResource BodyText}"
-                                   HorizontalTextAlignment="Center"/>
+                            <Border x:Name="FunFactCard"
+                                    BackgroundColor="{StaticResource White}"
+                                    StrokeThickness="0"
+                                    Padding="14,10"
+                                    Opacity="0">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="12"/>
+                                </Border.StrokeShape>
+                                <Label x:Name="FunFactLabel"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource BodyText}"
+                                       LineBreakMode="WordWrap"/>
+                            </Border>
                         </VerticalStackLayout>
                     </CollectionView.EmptyView>
 
@@ -541,9 +588,9 @@
             <!-- Question chips, shown until the caregiver's first message of the session: what
                  this assistant can be asked, in its own words, tappable. Deterministic server
                  copy (no model call), so they appear instantly with the sheet. A horizontal
-                 scroller rather than a wrap panel — same pill language as FilterChipBar, which
-                 this deliberately mirrors rather than generalises, since that control is
-                 enum-typed to AlertFilter. -->
+                 scroller rather than a wrap panel — same pill language as the Alerts filter
+                 sheet's chips (AlertFilterSheetPage), which this deliberately mirrors rather than
+                 shares, since those are built for its four fixed questions. -->
             <ScrollView x:Name="SuggestionsPanel" Grid.Row="2" Orientation="Horizontal"
                         HorizontalScrollBarVisibility="Never" Margin="0,0,0,4" IsVisible="False">
                 <HorizontalStackLayout x:Name="SuggestionsRow" Padding="16,4" Spacing="9"/>

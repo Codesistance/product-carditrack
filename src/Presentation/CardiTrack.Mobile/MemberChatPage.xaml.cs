@@ -49,6 +49,25 @@ public partial class MemberChatPage : ContentView
     private string? _memberFirstName;
     private string _threadSubtitle;
 
+    /// <summary>The member's full name and photo, for the header pill's avatar — filled in once
+    /// the member list has been read; until then the avatar shows the first name's initial.</summary>
+    private string? _memberFullName;
+    private string? _memberPhotoUrl;
+
+    /// <summary>The signed-in caregiver's first name, for the greeting. Null when unknown.</summary>
+    private readonly string? _caregiverFirstName;
+
+    /// <summary>Which of <see cref="ChatFunFacts"/> this conversation greets with.</summary>
+    private int _funFactIndex;
+
+    /// <summary>The greeting has played for the empty conversation on screen — it plays once per
+    /// conversation, not every time the empty list is laid out again.</summary>
+    private bool _greetingPlayed;
+
+    /// <summary>Where the next conversation's fact is read from, so each new one teaches
+    /// something the last did not — across openings of the sheet, not only within one.</summary>
+    private const string FunFactPreferenceKey = "chat.funFact.next";
+
     /// <summary>The "who" question is on screen in place of the thread.</summary>
     private bool _choosing;
 
@@ -107,17 +126,22 @@ public partial class MemberChatPage : ContentView
     /// Who the conversation is about, or <see cref="Guid.Empty"/> to have the sheet ask — the
     /// launcher on a page showing several members opens it that way.
     /// </param>
-    public MemberChatPage(ICardiTrackApiClient api, Guid memberId, string? memberFirstName)
+    /// <param name="caregiverFirstName">Who the greeting says hello to; null for no name.</param>
+    public MemberChatPage(
+        ICardiTrackApiClient api, Guid memberId, string? memberFirstName, string? caregiverFirstName = null)
     {
         InitializeComponent();
         _api = api;
         _memberId = memberId;
         _memberFirstName = memberFirstName;
+        _caregiverFirstName = string.IsNullOrWhiteSpace(caregiverFirstName) ? null : caregiverFirstName.Trim();
         TurnsList.ItemsSource = _turns;
         SessionsList.ItemsSource = _sessions;
 
         _threadSubtitle = SubtitleFor(memberFirstName);
-        SubtitleLabel.Text = _threadSubtitle;
+        ShowThreadSubtitle();
+        _funFactIndex = TakeFunFactIndex();
+        ApplyGreeting();
 
         // No OnAppearing on a ContentView — the host adds this to its tree only at the moment
         // it's shown (see MemberChatLauncher), so construction time is the right time to load.
@@ -161,6 +185,109 @@ public partial class MemberChatPage : ContentView
         }
     }
 
+    /// <summary>
+    /// The live thread's header: the member pill when the conversation is about someone, the
+    /// plain question when nobody has been named.
+    /// </summary>
+    private void ShowThreadSubtitle()
+    {
+        if (string.IsNullOrWhiteSpace(_memberFirstName))
+        {
+            ShowSubtitle(_threadSubtitle);
+            return;
+        }
+
+        PillName.Text = _memberFirstName;
+        PillAvatar.Apply(_memberFullName ?? _memberFirstName, _memberPhotoUrl);
+        SemanticProperties.SetDescription(MemberPill, $"Chatting about {_memberFirstName}");
+        SemanticProperties.SetHint(MemberPill, _canSwitch ? "Double tap to chat about someone else" : string.Empty);
+        SubtitleLabel.IsVisible = false;
+        MemberPill.IsVisible = true;
+    }
+
+    /// <summary>A plain subtitle, for the states that are not about one member.</summary>
+    private void ShowSubtitle(string text)
+    {
+        SubtitleLabel.Text = text;
+        SubtitleLabel.IsVisible = true;
+        MemberPill.IsVisible = false;
+    }
+
+    /// <summary>
+    /// The next fact in the rotation, moving the stored position on — so the one after it is
+    /// what the next conversation opens with. Preferences can fail (a locked keystore); the
+    /// greeting then simply starts from the first fact.
+    /// </summary>
+    private static int TakeFunFactIndex()
+    {
+        try
+        {
+            var index = Preferences.Default.Get(FunFactPreferenceKey, 0);
+            Preferences.Default.Set(FunFactPreferenceKey, (index + 1) % ChatFunFacts.Count);
+            return index;
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>The greeting's words: hello by name, and this conversation's fact.</summary>
+    private void ApplyGreeting()
+    {
+        GreetingTitle.Text = _caregiverFirstName is { } name
+            ? $"Hi {name}, I'm here to help"
+            : "I'm here to help";
+
+        FunFactLabel.FormattedText = new FormattedString
+        {
+            Spans =
+            {
+                new Span
+                {
+                    Text = "Did you know? ",
+                    FontFamily = "QuicksandSemiBold",
+                    TextColor = MetricStatus.Resource("PrimaryDark", Colors.DarkBlue),
+                },
+                new Span { Text = ChatFunFacts.At(_funFactIndex, _memberFirstName) },
+            },
+        };
+    }
+
+    /// <summary>
+    /// The bot springs up into place, waves — a few quick tilts on its base, settling — and the
+    /// fact fades in under the hello. Once per conversation: the empty list is laid out again
+    /// on every state change, and a bot that waved at each of those would be fidgeting.
+    /// </summary>
+    private void PlayGreeting()
+    {
+        if (_greetingPlayed)
+            return;
+        _greetingPlayed = true;
+
+        GreetingBot.AbortAnimation("greeting");
+        GreetingBot.Scale = 0.4;
+        GreetingBot.Opacity = 0;
+        GreetingBot.Rotation = 0;
+        FunFactCard.Opacity = 0;
+
+        var wave = new Animation();
+        wave.Add(0.00, 0.30, new Animation(v => GreetingBot.Scale = v, 0.4, 1, Easing.SpringOut));
+        wave.Add(0.00, 0.15, new Animation(v => GreetingBot.Opacity = v, 0, 1));
+        wave.Add(0.30, 0.42, new Animation(v => GreetingBot.Rotation = v, 0, -12, Easing.SinOut));
+        wave.Add(0.42, 0.56, new Animation(v => GreetingBot.Rotation = v, -12, 10, Easing.SinInOut));
+        wave.Add(0.56, 0.70, new Animation(v => GreetingBot.Rotation = v, 10, -6, Easing.SinInOut));
+        wave.Add(0.70, 0.82, new Animation(v => GreetingBot.Rotation = v, -6, 0, Easing.SinOut));
+        wave.Add(0.55, 0.85, new Animation(v => FunFactCard.Opacity = v, 0, 1));
+        wave.Commit(GreetingBot, "greeting", 16, 1800, Easing.Linear, (_, _) =>
+        {
+            GreetingBot.Scale = 1;
+            GreetingBot.Opacity = 1;
+            GreetingBot.Rotation = 0;
+            FunFactCard.Opacity = 1;
+        });
+    }
+
     private static string SubtitleFor(string? firstName) =>
         string.IsNullOrWhiteSpace(firstName)
             ? "What would you like to know?"
@@ -173,6 +300,13 @@ public partial class MemberChatPage : ContentView
             var members = await _api.GetCardiMembersAsync();
             _canSwitch = members.Count > 1;
             SwitchChevron.IsVisible = _canSwitch && !_choosing;
+            if (members.FirstOrDefault(m => m.Id == _memberId) is { } member)
+            {
+                _memberFullName = member.Name;
+                _memberPhotoUrl = member.PhotoUrl;
+                if (_mode == ChatViewMode.Thread && !_choosing)
+                    ShowThreadSubtitle();
+            }
         }
         catch (Exception)
         {
@@ -203,7 +337,7 @@ public partial class MemberChatPage : ContentView
         ExportThreadAction.IsVisible = false;
         MessageEditor.IsEnabled = false;
         MessageEditor.Placeholder = "Choose someone first";
-        SubtitleLabel.Text = "Choose who this is about";
+        ShowSubtitle("Choose who this is about");
         SetState(loading: ChoiceList.Count == 0);
 
         List<CardiMemberResponse> members;
@@ -380,7 +514,11 @@ public partial class MemberChatPage : ContentView
 
         _memberId = member.Id;
         _memberFirstName = member.DisplayFirstName();
+        _memberFullName = member.Name;
+        _memberPhotoUrl = member.PhotoUrl;
         _threadSubtitle = SubtitleFor(_memberFirstName);
+        _greetingPlayed = false;
+        ApplyGreeting();
         _turns.Clear();
         _sessions.Clear();
         _currentSessionId = Guid.Empty;
@@ -716,6 +854,12 @@ public partial class MemberChatPage : ContentView
         _currentStartedOn = default;
         _ = LoadSuggestionsAsync();
         UpdateNewConversationAction();
+
+        // A new conversation is greeted afresh, with the next thing the assistant can do.
+        _funFactIndex = TakeFunFactIndex();
+        _greetingPlayed = false;
+        ApplyGreeting();
+        PlayGreeting();
     }
 
     /// <summary>
@@ -789,7 +933,7 @@ public partial class MemberChatPage : ContentView
     {
         _mode = ChatViewMode.Thread;
         ExitSessionSelection();
-        SubtitleLabel.Text = _threadSubtitle;
+        ShowThreadSubtitle();
         TurnsList.ItemsSource = _turns;
         InputBar.IsVisible = true;
         BackToChatPanel.IsVisible = false;
@@ -831,7 +975,7 @@ public partial class MemberChatPage : ContentView
     {
         _mode = ChatViewMode.HistoryList;
         ExitSessionSelection();
-        SubtitleLabel.Text = "Past conversations";
+        ShowSubtitle("Past conversations");
         SuggestionsPanel.IsVisible = false;
         InputBar.IsVisible = false;
         NewConversationAction.IsVisible = false;
@@ -924,7 +1068,7 @@ public partial class MemberChatPage : ContentView
         _mode = ChatViewMode.PastSession;
         _viewedSessionId = item.SessionId;
         _viewedSession = item;
-        SubtitleLabel.Text = item.OpenedLabel;
+        ShowSubtitle(item.OpenedLabel);
         SessionsList.IsVisible = false;
         BackToChatPanel.IsVisible = false;
         SetState(loading: true);
@@ -1016,9 +1160,9 @@ public partial class MemberChatPage : ContentView
 
     /// <summary>
     /// One tappable question pill. Built in code rather than XAML, following the same convention
-    /// as <see cref="Controls.FilterChipBar"/> — whose own pills these deliberately match in
-    /// padding, radius and type — because that control is enum-typed to AlertFilter and cannot
-    /// serve free-text labels without being generalised for one caller.
+    /// as <see cref="Controls.AlertFilterSheetPage"/>'s chips — whose pill language these
+    /// deliberately match in radius and type — because those are built for the sheet's four fixed
+    /// questions and cannot serve free-text labels without being generalised for one caller.
     /// </summary>
     private Border BuildSuggestionChip(string suggestion)
     {
@@ -1145,6 +1289,7 @@ public partial class MemberChatPage : ContentView
             // not wait on them to become usable.
             if (_turns.Count == 0)
             {
+                PlayGreeting();
                 _ = LoadSuggestionsAsync();
             }
             else
