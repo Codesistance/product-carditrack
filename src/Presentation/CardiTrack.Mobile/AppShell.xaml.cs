@@ -43,6 +43,68 @@ public partial class AppShell : Shell
 #endif
     }
 
+    /// <summary>
+    /// How long after the Dashboard first shows before the other tabs are built — long enough for
+    /// its own first paint and loads to have the device to themselves.
+    /// </summary>
+    private static readonly TimeSpan TabPreloadDelay = TimeSpan.FromSeconds(2);
+
+    /// <summary>The pause between building one tab and the next, so no single frame pays for all four.</summary>
+    private static readonly TimeSpan TabPreloadGap = TimeSpan.FromMilliseconds(150);
+
+    private bool _tabsPreloadStarted;
+
+    protected override void OnNavigated(ShellNavigatedEventArgs args)
+    {
+        base.OnNavigated(args);
+
+        if (_tabsPreloadStarted
+            || CurrentState?.Location?.OriginalString.StartsWith(DashboardRoute, StringComparison.Ordinal) != true)
+        {
+            return;
+        }
+
+        _tabsPreloadStarted = true;
+        _ = PreloadTabsAsync();
+    }
+
+    /// <summary>
+    /// Builds every tab page the caregiver has not opened yet, once the Dashboard is up. Shell
+    /// builds a tab's page on its first visit (the ContentTemplates in AppShell.xaml), and
+    /// resolving it and inflating its XAML is the second or so a first tap used to wait with the
+    /// old page still showing. Building is all this does: the pages start their loads and timers
+    /// on Loaded and OnAppearing, which only a visit raises, so nothing is fetched early — the
+    /// data they open on is already warmed by the offline cache after sign-in.
+    /// </summary>
+    private async Task PreloadTabsAsync()
+    {
+        await Task.Delay(TabPreloadDelay);
+
+        var contents = Items
+            .SelectMany(item => item.Items)
+            .SelectMany(section => section.Items)
+            .ToList();
+
+        foreach (var content in contents)
+        {
+            if (content.Content is not null)
+                continue;
+
+            try
+            {
+                ((IShellContentController)content).GetOrCreateContent();
+            }
+            catch (Exception ex)
+            {
+                // Best effort: a page that cannot be built early is built on its first visit, as
+                // it always was, and will fail there in front of someone if it is truly broken.
+                Services.ScreenRefresh.LogFailure(ex, nameof(AppShell), $"while building the {content.Route} tab early");
+            }
+
+            await Task.Delay(TabPreloadGap);
+        }
+    }
+
     private static void RegisterRoutes()
     {
         if (_routesRegistered)
