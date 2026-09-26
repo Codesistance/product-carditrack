@@ -554,7 +554,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **So that** I can find that day without re-reading a month of cards
 - **Acceptance Criteria:**
   - Given reviews exist, when I type in the search box, then after a pause the list shows only reviews whose text, headline or suggestion contains my words — searched over the whole history, not just the loaded page
-  - The urgency chip narrows to one tier; the window chip narrows to the last 7/30/90 days; the filters combine
+  - The header's filter button opens the same sheet the Alerts list uses: "How soon" narrows to one tier, "When" narrows to the last 7/30/90 days, and with more than one member "Whose" switches the journal; the filters combine, the Show button counts what they would list before I apply them, and each applied part is a removable pill under the search box
   - **Edge — nothing matches:** the empty state says "No reviews match … clear one and look again", and the filter controls stay on screen so I can
   - **Edge — I type a % or _:** it is searched as the character I typed, not as a wildcard
 
