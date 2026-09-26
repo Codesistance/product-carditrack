@@ -86,7 +86,7 @@
                         <TapGestureRecognizer Tapped="OnExportTapped"/>
                     </Border.GestureRecognizers>
                     <Image Source="icon_export.svg"
-                           WidthRequest="22" HeightRequest="22"/>
+                           WidthRequest="24" HeightRequest="24"/>
                 </Border>
 
                 <!-- The Alerts header's filter square, unchanged: HeaderActionSquare, filled
