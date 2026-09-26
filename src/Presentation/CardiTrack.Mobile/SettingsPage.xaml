@@ -72,8 +72,11 @@
                      here — a silence they cannot find again later is a bug, not a preference. -->
                 <Border x:Name="MutesCard" Style="{StaticResource ElevatedCard}" IsVisible="False">
                     <VerticalStackLayout Spacing="10">
-                        <Label Text="Silenced reminders"
-                               Style="{StaticResource Body1SemiBoldDark}"/>
+                        <HorizontalStackLayout Spacing="8">
+                            <Image Source="icon_section_muted.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            <Label Text="Silenced reminders"
+                                   Style="{StaticResource Body1SemiBoldDark}"/>
+                        </HorizontalStackLayout>
                         <Label x:Name="MutesSubtitle"
                                Style="{StaticResource Body2}"
                                TextColor="{StaticResource BodyText}"/>
@@ -102,7 +105,10 @@
                      Details: this page is about the caregiver and the app. -->
                 <Border Style="{StaticResource ElevatedCard}">
                     <VerticalStackLayout Spacing="10">
-                        <Label Text="Notifications" Style="{StaticResource DashboardSectionTitle}"/>
+                        <HorizontalStackLayout Spacing="8">
+                            <Image Source="icon_section_notifications.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            <Label Text="Notifications" Style="{StaticResource DashboardSectionTitle}"/>
+                        </HorizontalStackLayout>
                         <Label Text="Quiet hours, and what a locked screen shows."
                                Style="{StaticResource Body2}"/>
                         <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
@@ -130,7 +136,10 @@
 
                 <Border Style="{StaticResource ElevatedCard}">
                     <VerticalStackLayout Spacing="10">
-                        <Label Text="Account" Style="{StaticResource DashboardSectionTitle}"/>
+                        <HorizontalStackLayout Spacing="8">
+                            <Image Source="icon_section_account.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            <Label Text="Account" Style="{StaticResource DashboardSectionTitle}"/>
+                        </HorizontalStackLayout>
                         <Label Text="Your sign-in, and copies you can take with you."
                                Style="{StaticResource Body2}"/>
                         <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
@@ -202,7 +211,10 @@
 
                 <Border Style="{StaticResource ElevatedCard}">
                     <VerticalStackLayout Spacing="10">
-                        <Label Text="Privacy" Style="{StaticResource DashboardSectionTitle}"/>
+                        <HorizontalStackLayout Spacing="8">
+                            <Image Source="icon_section_privacy.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            <Label Text="Privacy" Style="{StaticResource DashboardSectionTitle}"/>
+                        </HorizontalStackLayout>
                         <!-- Session telemetry is on by default and disclosed in the Terms of Service
                              and Privacy Policy. On, the app sends its own logs, network timings and
                              screen views so a crash can be traced; it never sends health data — the
@@ -259,7 +271,10 @@
 
                 <Border Style="{StaticResource ElevatedCard}">
                     <VerticalStackLayout Spacing="10">
-                        <Label Text="About" Style="{StaticResource DashboardSectionTitle}"/>
+                        <HorizontalStackLayout Spacing="8">
+                            <Image Source="icon_section_about.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            <Label Text="About" Style="{StaticResource DashboardSectionTitle}"/>
+                        </HorizontalStackLayout>
                         <Label Text="What you agreed to, and which build you are running."
                                Style="{StaticResource Body2}"/>
                         <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
@@ -337,9 +352,12 @@
                         <RoundRectangle CornerRadius="{StaticResource CardCornerRadius}"/>
                     </Border.StrokeShape>
                     <VerticalStackLayout Spacing="10">
-                        <Label Text="Delete my account"
-                               Style="{StaticResource Body1SemiBoldDark}"
-                               TextColor="{StaticResource DangerRed}"/>
+                        <HorizontalStackLayout Spacing="8">
+                            <Image Source="icon_section_delete.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            <Label Text="Delete my account"
+                                   Style="{StaticResource Body1SemiBoldDark}"
+                                   TextColor="{StaticResource DangerRed}"/>
+                        </HorizontalStackLayout>
                         <Label Text="If you go ahead, within 30 days of your request:"
                                Style="{StaticResource Body2Dark}"/>
                         <!-- The same rows every other list in the app draws, in the danger

@@ -74,6 +74,12 @@
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="5"/>
                 </Border.StrokeShape>
+                <!-- The pill's top edge: 4 of the brand gradient, the width of the alert cards'
+                     severity rail, so the selected tab reads as marked rather than only tinted.
+                     Inside the pill, so its rounded top corners clip the edge with it. -->
+                <BoxView HeightRequest="4"
+                         VerticalOptions="Start"
+                         Background="{StaticResource GradientButtonBrush}"/>
             </Border>
 
             <VerticalStackLayout x:Name="DashboardTab" Grid.Column="0" Spacing="4">
