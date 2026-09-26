@@ -591,10 +591,20 @@
                  scroller rather than a wrap panel — same pill language as the Alerts filter
                  sheet's chips (AlertFilterSheetPage), which this deliberately mirrors rather than
                  shares, since those are built for its four fixed questions. -->
-            <ScrollView x:Name="SuggestionsPanel" Grid.Row="2" Orientation="Horizontal"
-                        HorizontalScrollBarVisibility="Never" Margin="0,0,0,4" IsVisible="False">
-                <HorizontalStackLayout x:Name="SuggestionsRow" Padding="16,4" Spacing="9"/>
-            </ScrollView>
+            <!-- Stacked, three at most, every question readable in full: a sideways row showed
+                 one and a half of six and hid the rest behind a swipe nobody was told about.
+                 The caption names where the questions came from when they are the caregiver's
+                 own recent ones (ShowSuggestions). -->
+            <VerticalStackLayout x:Name="SuggestionsPanel" Grid.Row="2" Padding="16,4" Spacing="8"
+                                 Margin="0,0,0,4" IsVisible="False">
+                <Label x:Name="SuggestionsCaption"
+                       Text="Recently you asked"
+                       Style="{StaticResource Body2}"
+                       FontSize="12"
+                       TextColor="{StaticResource MutedText}"
+                       IsVisible="False"/>
+                <VerticalStackLayout x:Name="SuggestionsRow" Spacing="8"/>
+            </VerticalStackLayout>
 
             <!-- Pinned input bar. SendButton is a sibling of the Border, not a child of it —
                  Border clips its content to StrokeShape regardless of how much padding surrounds

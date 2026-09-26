@@ -68,6 +68,9 @@ public partial class MemberChatPage : ContentView
     /// something the last did not — across openings of the sheet, not only within one.</summary>
     private const string FunFactPreferenceKey = "chat.funFact.next";
 
+    /// <summary>How many suggested questions the stack shows.</summary>
+    private const int MaxSuggestions = 3;
+
     /// <summary>The "who" question is on screen in place of the thread.</summary>
     private bool _choosing;
 
@@ -1151,9 +1154,12 @@ public partial class MemberChatPage : ContentView
             || _mode != ChatViewMode.Thread || _choosing)
             return;
 
+        // Three at most, whatever the server sends: an API still on the six-chip list must not
+        // stack six rows over the greeting.
         SuggestionsRow.Clear();
-        foreach (var suggestion in response.Suggestions)
-            SuggestionsRow.Add(BuildSuggestionChip(suggestion));
+        foreach (var suggestion in response.Suggestions.Take(MaxSuggestions))
+            SuggestionsRow.Add(BuildSuggestionChip(suggestion, fromHistory: false));
+        SuggestionsCaption.IsVisible = false;
 
         SuggestionsPanel.IsVisible = _turns.Count == 0;
     }
@@ -1164,24 +1170,42 @@ public partial class MemberChatPage : ContentView
     /// deliberately match in radius and type — because those are built for the sheet's four fixed
     /// questions and cannot serve free-text labels without being generalised for one caller.
     /// </summary>
-    private Border BuildSuggestionChip(string suggestion)
+    private Border BuildSuggestionChip(string suggestion, bool fromHistory)
     {
+        var row = new Grid
+        {
+            ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
+            ColumnSpacing = 10,
+        };
+        row.Add(new Image
+        {
+            Source = ChatSuggestionGlyph.For(suggestion, fromHistory),
+            WidthRequest = 18,
+            HeightRequest = 18,
+            VerticalOptions = LayoutOptions.Center,
+        });
+        row.Add(new Label
+        {
+            Text = suggestion,
+            FontFamily = "QuicksandSemiBold",
+            FontSize = 14,
+            TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
+            VerticalOptions = LayoutOptions.Center,
+            LineBreakMode = LineBreakMode.WordWrap,
+        }, 1);
+
+        // Full width, radius 10 — the unified control radius — so the three read as a list of
+        // questions to pick from rather than tags.
         var chip = new Border
         {
             BackgroundColor = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
             Stroke = (Microsoft.Maui.Controls.Application.Current?.Resources["PrimaryDark"] as Color ?? Colors.Blue)
                 .WithAlpha(0.5f),
             StrokeThickness = 1,
-            Padding = new Thickness(20, 9, 20, 9),
-            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 20 },
-            Content = new Label
-            {
-                Text = suggestion,
-                FontFamily = "QuicksandSemiBold",
-                FontSize = 14,
-                TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
-                VerticalOptions = LayoutOptions.Center,
-            },
+            Padding = new Thickness(14, 10),
+            MinimumHeightRequest = 44,
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
+            Content = row,
         };
 
         // A Border with a recognizer is static text to TalkBack — the question is read out but
