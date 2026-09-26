@@ -31,7 +31,7 @@
                 </controls:SquareBorder>
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
-                    <Label Text="Hand the family on"
+                    <Label Text="Hand the Family On"
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label x:Name="HeaderSubtitle"

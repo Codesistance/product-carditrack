@@ -118,7 +118,7 @@ public partial class AcceptInvitePage : ContentPage
         var member = string.IsNullOrWhiteSpace(invite.MemberFirstName) ? "somebody" : invite.MemberFirstName;
         var inviter = string.IsNullOrWhiteSpace(invite.InviterFirstName) ? "Somebody" : invite.InviterFirstName;
 
-        HeaderTitle.Text = $"{inviter} invited you";
+        HeaderTitle.Text = $"{inviter} Invited You";
         HeaderSubtitle.Text = $"To help watch over {member}";
 
         Avatar.BoxWidth = 52;

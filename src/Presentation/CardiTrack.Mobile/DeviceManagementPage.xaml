@@ -62,9 +62,9 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnAddDeviceClicked"/>
                     </Border.GestureRecognizers>
-                    <Image Source="icon_plus.svg"
-                           WidthRequest="20"
-                           HeightRequest="20"/>
+                    <Image Source="icon_header_plus.svg"
+                           WidthRequest="24"
+                           HeightRequest="24"/>
                 </Border>
             </Grid>
         </controls:HeaderBand>

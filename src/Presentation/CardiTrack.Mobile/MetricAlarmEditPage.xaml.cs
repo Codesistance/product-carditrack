@@ -744,7 +744,8 @@ public partial class MetricAlarmEditPage : ContentPage
     }
 
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync("..");
+        await this.GoBackAsync(
+            $"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
 
     // ── labels ───────────────────────────────────────────────────────────────────────────
 

@@ -72,7 +72,7 @@ public partial class AlertSettingsPage : ContentPage
         {
             var name = Uri.UnescapeDataString(value ?? string.Empty);
             if (!string.IsNullOrWhiteSpace(name))
-                HeaderSubtitle.Text = $"{name}'s alerts";
+                HeaderSubtitle.Text = $"What CardiTrack checks for {name}";
         }
     }
 

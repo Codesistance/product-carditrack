@@ -30,7 +30,7 @@
                 </controls:SquareBorder>
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
-                    <Label Text="Export confirmations"
+                    <Label Text="Export Confirmations"
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label Text="Stop a kept one, or see earlier ones"

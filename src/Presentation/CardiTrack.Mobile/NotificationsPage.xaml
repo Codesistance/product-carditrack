@@ -8,11 +8,13 @@
              BackgroundColor="{StaticResource PageGround}">
 
     <!-- The notification inbox. Full-bleed like every other page: the gradient band runs to the
-         edges and the radius lives on the cards inside. -->
-    <Grid RowDefinitions="Auto,*">
+         edges and the radius lives on the cards inside. Top safe area claimed by this layout,
+         not the page (see AlertsPage): the band is drawn against the status-bar inset; the
+         bottom is released like every other page's. -->
+    <Grid RowDefinitions="Auto,*" SafeAreaEdges="None, Container, None, None">
 
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                 <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
                         MinimumHeightRequest="40"
@@ -40,7 +42,7 @@
                      list has loaded ("3 things to look at" / "You're all set") — it used to be a
                      third line in a second stack, centred, which no other band has. -->
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
-                    <Label Text="Complete the picture"
+                    <Label Text="Complete the Picture"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
                     <Label x:Name="SubtitleLabel"

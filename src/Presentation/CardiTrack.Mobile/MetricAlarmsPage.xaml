@@ -44,7 +44,7 @@
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label x:Name="HeaderSubtitle"
-                           Text="Alerts you set yourself"
+                           Text="Limits you set for them"
                            FontFamily="Quicksand"
                            FontSize="12"
                            TextColor="{StaticResource White}"

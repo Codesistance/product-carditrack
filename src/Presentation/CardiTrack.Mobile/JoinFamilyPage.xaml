@@ -31,7 +31,7 @@
                 </controls:SquareBorder>
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
-                    <Label Text="Join a family"
+                    <Label Text="Join a Family"
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label Text="With their Family ID, or the link they sent"

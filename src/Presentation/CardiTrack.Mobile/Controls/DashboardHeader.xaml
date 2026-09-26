@@ -49,8 +49,8 @@
             </VerticalStackLayout>
 
             <Grid Grid.Column="2" VerticalOptions="Start">
-                <!-- The white square every detail header uses for its trailing action
-                     (Member Details, Connected Devices, Medical Information) — HeaderActionSquare, no
+                <!-- The white square every header uses for its trailing action (Member
+                     Details, Connected Devices, the Alerts filter) — HeaderActionSquare, no
                      shadow. This one had its own radius and a drop shadow, so the same slot
                      read differently on the one tab a caregiver sees most. -->
                 <Border x:Name="BellTarget"
@@ -65,7 +65,7 @@
                          crown the way a real one hangs, rather than spinning it about its
                          middle. -->
                     <Image x:Name="BellButton"
-                           Source="icon_bell.svg"
+                           Source="icon_header_bell.svg"
                            WidthRequest="24"
                            HeightRequest="24"
                            AnchorY="0"/>

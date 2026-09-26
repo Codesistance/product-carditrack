@@ -67,7 +67,7 @@ public partial class JournalTimingPage : ContentPage
         {
             var name = Uri.UnescapeDataString(value ?? string.Empty);
             if (!string.IsNullOrWhiteSpace(name))
-                HeaderSubtitle.Text = $"{name}'s CardiJournal";
+                HeaderSubtitle.Text = $"When {name}'s entries are written";
         }
     }
 

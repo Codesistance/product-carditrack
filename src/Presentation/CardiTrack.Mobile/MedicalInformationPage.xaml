@@ -15,10 +15,12 @@
          that long pushed everything under it — the whole Management group — off the bottom of the
          screen for as long as it stayed open. Full-bleed, like every page. -->
 
-    <Grid RowDefinitions="Auto,*">
+    <!-- Top safe area claimed by this layout, not the page (see AlertsPage): the header band is
+         drawn against the status-bar inset; the bottom is released like every other page's. -->
+    <Grid RowDefinitions="Auto,*" SafeAreaEdges="None, Container, None, None">
 
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                 <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
                         MinimumHeightRequest="40"

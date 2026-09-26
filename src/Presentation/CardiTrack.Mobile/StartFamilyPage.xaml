@@ -30,7 +30,7 @@
                 </controls:SquareBorder>
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
-                    <Label Text="Start a family"
+                    <Label Text="Start a Family"
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label Text="Your own, with you running it"

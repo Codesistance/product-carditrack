@@ -53,7 +53,7 @@ public partial class NotificationPreferencesPage : ContentPage
     }
 
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync("..");
+        await this.GoBackAsync(AppShell.SettingsRoute);
 
     private async void OnRetryClicked(object? sender, EventArgs e) => await LoadAsync();
 

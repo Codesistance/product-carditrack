@@ -693,6 +693,10 @@ public partial class ExportHealthDataPage : ContentPage
     {
         _page?.Cancel();
         _generation?.Cancel();
-        await Shell.Current.GoToAsync("..");
+        // Two doors lead here: Settings, which names no member, and Member Detail, which does.
+        // With nothing behind the page, the arrow falls back to whichever one this arrival used.
+        await this.GoBackAsync(_route.IsMissing
+            ? AppShell.SettingsRoute
+            : $"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
     }
 }
