@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**143 icons**, **40 distinct colours**, **7 referenced nowhere**.
+**151 icons**, **40 distinct colours**, **8 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -23,18 +23,18 @@ lists every colour rather than only the common ones: a colour used once still pi
 
 | Colour | Icons | Also known as |
 | --- | --- | --- |
-| `#FFFFFF` | 43 | White |
+| `#FFFFFF` | 44 | White |
 | `#153D66` | 28 | icons.json brand outer stroke |
 | `#3175B9` | 22 | icons.json brand and activity fill, steel blue |
+| `#174E86` | 21 | PrimaryDark |
 | `#939DAA` | 17 | MutedText |
-| `#174E86` | 16 | PrimaryDark |
 | `#C42F2F` | 15 | DangerRed |
 | `#1884DC` | 12 | Primary |
 | `#1F8A72` | 9 | MetricTemperatureInk / DatasetBodyText |
 | `#36C09B` | 8 | StatusGreen |
+| `#10659F` | 7 | DatasetActivityText |
 | `#727272` | 7 | Body / Body2 ink |
 | `#FBE4E4` | 7 | derived: StatusRed at 14% over white |
-| `#10659F` | 5 | DatasetActivityText |
 | `#D9DCE1` | 5 | — |
 | `#B45309` | 4 | severity orange ink |
 | `#123A5F` | 2 | — |
@@ -73,6 +73,7 @@ icon can be staged ahead of a screen that has not shipped.
 - `icon_btn_refresh.svg`
 - `icon_caret_down.svg`
 - `icon_caution_danger.svg`
+- `icon_history_white.svg`
 - `icon_power_red.svg`
 - `icon_status_critical.svg`
 - `icon_status_urgent.svg`
@@ -176,7 +177,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_battery_full.svg` | `#1F8A72` | DeviceCard |
 | `icon_battery_half.svg` | `#1F8A72` | DeviceCard |
 | `icon_battery_low.svg` | `#C42F2F` | DeviceCard |
-| `icon_bell.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, DashboardHeader, DashboardPage |
+| `icon_bell.svg` | `#3175B9` `#153D66` | DashboardPage |
 | `icon_bell_cog.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
@@ -184,18 +185,21 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_btn_close.svg` | `#FFFFFF` | ActionLook, AlertRespondPage, AppPasswordPage, ContactEditPopupPage, MedicalEntryEditPopupPage, MedicalSortPopupPage, QuestionCard |
 | `icon_btn_connect.svg` | `#FFFFFF` | ActionLook, DeviceManagementPage, NoDevicePopupPage |
 | `icon_btn_connect_tint.svg` | `#10659F` | DeviceCard |
-| `icon_btn_delete.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, MetricAlarmEditPage |
+| `icon_btn_copy_tint.svg` | `#10659F` | FamilyPage |
+| `icon_btn_delete.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, MemberChatPage, MetricAlarmEditPage |
 | `icon_btn_delete_tint.svg` | `#C42F2F` | DeviceCard |
 | `icon_btn_edit.svg` | `#FFFFFF` | ActionLook |
 | `icon_btn_history.svg` | `#FFFFFF` | **nothing** |
 | `icon_btn_history_tint.svg` | `#10659F` | ChatSuggestionGlyph, DeviceCard |
 | `icon_btn_later.svg` | `#FFFFFF` | ActionLook, NoDevicePopupPage |
 | `icon_btn_plus.svg` | `#FFFFFF` | ActionLook, MedicalInformationPage |
+| `icon_btn_plus_tint.svg` | `#10659F` | ConnectionSuccessPage, MemberChatPage |
 | `icon_btn_refresh.svg` | `#FFFFFF` | **nothing** |
 | `icon_btn_refresh_tint.svg` | `#10659F` | DeviceCard |
 | `icon_btn_reset.svg` | `#FFFFFF` | FilterSheetPage |
 | `icon_btn_resolve.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, AlertRespondPage, FilterSheetPage, MedicalInformationPage |
 | `icon_btn_save.svg` | `#FFFFFF` | ActionLook, ContactEditPopupPage, MedicalEntryEditPopupPage, MedicalSortPopupPage, QuestionCard |
+| `icon_btn_share.svg` | `#FFFFFF` | FamilyPage |
 | `icon_btn_sort.svg` | `#5A3300` | MedicalInformationPage |
 | `icon_btn_undo.svg` | `#5A3300` | ActionLook |
 | `icon_btn_undo_tint.svg` | `#10659F` | AlertDetailPage |
@@ -224,9 +228,14 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_filter_white.svg` | `#FFFFFF` `#174E86` | AlertsPage, JournalPage |
 | `icon_format_csv.svg` | `#E4F6F2` `#1F8A72` | ExportFormatPopupPage |
 | `icon_format_pdf.svg` | `#FBE4E4` `#C42F2F` | ExportFormatPopupPage |
+| `icon_header_bell.svg` | `#174E86` | CardiMemberDetailPage, DashboardHeader |
+| `icon_header_edit.svg` | `#174E86` | CardiMemberDetailPage |
+| `icon_header_history.svg` | `#174E86` | MemberChatPage |
+| `icon_header_plus.svg` | `#174E86` | DeviceManagementPage |
+| `icon_header_save.svg` | `#174E86` | EditCardiMemberPage |
 | `icon_help.svg` | `#3175B9` `#153D66` `#FFFFFF` | DeviceManagementPage |
-| `icon_history_white.svg` | `#FFFFFF` | MemberChatPage |
-| `icon_home_white.svg` | `#FFFFFF` | DashboardHeader, WizardHeader |
+| `icon_history_white.svg` | `#FFFFFF` | **nothing** |
+| `icon_home_white.svg` | `#FFFFFF` | AccountSetupPage, DashboardHeader, WizardHeader |
 | `icon_ledger_allergy.svg` | `#FBE4E4` `#C42F2F` | MedicalLedgerLines |
 | `icon_ledger_condition.svg` | `#153D66` | MedicalLedgerLines |
 | `icon_ledger_medication.svg` | `#3175B9` `#153D66` `#FFFFFF` | MedicalLedgerLines |
@@ -242,7 +251,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_person_remove.svg` | `#FBE4E4` `#C42F2F` | CardiMemberDetailPage, FamilyPage |
 | `icon_pin.svg` | `#939DAA` | StatusHeroCard |
 | `icon_pin_on.svg` | `#3175B9` `#153D66` | StatusHeroCard |
-| `icon_plus.svg` | `#153D66` | ConnectionSuccessPage, DeviceManagementPage, FamilyPage |
+| `icon_plus.svg` | `#153D66` | FamilyPage |
 | `icon_power_red.svg` | `#C42F2F` | **nothing** |
 | `icon_power_white.svg` | `#FFFFFF` | DashboardPage, SettingsPage |
 | `icon_refresh.svg` | `#939DAA` | AlertsPage, ConnectionSuccessPage |
