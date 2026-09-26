@@ -106,6 +106,33 @@ public class MemberChatService : IMemberChatService
         """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
     /// <summary>
+    /// <see cref="CasualSteerInstructions"/> for a conversation that already has turns: no
+    /// greeting and no list of what the chat can do, because the caregiver is already using it.
+    /// </summary>
+    /// <remarks>
+    /// Added 2026-09-26. A thanks, an acknowledgement or a bare yes part-way through a
+    /// conversation drew the new-conversation welcome — "Hi there! I can help with…" after an
+    /// answer about their sleep — which read as the chat forgetting what it had just said. The
+    /// steer still sees no history (see <see cref="SteerAsync"/>); the only thing it learns is
+    /// that there was some.
+    /// </remarks>
+    private const string CasualSteerMidConversationInstructions = """
+        A family caregiver is part-way through a conversation inside a health-monitoring app that
+        answers questions about their family member's readings, alerts, sleep and activity. The
+        message below is conversational rather than a question. Reply the way a kind, easy-going
+        nurse who knows the family would: warmly, in one or two short sentences, matching their
+        tone and answering what they actually said. They are already talking to you, so do not
+        greet them, introduce yourself, or list what you can help with. You have not been shown
+        the earlier conversation, so do not refer to it or claim to be doing anything next. If it
+        fits, end by inviting them to ask about anything else. Write CardiTrackCardiMember exactly
+        as written if you name the member; it stands in for their real name. Never scold, never
+        apologise at length.
+
+        Respond with:
+        - reply: the message to show the caregiver.
+        """ + MedicalPromptBlocks.ChatMessageGuardrail;
+
+    /// <summary>
     /// The steer an off-topic request gets: acknowledge briefly, redirect kindly — a friendly
     /// bubble, not the hard 400 this path used to raise. The tone block's rule holds: never
     /// suggest the caregiver did something wrong.
@@ -466,11 +493,17 @@ public class MemberChatService : IMemberChatService
     /// Loosened on 2026-09-25, when the owner found the replies mechanical: one or two sentences
     /// that stated figures read as a record being printed, not a person talking. The voice asked
     /// for is warm and conversational held to a calm, professional register — a kind nurse who
-    /// knows the family — in two to four sentences, with an optional closing offer bounded to what
-    /// the chat can actually do next (another reading, another stretch of time). Answer-first and
-    /// every guardrail above are unchanged; this moves the register, not the facts. Rules only,
-    /// no sample sentences, for the reason <see cref="MedicalPromptBlocks.CaregiverRegister"/>
-    /// gives.
+    /// knows the family — in two to four sentences. Answer-first and every guardrail above are
+    /// unchanged; this moves the register, not the facts. Rules only, no sample sentences, for the
+    /// reason <see cref="MedicalPromptBlocks.CaregiverRegister"/> gives.
+    /// </para>
+    /// <para>
+    /// That loosening also allowed one closing offer ("shall I look at their heart rate too?"),
+    /// removed on 2026-09-26 because nothing can take it up. A reply that asks a question makes
+    /// "yes" the natural answer, but a bare yes carries no topic: the router sees the caregiver's
+    /// questions and never the replies, so it read the yes as small talk and the caregiver got a
+    /// greeting instead of the reading they had just agreed to. Until an offer can be held on the
+    /// turn the way a pending alert change is, the reply ends on the answer.
     /// </para>
     /// </remarks>
     private const string RewriteInstructions =
@@ -483,9 +516,8 @@ public class MemberChatService : IMemberChatService
         Sound like a person, not a report: the way a kind, easy-going nurse who knows the family
         would talk to them — conversational, gentle and measured, in everyday words. Vary how
         sentences begin, join related facts the way people do when they talk, and never read
-        figures out as a list. When it fits naturally, close with one short offer, as a question,
-        to look at another of their readings or a different stretch of time; offer nothing else,
-        and leave it out when the answer is already complete.
+        figures out as a list. End on the answer itself: no closing question, and no offer to look
+        at something else — the caregiver asks for the next thing in their own words.
 
         The read is written by a clinical model for you, not for the family, and may name a
         mechanism or a condition the readings are consistent with.
@@ -828,7 +860,9 @@ public class MemberChatService : IMemberChatService
                 { IsAskingForAdvice: true } =>
                     await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
                 { IsCasualOrSocial: true } or { IsOffTopic: true } =>
-                    await SteerAsync(forModel, triage.Usage, triage.Result.IsCasualOrSocial, MemberVoice.For(member), ct),
+                    await SteerAsync(
+                        forModel, triage.Usage, triage.Result.IsCasualOrSocial, conversationUnderway: history.Full is not null,
+                        MemberVoice.For(member), ct),
                 _ => await AnalyseAsync(forModel, triage.Usage, cardiMemberId, member, history, utcNow, progress, ct),
             };
 
@@ -1476,9 +1510,11 @@ public class MemberChatService : IMemberChatService
                     route.AsksForSpecifics, triageUsage, member,
                     advise ?? await PickAdviseAsync(route.AdviseTopic, cardiMemberId, member, utcNow), utcNow),
             MemberChatWorkflow.SteerCasual =>
-                await SteerAsync(flattened, triageUsage, casual: true, MemberVoice.For(member), ct),
+                await SteerAsync(
+                    flattened, triageUsage, casual: true, conversationUnderway: history.Full is not null, MemberVoice.For(member), ct),
             MemberChatWorkflow.SteerOffTopic =>
-                await SteerAsync(flattened, triageUsage, casual: false, MemberVoice.For(member), ct),
+                await SteerAsync(
+                    flattened, triageUsage, casual: false, conversationUnderway: history.Full is not null, MemberVoice.For(member), ct),
             MemberChatWorkflow.Inference =>
                 await InferAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, progress, ct),
             MemberChatWorkflow.Investigation =>
@@ -1612,15 +1648,21 @@ public class MemberChatService : IMemberChatService
     /// (<see cref="BuildHistoryBlockAsync"/>), so this is not about the name — it is that sending
     /// a caregiver's prior clinical exchanges to answer "hi" widens what the slot sees for no
     /// gain, which is the opposite of the minimisation DPIA row A20 records for it.
+    /// <paramref name="conversationUnderway"/> is the one fact about the history it does get: a
+    /// yes/no that carries none of its content, so a casual message part-way through a
+    /// conversation is not welcomed as if it opened one.
     /// </remarks>
     private async Task<MemberChatWorkflowResult> SteerAsync(
         string flattened,
         AiUsage triageUsage,
         bool casual,
+        bool conversationUnderway,
         MemberVoice voice,
         CancellationToken ct)
     {
-        var instructions = casual ? CasualSteerInstructions : OffTopicSteerInstructions;
+        var instructions = !casual ? OffTopicSteerInstructions
+            : conversationUnderway ? CasualSteerMidConversationInstructions
+            : CasualSteerInstructions;
 
         string reply;
         AiUsage? steerUsage = null;

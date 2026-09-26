@@ -209,6 +209,78 @@ public class MemberChatRoutedDispatchTests
     }
 
     /// <summary>
+    /// A casual message that opens a conversation gets the welcome — what the chat can do and an
+    /// invitation to ask.
+    /// </summary>
+    [Fact]
+    public async Task ACasualMessage_OnAnEmptySession_IsWelcomed()
+    {
+        RouterAnswers(MemberChatWorkflow.SteerCasual);
+        var prompt = CaptureSteerPrompt();
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "hello!");
+
+        Assert.StartsWith(MemberChatService.HandlerBriefs[MemberChatWorkflow.SteerCasual], prompt());
+    }
+
+    /// <summary>
+    /// Part-way through a conversation the same message is not welcomed again: a thanks or a bare
+    /// yes after an answer drew "Hi there! I can help with…" (2026-09-26). The steer learns only
+    /// that there were turns — none of their content reaches it.
+    /// </summary>
+    [Fact]
+    public async Task ACasualMessage_MidConversation_IsNotWelcomedAgain_AndSeesNoHistory()
+    {
+        var session = new MemberChatSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddMinutes(-5),
+            LastTurnAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        };
+        session.Turns.Add(new MemberChatTurn
+        {
+            SessionId = session.Id,
+            Role = ChatTurnRole.User,
+            Content = PromptContextFactory.Encryption.Encrypt("How has he slept this week?"),
+            CreatedAtUtc = DateTime.UtcNow.AddMinutes(-2),
+        });
+        session.Turns.Add(new MemberChatTurn
+        {
+            SessionId = session.Id,
+            Role = ChatTurnRole.Assistant,
+            Workflow = MemberChatWorkflow.Analysis,
+            Content = PromptContextFactory.Encryption.Encrypt("Sleep has been steady this week."),
+            CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        });
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(session);
+        _sessions.GetByIdWithTurnsAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+        RouterAnswers(MemberChatWorkflow.SteerCasual);
+        var prompt = CaptureSteerPrompt();
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "thanks");
+
+        Assert.DoesNotContain(MemberChatService.HandlerBriefs[MemberChatWorkflow.SteerCasual], prompt());
+        Assert.Contains("part-way through a conversation", prompt());
+        Assert.DoesNotContain("slept this week", prompt());
+        Assert.DoesNotContain("Sleep has been steady", prompt());
+    }
+
+    /// <summary>Answers every steer call and hands back the prompt the last one was sent.</summary>
+    private Func<string> CaptureSteerPrompt()
+    {
+        string? captured = null;
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Do<string>(p => captured = p), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "Glad to help." },
+                new AiUsage()));
+        return () => captured ?? throw new Xunit.Sdk.XunitException("No steer call was made.");
+    }
+
+    /// <summary>
     /// An inference reply closes by quoting the authorities the verdict drew on — the registry's
     /// own citation lines, keyed by what the clinical read named. The model picks WHICH; the
     /// registry writes WHAT, so an invented authority never reaches the caregiver.
