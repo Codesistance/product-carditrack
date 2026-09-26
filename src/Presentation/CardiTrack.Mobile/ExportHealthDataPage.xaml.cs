@@ -330,6 +330,7 @@ public partial class ExportHealthDataPage : ContentPage
     private void UpdateEstimate()
     {
         var days = (SelectedTo - SelectedFrom).Days + 1;
+        ExportButton.Detail = null;
         var anySection = MetricsCheck.IsChecked || AlertsCheck.IsChecked || DevicesCheck.IsChecked
                          || JournalsCheck.IsChecked || NoticesCheck.IsChecked
                          || (TrendsCheck.IsChecked && _selectedFormat == ReportFormat.Pdf);
@@ -370,8 +371,16 @@ public partial class ExportHealthDataPage : ContentPage
             return;
         }
 
-        EstimateLabel.Text = $"Estimated size: {ExportSizeEstimate.Describe(days, _selectedFormat)}";
+        EstimateLabel.Text = string.Empty;
+        ExportButton.Detail = ExportSizeEstimate.Describe(days, _selectedFormat);
         ExportButton.IsEnabled = true;
+    }
+
+    /// <summary>Hides the note line while it is empty, so no blank gap sits over the button.</summary>
+    private void OnEstimateLabelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == Label.TextProperty.PropertyName)
+            EstimateLabel.IsVisible = !string.IsNullOrEmpty(EstimateLabel.Text);
     }
 
     // ── Generating ──────────────────────────────────────────────────────────────

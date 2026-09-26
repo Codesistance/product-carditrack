@@ -22,11 +22,22 @@
                 <Image x:Name="Glyph"
                        VerticalOptions="Center"
                        IsVisible="False"/>
-                <Label x:Name="Caption"
-                       FontFamily="QuicksandSemiBold"
-                       VerticalOptions="Center"
-                       HorizontalTextAlignment="Center"
-                       LineBreakMode="TailTruncation"/>
+                <!-- The caption, and under it an optional detail line (Detail) — a fact about
+                     what the tap will do, such as an export's size, said on the button itself. -->
+                <VerticalStackLayout VerticalOptions="Center" Spacing="0">
+                    <Label x:Name="Caption"
+                           FontFamily="QuicksandSemiBold"
+                           HorizontalOptions="Center"
+                           HorizontalTextAlignment="Center"
+                           LineBreakMode="TailTruncation"/>
+                    <Label x:Name="DetailCaption"
+                           FontFamily="Quicksand"
+                           Opacity="0.85"
+                           HorizontalOptions="Center"
+                           HorizontalTextAlignment="Center"
+                           LineBreakMode="TailTruncation"
+                           IsVisible="False"/>
+                </VerticalStackLayout>
             </HorizontalStackLayout>
         </Border>
     </Grid>

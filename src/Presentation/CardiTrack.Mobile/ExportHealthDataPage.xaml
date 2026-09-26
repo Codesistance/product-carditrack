@@ -179,9 +179,14 @@
                         </VerticalStackLayout>
                     </Border>
 
+                    <!-- Why the button cannot act yet, when it cannot. The size estimate is not
+                         said here any more: it rides on the button itself (AppButton.Detail),
+                         where it is read at the moment of tapping. -->
                     <Label x:Name="EstimateLabel"
                            Style="{StaticResource Body2}"
-                           HorizontalTextAlignment="Center"/>
+                           HorizontalTextAlignment="Center"
+                           IsVisible="False"
+                           PropertyChanged="OnEstimateLabelPropertyChanged"/>
 
                     <controls:AppButton x:Name="ExportButton"
                                         Text="Export Data"
