@@ -63,6 +63,10 @@ public partial class AppButton : ContentView
         nameof(Size), typeof(AppButtonSize), typeof(AppButton), AppButtonSize.M,
         propertyChanged: (b, _, _) => ((AppButton)b).ApplyLook());
 
+    public static readonly BindableProperty IsDimmedProperty = BindableProperty.Create(
+        nameof(IsDimmed), typeof(bool), typeof(AppButton), false,
+        propertyChanged: (b, _, _) => ((AppButton)b).ApplyOpacity());
+
     public static readonly BindableProperty CommandProperty = BindableProperty.Create(
         nameof(Command), typeof(ICommand), typeof(AppButton));
 
@@ -102,6 +106,17 @@ public partial class AppButton : ContentView
     {
         get => (AppButtonSize)GetValue(SizeProperty);
         set => SetValue(SizeProperty, value);
+    }
+
+    /// <summary>
+    /// Drawn as disabled while staying tappable — for a form's submit button, which looks unready
+    /// until the form is complete but still answers a tap by saying what is missing. A button that
+    /// really cannot act uses <see cref="VisualElement.IsEnabled"/> instead.
+    /// </summary>
+    public bool IsDimmed
+    {
+        get => (bool)GetValue(IsDimmedProperty);
+        set => SetValue(IsDimmedProperty, value);
     }
 
     public ICommand? Command
@@ -188,14 +203,18 @@ public partial class AppButton : ContentView
                 break;
         }
 
-        Fill.Opacity = IsEnabled ? 1 : 0.45;
+        ApplyOpacity();
     }
+
+    private double RestingOpacity => IsEnabled && !IsDimmed ? 1 : 0.45;
+
+    private void ApplyOpacity() => Fill.Opacity = RestingOpacity;
 
     protected override void OnPropertyChanged(string? propertyName = null)
     {
         base.OnPropertyChanged(propertyName);
         if (propertyName == nameof(IsEnabled))
-            Fill.Opacity = IsEnabled ? 1 : 0.45;
+            ApplyOpacity();
     }
 
     private async void OnTapped(object? sender, TappedEventArgs e)
@@ -209,7 +228,7 @@ public partial class AppButton : ContentView
 
         // The press feedback a gesture does not give on its own: a brief dip.
         await Fill.FadeToAsync(0.85, 70);
-        await Fill.FadeToAsync(IsEnabled ? 1 : 0.45, 120);
+        await Fill.FadeToAsync(RestingOpacity, 120);
     }
 
     private static T Resource<T>(string key) =>

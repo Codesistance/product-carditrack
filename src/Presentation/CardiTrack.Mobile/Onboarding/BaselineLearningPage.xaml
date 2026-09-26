@@ -97,11 +97,12 @@
                 <!-- Single exit. The "Invite Family Member First" link that used to sit under
                      this button was removed: family invites (M3-02) do not exist yet, so it
                      only ever reached a "coming soon" dialog. -->
-                <Button Text="Go to Dashboard"
-                        Style="{StaticResource AuthGradientButton}"
-                        HorizontalOptions="Fill"
-                        Margin="0,26,0,0"
-                        Clicked="OnGoToDashboardClicked"/>
+                <controls:AppButton Text="Go to Dashboard"
+                                    HorizontalOptions="Fill"
+                                    Margin="0,26,0,0"
+                                    Clicked="OnGoToDashboardClicked"
+                                    Tone="Primary"
+                                    Size="L"/>
 
             </VerticalStackLayout>
         </ScrollView>

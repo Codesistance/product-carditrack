@@ -48,12 +48,13 @@
                    IsVisible="False"
                    HorizontalTextAlignment="Center"/>
 
-            <Button x:Name="RetryBtn"
-                    Text="Try again"
-                    Style="{StaticResource AuthGradientButton}"
-                    IsVisible="False"
-                    Margin="0,10,0,0"
-                    Clicked="OnRetryClicked"/>
+            <controls:AppButton x:Name="RetryBtn"
+                                Text="Try again"
+                                IsVisible="False"
+                                Margin="0,10,0,0"
+                                Clicked="OnRetryClicked"
+                                Tone="Primary"
+                                Size="L"/>
 
         </VerticalStackLayout>
     </Grid>

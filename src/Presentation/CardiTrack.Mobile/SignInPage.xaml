@@ -95,12 +95,13 @@
                            Margin="0,8,0,0"/>
 
                     <!-- Sign in button -->
-                    <Button x:Name="SignInBtn"
-                            Text="Sign in"
-                            Style="{StaticResource AuthGradientButton}"
-                            HorizontalOptions="Fill"
-                            Margin="0,20,0,0"
-                            Clicked="OnSignInClicked"/>
+                    <controls:AppButton x:Name="SignInBtn"
+                                        Text="Sign in"
+                                        HorizontalOptions="Fill"
+                                        Margin="0,20,0,0"
+                                        Clicked="OnSignInClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
 
                     <!-- Divider -->
                     <Grid ColumnDefinitions="*,Auto,*"

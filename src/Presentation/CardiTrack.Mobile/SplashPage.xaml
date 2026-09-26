@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.SplashPage"
              Shell.NavBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
@@ -95,12 +96,13 @@
                 <!-- This panel is only reached with a live session whose onboarding-status
                      call failed, so the button re-runs startup rather than starting a trial.
                      Same wording as every other error panel in the app. -->
-                <Button Text="Try again"
-                        Style="{StaticResource SecondaryOutlineButton}"
-                        MaximumWidthRequest="332"
-                        HorizontalOptions="Center"
-                        Margin="0,16,0,0"
-                        Clicked="OnRetryClicked" />
+                <controls:AppButton Text="Try again"
+                                    MaximumWidthRequest="332"
+                                    HorizontalOptions="Center"
+                                    Margin="0,16,0,0"
+                                    Clicked="OnRetryClicked"
+                                    Tone="Secondary"
+                                    Size="L"/>
             </VerticalStackLayout>
 
             <!-- Bottom padding -->

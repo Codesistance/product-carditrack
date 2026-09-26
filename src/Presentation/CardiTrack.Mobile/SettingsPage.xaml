@@ -83,13 +83,13 @@
 
                         <VerticalStackLayout x:Name="MutesList" Spacing="8"/>
 
-                        <Button x:Name="ResetMutesBtn"
-                                Text="Show me everything again"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                HeightRequest="42"
-                                HorizontalOptions="Fill"
-                                Margin="0,4,0,0"
-                                Clicked="OnResetMutesClicked"/>
+                        <controls:AppButton x:Name="ResetMutesBtn"
+                                            Text="Show me everything again"
+                                            HorizontalOptions="Fill"
+                                            Margin="0,4,0,0"
+                                            Clicked="OnResetMutesClicked"
+                                            Tone="Secondary"
+                                            Size="M"/>
                     </VerticalStackLayout>
                 </Border>
 
@@ -327,14 +327,14 @@
                      used to wear the neutral outline every "Try again" in the app wears, one
                      card above the deletion box: the only part of leaving that did not look
                      like leaving. -->
-                <Button x:Name="SignOutBtn"
-                        Text="Sign out"
-                        Style="{StaticResource DangerOutlineButton}"
-                        ImageSource="icon_power_red.svg"
-                        ContentLayout="Left,10"
-                        HorizontalOptions="Fill"
-                        Margin="0,12,0,0"
-                        Clicked="OnSignOutClicked"/>
+                <controls:AppButton x:Name="SignOutBtn"
+                                    Text="Sign out"
+                                    Icon="icon_power_white.svg"
+                                    HorizontalOptions="Fill"
+                                    Margin="0,12,0,0"
+                                    Clicked="OnSignOutClicked"
+                                    Tone="Danger"
+                                    Size="L"/>
 
                 <!-- The privacy policy promises erasure within 30 days of a request. No endpoint
                      exists yet, so the card starts the request the way the policy page does — a
@@ -382,16 +382,15 @@
                                              SemanticProperties.Hint="Ticking this turns on the deletion request button"/>
                         <!-- This button is where the danger outline came from; it spelled the
                              two colours out inline before there was a style for them. -->
-                        <Button x:Name="DeleteAccountBtn"
-                                Text="Start deletion request"
-                                Style="{StaticResource DangerOutlineButton}"
-                                FontSize="16"
-                                HeightRequest="46"
-                                IsEnabled="False"
-                                Opacity="0.5"
-                                HorizontalOptions="Fill"
-                                Clicked="OnDeleteAccountClicked"
-                                SemanticProperties.Hint="Asks us to delete your account. Checks your fingerprint or face first, then signs you out. Monitoring stops straight away and you have 30 days to cancel"/>
+                        <controls:AppButton x:Name="DeleteAccountBtn"
+                                            Text="Start deletion request"
+                                            IsEnabled="False"
+                                            Opacity="0.5"
+                                            HorizontalOptions="Fill"
+                                            Clicked="OnDeleteAccountClicked"
+                                            SemanticProperties.Hint="Asks us to delete your account. Checks your fingerprint or face first, then signs you out. Monitoring stops straight away and you have 30 days to cancel"
+                                            Tone="Danger"
+                                            Size="L"/>
                     </VerticalStackLayout>
                 </Border>
 

@@ -78,9 +78,10 @@
                 <Label x:Name="ErrorDetailLabel"
                        Style="{StaticResource Body2}"
                        HorizontalTextAlignment="Center"/>
-                <Button Text="Try again"
-                        Style="{StaticResource SecondaryOutlineButton}"
-                        Clicked="OnRetryClicked"/>
+                <controls:AppButton Text="Try again"
+                                    Clicked="OnRetryClicked"
+                                    Tone="Secondary"
+                                    Size="L"/>
             </VerticalStackLayout>
 
             <WebView x:Name="DocumentView"

@@ -113,11 +113,11 @@
                    IsVisible="False"
                    LineBreakMode="WordWrap"/>
 
-            <Button x:Name="OpenButton"
-                    Style="{StaticResource PrimaryGradientButton}"
-                    HeightRequest="40"
-                    Margin="0,2,0,0"
-                    Clicked="OnOpenClicked"/>
+            <controls:AppButton x:Name="OpenButton"
+                                Margin="0,2,0,0"
+                                Clicked="OnOpenClicked"
+                                Tone="Primary"
+                                Size="M"/>
 
             <!-- Clipped to zero and animated open, the same construction as the pause-duration
                  drop-down: the answer box belongs to the question, so it arrives under it rather

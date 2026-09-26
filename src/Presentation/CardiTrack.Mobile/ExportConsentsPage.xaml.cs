@@ -1,3 +1,4 @@
+using CardiTrack.Mobile.Controls;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Export;
@@ -113,11 +114,11 @@ public partial class ExportConsentsPage : ContentPage
 
     private View BuildActiveRow(ExportConsentHistoryItem item)
     {
-        var stop = new Button
+        var stop = new AppButton
         {
             Text = "Stop",
-            Style = ButtonStyle("SecondaryOutlineButton"),
-            HeightRequest = 42,
+            Tone = AppButtonTone.Secondary,
+            Size = AppButtonSize.M,
             HorizontalOptions = LayoutOptions.Fill,
             Margin = new Thickness(0, 4, 0, 0)
         };

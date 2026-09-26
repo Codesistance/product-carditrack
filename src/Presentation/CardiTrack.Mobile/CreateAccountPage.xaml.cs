@@ -131,8 +131,7 @@ public partial class CreateAccountPage : ContentPage
            && TermsCheck.IsChecked;
 
     private void UpdateCreateButtonState()
-        => CreateBtn.Background = (Brush)App.Current!.Resources[
-            IsFormComplete() ? "GradientButtonBrush" : "GradientButtonLightBrush"];
+        => CreateBtn.IsDimmed = !IsFormComplete();
 
     private static int EvaluatePasswordStrength(string password)
     {

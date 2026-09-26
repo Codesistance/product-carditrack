@@ -86,20 +86,22 @@
                                        HorizontalOptions="Center"
                                        Margin="0,0,0,12"/>
 
-                    <Button x:Name="ContinueBtn"
-                            Text="I've verified — continue"
-                            Style="{StaticResource AuthGradientButton}"
-                            HorizontalOptions="Fill"
-                            SemanticProperties.Hint="Checks whether your email is verified, then continues"
-                            Clicked="OnContinueClicked"/>
+                    <controls:AppButton x:Name="ContinueBtn"
+                                        Text="I've verified — continue"
+                                        HorizontalOptions="Fill"
+                                        SemanticProperties.Hint="Checks whether your email is verified, then continues"
+                                        Clicked="OnContinueClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
 
-                    <Button x:Name="OpenMailBtn"
-                            Text="Open mail app"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            HorizontalOptions="Fill"
-                            Margin="0,12,0,0"
-                            SemanticProperties.Hint="Opens your email app to find the verification link"
-                            Clicked="OnOpenMailClicked"/>
+                    <controls:AppButton x:Name="OpenMailBtn"
+                                        Text="Open mail app"
+                                        HorizontalOptions="Fill"
+                                        Margin="0,12,0,0"
+                                        SemanticProperties.Hint="Opens your email app to find the verification link"
+                                        Clicked="OnOpenMailClicked"
+                                        Tone="Secondary"
+                                        Size="L"/>
 
                     <Label Text="Didn't receive the email?"
                            Style="{StaticResource Body2}"

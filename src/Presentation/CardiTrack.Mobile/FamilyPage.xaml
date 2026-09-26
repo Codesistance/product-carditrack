@@ -91,10 +91,11 @@
                         <Label x:Name="ErrorDetailLabel"
                                Style="{StaticResource Body2}"
                                HorizontalTextAlignment="Center"/>
-                        <Button Text="Try again"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                HorizontalOptions="Center"
-                                Clicked="OnRetryClicked"/>
+                        <controls:AppButton Text="Try again"
+                                            HorizontalOptions="Center"
+                                            Clicked="OnRetryClicked"
+                                            Tone="Secondary"
+                                            Size="L"/>
                     </VerticalStackLayout>
 
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
@@ -116,9 +117,10 @@
                                     <Label x:Name="StartFamilyDetailLabel"
                                            Style="{StaticResource Body2}"
                                            LineBreakMode="WordWrap"/>
-                                    <Button Text="Start a family"
-                                            Style="{StaticResource PrimaryGradientButton}"
-                                            Clicked="OnStartFamilyClicked"/>
+                                    <controls:AppButton Text="Start a family"
+                                                        Clicked="OnStartFamilyClicked"
+                                                        Tone="Primary"
+                                                        Size="L"/>
                                 </VerticalStackLayout>
                             </Border>
 
@@ -137,10 +139,11 @@
                                                Completed="OnJoinCompleted"
                                                SemanticProperties.Description="Family ID or invitation link"/>
                                     </Border>
-                                    <Button x:Name="JoinButton"
-                                            Text="Ask to join"
-                                            Style="{StaticResource SecondaryOutlineButton}"
-                                            Clicked="OnJoinClicked"/>
+                                    <controls:AppButton x:Name="JoinButton"
+                                                        Text="Ask to join"
+                                                        Clicked="OnJoinClicked"
+                                                        Tone="Secondary"
+                                                        Size="L"/>
                                 </VerticalStackLayout>
                             </Border>
                         </VerticalStackLayout>
@@ -230,14 +233,16 @@
                                            CharacterSpacing="2"
                                            SemanticProperties.Description="Your Family ID"/>
                                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                                        <Button x:Name="CopyFamilyIdButton"
-                                                Text="Copy"
-                                                Style="{StaticResource SecondaryOutlineButton}"
-                                                Clicked="OnCopyFamilyIdClicked"/>
-                                        <Button Grid.Column="1"
-                                                Text="Share"
-                                                Style="{StaticResource PrimaryGradientButton}"
-                                                Clicked="OnShareFamilyIdClicked"/>
+                                        <controls:AppButton x:Name="CopyFamilyIdButton"
+                                                            Text="Copy"
+                                                            Clicked="OnCopyFamilyIdClicked"
+                                                            Tone="Secondary"
+                                                            Size="L"/>
+                                        <controls:AppButton Grid.Column="1"
+                                                            Text="Share"
+                                                            Clicked="OnShareFamilyIdClicked"
+                                                            Tone="Primary"
+                                                            Size="L"/>
                                     </Grid>
                                 </VerticalStackLayout>
                             </Border>
@@ -266,11 +271,12 @@
                                 <VerticalStackLayout x:Name="WatchedHost" Spacing="10"/>
                             </VerticalStackLayout>
 
-                            <Button x:Name="LeaveButton"
-                                    Text="Leave this family"
-                                    Style="{StaticResource DangerOutlineButton}"
-                                    Margin="0,6,0,0"
-                                    Clicked="OnLeaveClicked"/>
+                            <controls:AppButton x:Name="LeaveButton"
+                                                Text="Leave this family"
+                                                Margin="0,6,0,0"
+                                                Clicked="OnLeaveClicked"
+                                                Tone="Danger"
+                                                Size="L"/>
                         </VerticalStackLayout>
 
                     </VerticalStackLayout>

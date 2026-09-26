@@ -310,9 +310,10 @@
                                        TextColor="{StaticResource BodyText}"/>
                             </VerticalStackLayout>
                         </Border>
-                        <Button Text="Try again"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                Clicked="OnRetryClicked"/>
+                        <controls:AppButton Text="Try again"
+                                            Clicked="OnRetryClicked"
+                                            Tone="Secondary"
+                                            Size="L"/>
                     </VerticalStackLayout>
 
                     <VerticalStackLayout x:Name="ReviewsHost" Spacing="14" IsVisible="False"/>

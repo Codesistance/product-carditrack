@@ -101,11 +101,11 @@
                            LineBreakMode="WordWrap"/>
                 </Border>
 
-                <Button x:Name="ExportBtn"
-                        Text="Export"
-                        Style="{StaticResource PrimaryGradientButton}"
-                        Padding="12,0"
-                        Clicked="OnExportClicked"/>
+                <controls:AppButton x:Name="ExportBtn"
+                                    Text="Export"
+                                    Clicked="OnExportClicked"
+                                    Tone="Primary"
+                                    Size="L"/>
             </VerticalStackLayout>
         </Border>
     </Grid>

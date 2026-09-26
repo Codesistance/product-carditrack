@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.FamilySwitcherPage"
              BackgroundColor="Transparent">
 
@@ -63,13 +64,15 @@
                      identical outlines read as two equal unknowns where one is the answer for
                      most people. -->
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,2,0,4">
-                    <Button Text="Start a family"
-                            Style="{StaticResource PrimaryGradientButton}"
-                            Clicked="OnStartFamilyClicked"/>
-                    <Button Grid.Column="1"
-                            Text="Join with an ID"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            Clicked="OnJoinFamilyClicked"/>
+                    <controls:AppButton Text="Start a family"
+                                        Clicked="OnStartFamilyClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
+                    <controls:AppButton Grid.Column="1"
+                                        Text="Join with an ID"
+                                        Clicked="OnJoinFamilyClicked"
+                                        Tone="Secondary"
+                                        Size="L"/>
                 </Grid>
 
                 <Button Text="Close"

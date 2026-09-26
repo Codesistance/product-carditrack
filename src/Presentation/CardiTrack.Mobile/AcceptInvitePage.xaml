@@ -71,10 +71,11 @@
                                    LineBreakMode="WordWrap"/>
                         </VerticalStackLayout>
                     </Border>
-                    <Button x:Name="GenericButton"
-                            Text="Sign in to see it"
-                            Style="{StaticResource PrimaryGradientButton}"
-                            Clicked="OnGenericButtonClicked"/>
+                    <controls:AppButton x:Name="GenericButton"
+                                        Text="Sign in to see it"
+                                        Clicked="OnGenericButtonClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
                 </VerticalStackLayout>
 
                 <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
@@ -162,16 +163,18 @@
                     <!-- AuthGradientButton, the one gradient style with a disabled state: this
                          button starts disabled by design (D-8 — the question is not optional),
                          and a full-strength button that does not respond reads as a fault. -->
-                    <Button x:Name="AcceptButton"
-                            Text="Accept"
-                            Style="{StaticResource AuthGradientButton}"
-                            IsEnabled="False"
-                            Clicked="OnAcceptClicked"/>
+                    <controls:AppButton x:Name="AcceptButton"
+                                        Text="Accept"
+                                        IsEnabled="False"
+                                        Clicked="OnAcceptClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
 
-                    <Button x:Name="DeclineButton"
-                            Text="No thanks"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            Clicked="OnDeclineClicked"/>
+                    <controls:AppButton x:Name="DeclineButton"
+                                        Text="No thanks"
+                                        Clicked="OnDeclineClicked"
+                                        Tone="Secondary"
+                                        Size="L"/>
                 </VerticalStackLayout>
             </Grid>
         </ScrollView>

@@ -208,12 +208,13 @@
                     </controls:CheckField>
 
                     <!-- Create Account button -->
-                    <Button x:Name="CreateBtn"
-                            Text="Create Account"
-                            Style="{StaticResource AuthGradientButton}"
-                            HorizontalOptions="Fill"
-                            Margin="0,16,0,0"
-                            Clicked="OnCreateAccountClicked"/>
+                    <controls:AppButton x:Name="CreateBtn"
+                                        Text="Create Account"
+                                        HorizontalOptions="Fill"
+                                        Margin="0,16,0,0"
+                                        Clicked="OnCreateAccountClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
 
                     <!-- Divider -->
                     <Grid ColumnDefinitions="*,Auto,*"

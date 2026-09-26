@@ -65,10 +65,11 @@
                         <Label x:Name="ErrorDetailLabel"
                                Style="{StaticResource Body2}"
                                HorizontalTextAlignment="Center"/>
-                        <Button Text="Try again"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                HorizontalOptions="Center"
-                                Clicked="OnRetryClicked"/>
+                        <controls:AppButton Text="Try again"
+                                            HorizontalOptions="Center"
+                                            Clicked="OnRetryClicked"
+                                            Tone="Secondary"
+                                            Size="L"/>
                     </VerticalStackLayout>
 
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
@@ -97,14 +98,16 @@
                                        Style="{StaticResource Caption}"
                                        LineBreakMode="WordWrap"/>
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                                    <Button Text="Cancel"
-                                            Style="{StaticResource SecondaryOutlineButton}"
-                                            Clicked="OnComposerCancelClicked"/>
-                                    <Button x:Name="MakeLinkButton"
-                                            Grid.Column="1"
-                                            Text="Make the link"
-                                            Style="{StaticResource AuthGradientButton}"
-                                            Clicked="OnMakeLinkClicked"/>
+                                    <controls:AppButton Text="Cancel"
+                                                        Clicked="OnComposerCancelClicked"
+                                                        Tone="Secondary"
+                                                        Size="L"/>
+                                    <controls:AppButton x:Name="MakeLinkButton"
+                                                        Grid.Column="1"
+                                                        Text="Make the link"
+                                                        Clicked="OnMakeLinkClicked"
+                                                        Tone="Primary"
+                                                        Size="L"/>
                                 </Grid>
                             </VerticalStackLayout>
                         </Border>
@@ -134,14 +137,16 @@
                                        HorizontalOptions="Center"
                                        SemanticProperties.Description="A QR code carrying the invitation link"/>
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                                    <Button x:Name="CopyLinkButton"
-                                            Text="Copy link"
-                                            Style="{StaticResource SecondaryOutlineButton}"
-                                            Clicked="OnCopyLinkClicked"/>
-                                    <Button Grid.Column="1"
-                                            Text="Share"
-                                            Style="{StaticResource PrimaryGradientButton}"
-                                            Clicked="OnShareLinkClicked"/>
+                                    <controls:AppButton x:Name="CopyLinkButton"
+                                                        Text="Copy link"
+                                                        Clicked="OnCopyLinkClicked"
+                                                        Tone="Secondary"
+                                                        Size="L"/>
+                                    <controls:AppButton Grid.Column="1"
+                                                        Text="Share"
+                                                        Clicked="OnShareLinkClicked"
+                                                        Tone="Primary"
+                                                        Size="L"/>
                                 </Grid>
                             </VerticalStackLayout>
                         </Border>
@@ -180,10 +185,11 @@
                              Padding="20,10,20,16"
                              IsVisible="False"
                              BackgroundColor="{StaticResource PageGround}">
-            <Button x:Name="InviteButton"
-                    Text="Invite somebody"
-                    Style="{StaticResource PrimaryGradientButton}"
-                    Clicked="OnInviteClicked"/>
+            <controls:AppButton x:Name="InviteButton"
+                                Text="Invite somebody"
+                                Clicked="OnInviteClicked"
+                                Tone="Primary"
+                                Size="L"/>
         </VerticalStackLayout>
     </Grid>
 </ContentPage>

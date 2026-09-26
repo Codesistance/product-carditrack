@@ -113,12 +113,13 @@
                     </HorizontalStackLayout>
                 </Border>
 
-                <Button x:Name="ContinueBtn"
-                        Text="Continue"
-                        Style="{StaticResource AuthGradientButton}"
-                        HorizontalOptions="Fill"
-                        Margin="0,14,0,0"
-                        Clicked="OnContinueClicked"/>
+                <controls:AppButton x:Name="ContinueBtn"
+                                    Text="Continue"
+                                    HorizontalOptions="Fill"
+                                    Margin="0,14,0,0"
+                                    Clicked="OnContinueClicked"
+                                    Tone="Primary"
+                                    Size="L"/>
 
                 <Label Text="You can sync multiple devices to get a more accurate picture of their health."
                        Style="{StaticResource Body2}"

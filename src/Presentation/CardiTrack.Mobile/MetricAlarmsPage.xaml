@@ -90,10 +90,11 @@
                         </Border>
                     </VerticalStackLayout>
 
-                    <Button x:Name="AddButton"
-                            Text="Add a custom alert"
-                            Style="{StaticResource PrimaryGradientButton}"
-                            Clicked="OnAddTapped"/>
+                    <controls:AppButton x:Name="AddButton"
+                                        Text="Add a custom alert"
+                                        Clicked="OnAddTapped"
+                                        Tone="Primary"
+                                        Size="L"/>
                 </VerticalStackLayout>
 
                 <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
@@ -105,11 +106,12 @@
                             <!-- This page has no periodic tick and nothing to pull on, so
                                  without this a first load that failed was the screen until the
                                  caregiver backed out of it. -->
-                            <Button Text="Try again"
-                                    Style="{StaticResource SecondaryOutlineButton}"
-                                    HorizontalOptions="Start"
-                                    Margin="0,4,0,0"
-                                    Clicked="OnRetryClicked"/>
+                            <controls:AppButton Text="Try again"
+                                                HorizontalOptions="Start"
+                                                Margin="0,4,0,0"
+                                                Clicked="OnRetryClicked"
+                                                Tone="Secondary"
+                                                Size="L"/>
                         </VerticalStackLayout>
                     </Border>
                 </VerticalStackLayout>

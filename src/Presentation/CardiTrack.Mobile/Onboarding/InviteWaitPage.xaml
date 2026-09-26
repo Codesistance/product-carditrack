@@ -139,13 +139,14 @@
                                HorizontalTextAlignment="Center"
                                Margin="0,16,0,0"/>
 
-                        <Button x:Name="ResendBtn"
-                                Text="Send again"
-                                Style="{StaticResource AuthGradientButton}"
-                                HorizontalOptions="Fill"
-                                IsVisible="False"
-                                Margin="0,24,0,0"
-                                Clicked="OnResendClicked"/>
+                        <controls:AppButton x:Name="ResendBtn"
+                                            Text="Send again"
+                                            HorizontalOptions="Fill"
+                                            IsVisible="False"
+                                            Margin="0,24,0,0"
+                                            Clicked="OnResendClicked"
+                                            Tone="Primary"
+                                            Size="L"/>
 
                         <Label x:Name="CancelLink"
                                Text="Cancel"

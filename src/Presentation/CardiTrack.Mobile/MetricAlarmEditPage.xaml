@@ -193,13 +193,13 @@
                     <!-- The same removal the alert detail screen offers as a red row with this
                          trash: one action, one look, whichever screen it is reached from. Here
                          it wore the neutral outline that "Try again" wears. -->
-                    <Button x:Name="DeleteButton"
-                            Text="Remove this alert"
-                            Style="{StaticResource DangerOutlineButton}"
-                            ImageSource="icon_trash.svg"
-                            ContentLayout="Left,10"
-                            IsVisible="False"
-                            Clicked="OnDeleteTapped"/>
+                    <controls:AppButton x:Name="DeleteButton"
+                                        Text="Remove this alert"
+                                        Icon="icon_btn_delete.svg"
+                                        IsVisible="False"
+                                        Clicked="OnDeleteTapped"
+                                        Tone="Danger"
+                                        Size="L"/>
                 </VerticalStackLayout>
 
                 <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
@@ -228,12 +228,13 @@
                    Margin="20,8,20,0"
                    IsVisible="False"/>
 
-            <Button x:Name="SaveButton"
-                    Margin="20,0,20,20"
-                    Text="Save alert"
-                    Style="{StaticResource PrimaryGradientButton}"
-                    IsVisible="False"
-                    Clicked="OnSaveTapped"/>
+            <controls:AppButton x:Name="SaveButton"
+                                Margin="20,0,20,20"
+                                Text="Save alert"
+                                IsVisible="False"
+                                Clicked="OnSaveTapped"
+                                Tone="Primary"
+                                Size="L"/>
         </VerticalStackLayout>
     </Grid>
 </ContentPage>

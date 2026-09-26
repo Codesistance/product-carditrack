@@ -161,8 +161,7 @@ public partial class SignInPage : ContentPage
     {
         var complete = !string.IsNullOrWhiteSpace(EmailEntry.Text) && EmailEntry.Text.Contains('@')
                        && !string.IsNullOrWhiteSpace(PasswordEntry.Text);
-        SignInBtn.Background = (Brush)App.Current!.Resources[
-            complete ? "GradientButtonBrush" : "GradientButtonLightBrush"];
+        SignInBtn.IsDimmed = !complete;
     }
 
     private void ShowError(string message)

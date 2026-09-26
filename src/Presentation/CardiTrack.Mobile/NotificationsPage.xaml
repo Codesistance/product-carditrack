@@ -114,10 +114,10 @@
                             <Label x:Name="ErrorDetailLabel"
                                    Style="{StaticResource Body2}"
                                    HorizontalTextAlignment="Center"/>
-                            <Button Text="Try again"
-                                    Style="{StaticResource PrimaryGradientButton}"
-                                    HeightRequest="42"
-                                    Clicked="OnRetryClicked"/>
+                            <controls:AppButton Text="Try again"
+                                                Clicked="OnRetryClicked"
+                                                Tone="Primary"
+                                                Size="M"/>
                         </VerticalStackLayout>
                     </Border>
                 </Grid>

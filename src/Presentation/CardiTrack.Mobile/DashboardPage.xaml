@@ -100,10 +100,11 @@
                                Style="{StaticResource Body2}"
                                TextColor="{StaticResource BodyText}"
                                HorizontalTextAlignment="Center"/>
-                        <Button Text="Try again"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                HorizontalOptions="Center"
-                                Clicked="OnRefreshClicked"/>
+                        <controls:AppButton Text="Try again"
+                                            HorizontalOptions="Center"
+                                            Clicked="OnRefreshClicked"
+                                            Tone="Secondary"
+                                            Size="L"/>
                     </VerticalStackLayout>
 
                     <!-- ── No CardiMember yet ── -->
@@ -118,10 +119,11 @@
                                Style="{StaticResource Body2}"
                                TextColor="{StaticResource BodyText}"
                                HorizontalTextAlignment="Center"/>
-                        <Button Text="Add CardiMember"
-                                Style="{StaticResource AuthGradientButton}"
-                                HorizontalOptions="Center"
-                                Clicked="OnAddMemberClicked"/>
+                        <controls:AppButton Text="Add CardiMember"
+                                            HorizontalOptions="Center"
+                                            Clicked="OnAddMemberClicked"
+                                            Tone="Primary"
+                                            Size="L"/>
                     </VerticalStackLayout>
 
                     <!-- ── Loaded content ── -->

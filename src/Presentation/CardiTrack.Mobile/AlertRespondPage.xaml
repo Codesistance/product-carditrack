@@ -62,10 +62,11 @@
                     <Label x:Name="ErrorDetailLabel"
                            Style="{StaticResource Body2}"
                            HorizontalTextAlignment="Center"/>
-                    <Button Text="Try again"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            HorizontalOptions="Center"
-                            Clicked="OnRetryClicked"/>
+                    <controls:AppButton Text="Try again"
+                                        HorizontalOptions="Center"
+                                        Clicked="OnRetryClicked"
+                                        Tone="Secondary"
+                                        Size="L"/>
                 </VerticalStackLayout>
 
                 <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">

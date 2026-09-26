@@ -179,10 +179,11 @@
                        Style="{StaticResource Body2}"
                        TextColor="{StaticResource BodyText}"
                        HorizontalTextAlignment="Center"/>
-                <Button Text="Try again"
-                        Style="{StaticResource SecondaryOutlineButton}"
-                        HorizontalOptions="Center"
-                        Clicked="OnRetryClicked"/>
+                <controls:AppButton Text="Try again"
+                                    HorizontalOptions="Center"
+                                    Clicked="OnRetryClicked"
+                                    Tone="Secondary"
+                                    Size="L"/>
             </VerticalStackLayout>
 
             <!-- "Who do you want to chat about?" — asked by the bot, in the conversation area,
@@ -728,13 +729,10 @@
                  control — and still the only one here — without out-shouting what it follows. -->
             <Grid x:Name="ContinuePanel" Grid.Row="3" Margin="16,6,16,14" IsVisible="False">
                 <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
-                    <Button Text="Continue this conversation"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            FontSize="14"
-                            HeightRequest="40"
-                            CornerRadius="20"
-                            Padding="20,0"
-                            Clicked="OnContinueClicked"/>
+                    <controls:AppButton Text="Continue this conversation"
+                                        Clicked="OnContinueClicked"
+                                        Tone="Secondary"
+                                        Size="M"/>
                     <!-- Beside Continue, not instead of it: a conversation worth keeping a copy
                          of is usually one the caregiver is about to take somewhere, and the two
                          are the only things there is to do with a finished thread. The app's one

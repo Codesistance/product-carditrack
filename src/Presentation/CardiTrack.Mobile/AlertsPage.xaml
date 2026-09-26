@@ -198,10 +198,11 @@
                                Style="{StaticResource Body2}"
                                TextColor="{StaticResource BodyText}"
                                HorizontalTextAlignment="Center"/>
-                        <Button Text="Try again"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                HorizontalOptions="Center"
-                                Clicked="OnRefreshClicked"/>
+                        <controls:AppButton Text="Try again"
+                                            HorizontalOptions="Center"
+                                            Clicked="OnRefreshClicked"
+                                            Tone="Secondary"
+                                            Size="L"/>
                     </VerticalStackLayout>
 
                     <!-- ── M1-10a loaded: date-grouped cards, with the two empty states
@@ -243,9 +244,10 @@
                              only, so a member whose every episode has been resolved shows an
                              empty list over a full archive — and hiding the button there would
                              strand that history behind a screen saying "Nothing to worry about". -->
-                        <Button x:Name="ArchiveButton"
-                                Style="{StaticResource AuthGradientButton}"
-                                Clicked="OnArchiveClicked"/>
+                        <controls:AppButton x:Name="ArchiveButton"
+                                            Clicked="OnArchiveClicked"
+                                            Tone="Primary"
+                                            Size="L"/>
 
                         <!-- Data-completeness items, in their own section below the health ones.
                              Sectioned and never interleaved: a caregiver scanning this screen is

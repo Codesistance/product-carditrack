@@ -135,10 +135,11 @@ public partial class TransferFamilyAdminPage : ContentPage
             });
             row.Add(text, 1, 0);
 
-            var choose = new Button
+            var choose = new AppButton
             {
                 Text = "Hand over",
-                Style = Named("CardActionButton"),
+                Tone = AppButtonTone.Tonal,
+                Size = AppButtonSize.S,
                 VerticalOptions = LayoutOptions.Center,
             };
             choose.Clicked += (_, _) => _ = HandOverAsync(person);
