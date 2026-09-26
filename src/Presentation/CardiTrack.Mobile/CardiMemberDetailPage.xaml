@@ -580,7 +580,7 @@
                                                                     SemanticProperties.Description="Call"
                                                                     SemanticProperties.Hint="Dials this number">
                                                                 <Border.StrokeShape>
-                                                                    <RoundRectangle CornerRadius="12"/>
+                                                                    <RoundRectangle CornerRadius="10"/>
                                                                 </Border.StrokeShape>
                                                                 <Border.GestureRecognizers>
                                                                     <TapGestureRecognizer Tapped="OnContactCallTapped"/>
@@ -598,7 +598,7 @@
                                                                     SemanticProperties.Description="Message"
                                                                     SemanticProperties.Hint="Opens a text message to this number">
                                                                 <Border.StrokeShape>
-                                                                    <RoundRectangle CornerRadius="12"/>
+                                                                    <RoundRectangle CornerRadius="10"/>
                                                                 </Border.StrokeShape>
                                                                 <Border.GestureRecognizers>
                                                                     <TapGestureRecognizer Tapped="OnContactMessageTapped"/>
@@ -624,7 +624,7 @@
                                                                     SemanticProperties.Description="{Binding EditDescription}"
                                                                     SemanticProperties.Hint="Opens a form for just this record">
                                                                 <Border.StrokeShape>
-                                                                    <RoundRectangle CornerRadius="12"/>
+                                                                    <RoundRectangle CornerRadius="10"/>
                                                                 </Border.StrokeShape>
                                                                 <Border.GestureRecognizers>
                                                                     <TapGestureRecognizer Tapped="OnContactEditTapped"/>

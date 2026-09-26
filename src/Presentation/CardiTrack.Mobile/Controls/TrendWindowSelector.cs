@@ -55,7 +55,7 @@ public sealed class TrendWindowSelector : ContentView
                 HeightRequest = SegmentHeight,
                 StrokeThickness = 0,
                 Padding = 0,
-                StrokeShape = new RoundRectangle { CornerRadius = 11 },
+                StrokeShape = new RoundRectangle { CornerRadius = 10 },
                 Content = text,
             };
             SemanticProperties.SetDescription(segment, $"Show the last {days} days");
@@ -70,7 +70,7 @@ public sealed class TrendWindowSelector : ContentView
             Padding = 4,
             StrokeThickness = 0,
             BackgroundColor = MetricStatus.Resource("InputBackground", Colors.WhiteSmoke),
-            StrokeShape = new RoundRectangle { CornerRadius = 15 },
+            StrokeShape = new RoundRectangle { CornerRadius = 14 },
             Content = row,
         };
 

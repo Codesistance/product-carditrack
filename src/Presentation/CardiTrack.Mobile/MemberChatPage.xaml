@@ -382,7 +382,7 @@
                                                         BackgroundColor="{StaticResource SelectedOptionBackground}"
                                                         SemanticProperties.Description="Previous chart">
                                                     <Border.StrokeShape>
-                                                        <RoundRectangle CornerRadius="99"/>
+                                                        <RoundRectangle CornerRadius="10"/>
                                                     </Border.StrokeShape>
                                                     <Border.GestureRecognizers>
                                                         <TapGestureRecognizer Tapped="OnChartPrevTapped"/>
@@ -404,7 +404,7 @@
                                                         BackgroundColor="{StaticResource SelectedOptionBackground}"
                                                         SemanticProperties.Description="Next chart">
                                                     <Border.StrokeShape>
-                                                        <RoundRectangle CornerRadius="99"/>
+                                                        <RoundRectangle CornerRadius="10"/>
                                                     </Border.StrokeShape>
                                                     <Border.GestureRecognizers>
                                                         <TapGestureRecognizer Tapped="OnChartNextTapped"/>

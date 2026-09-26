@@ -88,16 +88,9 @@
                     <!-- Hidden entirely for safety rules rather than shown-and-disabled: an
                          affordance that refuses to work reads as a bug, and these are the two
                          cases where silence would mean nobody is watching. -->
-                    <Button x:Name="DismissButton"
-                            Grid.Column="2"
-                            Text="✕"
-                            FontFamily="QuicksandSemiBold"
-                            FontSize="15"
-                            TextColor="{StaticResource MutedText}"
-                            BackgroundColor="Transparent"
-                            WidthRequest="40"
-                            HeightRequest="40"
-                            Clicked="OnDismissClicked"/>
+                    <controls:DismissButton x:Name="DismissButton"
+                                            Grid.Column="2"
+                                            Clicked="OnDismissClicked"/>
                 </Grid>
             </VerticalStackLayout>
         </Border>

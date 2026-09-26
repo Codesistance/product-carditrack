@@ -22,7 +22,7 @@ public sealed class HealthDataDisclosureBanner : Border
 
     public const string LearnMoreText = "Learn more";
 
-    private readonly Button _dismiss;
+    private readonly DismissButton _dismiss;
 
     /// <summary>The caregiver tapped "Learn more".</summary>
     public event EventHandler? LearnMoreRequested;
@@ -67,18 +67,7 @@ public sealed class HealthDataDisclosureBanner : Border
         };
         ControlResources.ApplyStyle(text, "Body2");
 
-        _dismiss = new Button
-        {
-            Text = "✕",
-            FontSize = 14,
-            TextColor = ControlResources.Color("BodyText", Colors.DarkGray),
-            BackgroundColor = Colors.Transparent,
-            Padding = new Thickness(6, 0),
-            // The mobile spec's 48×48dp floor for every tappable element (ui_screens_maui_mobile.md).
-            MinimumWidthRequest = 48,
-            MinimumHeightRequest = 48,
-            VerticalOptions = LayoutOptions.Center,
-        };
+        _dismiss = new DismissButton { VerticalOptions = LayoutOptions.Center };
         SemanticProperties.SetDescription(_dismiss, "Dismiss the health data disclosure");
         _dismiss.Clicked += (_, _) => DismissRequested?.Invoke(this, EventArgs.Empty);
 

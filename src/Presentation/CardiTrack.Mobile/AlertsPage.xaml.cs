@@ -227,7 +227,7 @@ public partial class AlertsPage : ContentPage
             Padding = new Thickness(12, 6, 10, 6),
             StrokeThickness = 0,
             BackgroundColor = Resource<Color>("SelectedOptionBackground"),
-            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 15 },
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
             Content = new HorizontalStackLayout
             {
                 Spacing = 6,

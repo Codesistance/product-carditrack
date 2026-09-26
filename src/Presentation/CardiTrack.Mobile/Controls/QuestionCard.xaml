@@ -35,18 +35,11 @@
                        VerticalOptions="Center"
                        LineBreakMode="WordWrap"/>
 
-                <Button x:Name="DismissButton"
-                        Grid.Column="2"
-                        Text="✕"
-                        FontFamily="QuicksandSemiBold"
-                        FontSize="15"
-                        TextColor="{StaticResource MutedText}"
-                        BackgroundColor="Transparent"
-                        WidthRequest="40"
-                        HeightRequest="40"
-                        SemanticProperties.Description="Skip this question"
-                        SemanticProperties.Hint="We won't ask it again"
-                        Clicked="OnDismissClicked"/>
+                <controls:DismissButton x:Name="DismissButton"
+                                        Grid.Column="2"
+                                        SemanticProperties.Description="Skip this question"
+                                        SemanticProperties.Hint="We won't ask it again"
+                                        Clicked="OnDismissClicked"/>
 
                 <!-- Same slot as skip, only on an answered card. The archive used to hang this
                      trash outside the card, which made the row look like a card plus a toolbar. -->
@@ -61,13 +54,13 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnDeleteTapped"/>
                     </Border.GestureRecognizers>
-                    <Border WidthRequest="28" HeightRequest="28"
+                    <Border WidthRequest="32" HeightRequest="32"
                             StrokeThickness="0"
-                            BackgroundColor="{StaticResource AlertActionBackground}"
+                            BackgroundColor="{StaticResource ActionTintRedBackground}"
                             HorizontalOptions="Center"
                             VerticalOptions="Center">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="14"/>
+                            <RoundRectangle CornerRadius="10"/>
                         </Border.StrokeShape>
                         <Image Source="icon_trash.svg"
                                WidthRequest="15" HeightRequest="15"

@@ -46,16 +46,9 @@
                        Style="{StaticResource Body2}"
                        TextColor="{StaticResource HeadingText}"
                        VerticalOptions="Center"/>
-                <Button Grid.Column="1"
-                        Text="✕"
-                        FontSize="14"
-                        TextColor="{StaticResource BodyText}"
-                        BackgroundColor="Transparent"
-                        Padding="6,0"
-                        MinimumWidthRequest="32"
-                        MinimumHeightRequest="32"
-                        VerticalOptions="Center"
-                        Clicked="OnDismissVerifyEmailClicked"/>
+                <controls:DismissButton Grid.Column="1"
+                                        VerticalOptions="Center"
+                                        Clicked="OnDismissVerifyEmailClicked"/>
             </Grid>
         </Border>
 

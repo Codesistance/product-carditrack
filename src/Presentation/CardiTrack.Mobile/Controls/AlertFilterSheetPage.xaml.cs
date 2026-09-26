@@ -216,7 +216,7 @@ public partial class AlertFilterSheetPage : ContentPage
             Padding = new Thickness(14, 7),
             Margin = new Thickness(0, 0, 8, 8),
             MinimumHeightRequest = 36,
-            StrokeShape = new RoundRectangle { CornerRadius = 17 },
+            StrokeShape = new RoundRectangle { CornerRadius = 10 },
             Content = content,
         };
         SemanticProperties.SetDescription(chip, text);

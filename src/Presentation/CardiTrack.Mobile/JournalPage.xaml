@@ -98,7 +98,7 @@
                         SemanticProperties.Description="Days"
                         SemanticProperties.Hint="Shows one entry for each finished day">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="11"/>
+                        <RoundRectangle CornerRadius="10"/>
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnDaysSegmentTapped"/>
@@ -116,7 +116,7 @@
                         SemanticProperties.Description="Weeks"
                         SemanticProperties.Hint="Shows one entry for each finished week">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="11"/>
+                        <RoundRectangle CornerRadius="10"/>
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnWeeksSegmentTapped"/>
@@ -134,7 +134,7 @@
                         SemanticProperties.Description="Months"
                         SemanticProperties.Hint="Shows one entry for each finished month">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="11"/>
+                        <RoundRectangle CornerRadius="10"/>
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnMonthsSegmentTapped"/>
@@ -225,7 +225,7 @@
                         Padding="16,8"
                         IsVisible="False">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="20"/>
+                        <RoundRectangle CornerRadius="10"/>
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnMemberChipTapped"/>
@@ -238,7 +238,7 @@
 
                 <Border x:Name="UrgencyChip" Style="{StaticResource OutlinedCard}" Padding="16,8">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="20"/>
+                        <RoundRectangle CornerRadius="10"/>
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnUrgencyChipTapped"/>
@@ -252,7 +252,7 @@
 
                 <Border x:Name="WindowChip" Style="{StaticResource OutlinedCard}" Padding="16,8">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="20"/>
+                        <RoundRectangle CornerRadius="10"/>
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnWindowChipTapped"/>
