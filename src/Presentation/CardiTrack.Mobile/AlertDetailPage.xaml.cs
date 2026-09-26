@@ -38,6 +38,7 @@ public partial class AlertDetailPage : ContentPage
     public AlertDetailPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _feedback = new RefreshFeedback(SavedBanner, Updating);

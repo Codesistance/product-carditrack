@@ -85,6 +85,7 @@ public partial class JournalEntryPage : ContentPage
     public JournalEntryPage(ICardiTrackApiClient api, IPopupService popups, IJournalExportFlow export)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _export = export;

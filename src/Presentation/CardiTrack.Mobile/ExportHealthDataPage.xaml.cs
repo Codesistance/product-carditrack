@@ -76,6 +76,7 @@ public partial class ExportHealthDataPage : ContentPage
         IExportFileDelivery delivery)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _consent = consent;

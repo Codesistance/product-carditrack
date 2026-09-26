@@ -37,6 +37,7 @@ public partial class SettingsPage : ContentPage
         ICardiTrackApiClient api)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _authService = authService;
         _popups = popups;
         _alertDrafts = alertDrafts;

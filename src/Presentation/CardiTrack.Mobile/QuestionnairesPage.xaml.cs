@@ -72,6 +72,7 @@ public partial class QuestionnairesPage : ContentPage
         ICardiTrackApiClient api, IPopupService popups, IQuestionValidityService questionValidity)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _questionValidity = questionValidity;

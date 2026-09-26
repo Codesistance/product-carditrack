@@ -114,6 +114,7 @@ public partial class DashboardPage : ContentPage
         IQuestionValidityService questionValidity)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _authService = authService;
         _popups = popups;
