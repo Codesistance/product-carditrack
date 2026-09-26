@@ -26,8 +26,18 @@ public partial class MemberAvatar : ContentView
             // caller would get an oblong from what reads like a single size knob.
             Box.WidthRequest = value;
             Box.HeightRequest = value;
+            InitialsLabel.FontSize = InitialsSize(value);
         }
     }
+
+    /// <summary>
+    /// The initials' share of the box: the same breathing room at every size the app draws one
+    /// (40 in a roster row, 80 on Member Detail) — picked from samples (A1, 2026-09-26).
+    /// </summary>
+    private const double InitialsShare = 0.32;
+
+    /// <summary>The initials' font size for a box of <paramref name="boxWidth"/>.</summary>
+    public static double InitialsSize(double boxWidth) => Math.Round(boxWidth * InitialsShare);
 
     /// <param name="photoUrl">
     /// External data, so a relative or malformed value falls back to the initials rather than
