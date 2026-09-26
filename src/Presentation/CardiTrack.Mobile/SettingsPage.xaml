@@ -385,7 +385,6 @@
                         <controls:AppButton x:Name="DeleteAccountBtn"
                                             Text="Start deletion request"
                                             IsEnabled="False"
-                                            Opacity="0.5"
                                             HorizontalOptions="Fill"
                                             Clicked="OnDeleteAccountClicked"
                                             SemanticProperties.Hint="Asks us to delete your account. Checks your fingerprint or face first, then signs you out. Monitoring stops straight away and you have 30 days to cancel"

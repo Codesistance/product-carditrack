@@ -167,8 +167,8 @@ public partial class SettingsPage : ContentPage
     // the button does not ask again. It stays off — and reads off — until the box is ticked.
     private void OnDeleteConfirmChanged(object? sender, CheckedChangedEventArgs e)
     {
+        // AppButton draws its own disabled look; an extra opacity here compounded it.
         DeleteAccountBtn.IsEnabled = e.Value;
-        DeleteAccountBtn.Opacity = e.Value ? 1 : 0.5;
     }
 
     /// <summary>
