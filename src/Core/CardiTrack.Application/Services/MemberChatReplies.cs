@@ -687,6 +687,44 @@ public static partial class MemberChatReplies
     /// The nudge for a message with no question in it: what was missing, and what to ask instead
     /// — the same "what I can help with" every steer closes on, without a model to write it.
     /// </summary>
+    /// <summary>
+    /// The answer to a bare yes or no that has nothing to answer — no offer, proposal or journal
+    /// action pending, or one that has lapsed. Asks what they would like rather than guessing:
+    /// before 2026-09-26 this reached the casual steer, which welcomed the caregiver as if the
+    /// conversation had just begun.
+    /// </summary>
+    public static string NothingPendingReply(ConfirmationAnswer answer, string? firstName)
+    {
+        // "about them" would be an invented stand-in; with no name the question simply stops.
+        var about = string.IsNullOrWhiteSpace(firstName) ? string.Empty : $" about {firstName}";
+        return answer == ConfirmationAnswer.Yes
+            ? $"Happy to help. What would you like to know{about}?"
+            : $"No problem. Ask me whenever you'd like to know anything{about}.";
+    }
+
+    /// <summary>The answer to a no to the follow-up the previous reply offered.</summary>
+    public static string OfferDeclinedReply(string? firstName)
+    {
+        var about = string.IsNullOrWhiteSpace(firstName) ? string.Empty : $" about {firstName}";
+        return $"No problem. Ask me anything else{about} whenever you like.";
+    }
+
+    /// <summary>
+    /// <paramref name="reply"/> ending with <paramref name="offer"/>, before a closing references
+    /// block when there is one so the citations stay last, as <see cref="WithStatedAbsence"/>
+    /// keeps them. Null when the offer does not fit under <paramref name="maxLength"/>: unlike
+    /// the absence sentence, an offer is never worth trimming the answer for, and one cut off by
+    /// the cap would still be held as pending.
+    /// </summary>
+    public static string? WithOffer(string reply, string offer, int maxLength)
+    {
+        var split = reply.LastIndexOf("\n\nReference", StringComparison.Ordinal);
+        var body = split < 0 ? reply : reply[..split];
+        var references = split < 0 ? string.Empty : reply[split..];
+        var offered = $"{body.TrimEnd()} {offer}{references}";
+        return offered.Length <= maxLength ? offered : null;
+    }
+
     public static string NotAQuestionReply(string? firstName)
     {
         // "their" rather than an invented relationship word, for the reason LiveStatusReply's

@@ -45,6 +45,17 @@ public static class MemberChatTelemetry
     /// <summary>A yes or no answering a proposed alert-settings change; settled in code.</summary>
     public const string SourcePendingConfirmation = "pending_confirmation";
 
+    /// <summary>A no to a follow-up the previous reply offered; answered in code. A yes routes as
+    /// the offer's own question and is tagged by <see cref="OfferTag"/> instead.</summary>
+    public const string SourceOfferDeclined = "offer_declined";
+
+    /// <summary>A bare yes or no with nothing pending for it to answer; answered in code.</summary>
+    public const string SourceNothingPending = "nothing_pending";
+
+    /// <summary>What happened to a follow-up offer this turn: <c>offered</c> when the reply ends
+    /// with one, <c>accepted</c> when this message took the previous one up. Absent otherwise.</summary>
+    public const string OfferTag = "chat.offer";
+
     /// <summary>The malicious pre-check refused the message; nothing was routed or saved.</summary>
     public const string SourceRefused = "refused";
 
@@ -155,6 +166,9 @@ public static class MemberChatTelemetry
 
     public static void TagSource(string source) =>
         Activity.Current?.SetTag(SourceTag, source);
+
+    public static void TagOffer(string outcome) =>
+        Activity.Current?.SetTag(OfferTag, outcome);
 
     public static void TagRoute(ChatRouteDecision route)
     {
