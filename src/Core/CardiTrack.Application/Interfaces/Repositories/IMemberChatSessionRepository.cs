@@ -1,4 +1,5 @@
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Interfaces.Repositories;
 
@@ -56,6 +57,29 @@ public interface IMemberChatSessionRepository : IRepository<MemberChatSession>
     /// </summary>
     Task<IReadOnlyList<MemberChatSessionListing>> ListCompletedForMemberAsync(
         Guid userId, Guid cardiMemberId, DateTime activeSinceUtc, CancellationToken ct = default);
+
+    /// <summary>
+    /// The caregiver's own most recent questions about this member that a reading or acting rung
+    /// answered, newest first — the chat's "pick up where you left off" chips. Scoped to
+    /// <paramref name="userId"/> <em>and</em> <paramref name="cardiMemberId"/>: another
+    /// caregiver's questions about the same member are theirs, never offered here.
+    /// </summary>
+    /// <remarks>
+    /// Every session counts, the active one and completed ones alike, bounded twice — asked since
+    /// <paramref name="askedSinceUtc"/>, and at most <paramref name="limit"/> questions. A question
+    /// qualifies by the <see cref="MemberChatWorkflow"/> stamped on the reply that followed it in
+    /// the same session, which must be one of <paramref name="answeredBy"/>; a question with no
+    /// stamped reply (one written before workflows were stamped) is left out, because nothing
+    /// says what it was. Filtered and projected in SQL: the caller needs one column of a few
+    /// dozen turns, not whole threads. Content comes back still encrypted.
+    /// </remarks>
+    Task<IReadOnlyList<MemberChatAskedQuestion>> ListRecentQuestionsAsync(
+        Guid userId,
+        Guid cardiMemberId,
+        IReadOnlyCollection<MemberChatWorkflow> answeredBy,
+        DateTime askedSinceUtc,
+        int limit,
+        CancellationToken ct = default);
 
     /// <summary>
     /// The theming job's work queue, across all caregivers and members: completed sessions (same
@@ -116,6 +140,15 @@ public sealed record MemberChatSessionListing
     /// <summary>Caregiver turns only — "3 questions" is what the list says, and counting the
     /// replies would double it.</summary>
     public required int QuestionCount { get; init; }
+}
+
+/// <summary>One row of <see cref="IMemberChatSessionRepository.ListRecentQuestionsAsync"/>.</summary>
+public sealed record MemberChatAskedQuestion
+{
+    /// <summary>The caregiver turn's content as stored — still encrypted; the service decrypts.</summary>
+    public required string Content { get; init; }
+
+    public required DateTime AskedAtUtc { get; init; }
 }
 
 /// <summary>What <see cref="IMemberChatSessionRepository.TryOpenAsync"/> did with the session it was given.</summary>

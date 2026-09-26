@@ -56,6 +56,11 @@ public class MemberChatRoutedDispatchTests
         });
         _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns((MemberChatSession?)null);
+        // No chat history, so the chips are the standard set (see MemberChatSuggestionsTests).
+        _sessions.ListRecentQuestionsAsync(
+                _userId, _memberId, Arg.Any<IReadOnlyCollection<MemberChatWorkflow>>(),
+                Arg.Any<DateTime>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns([]);
 
         // A member who has sent readings this week, so the reading rungs run their pipeline: one
         // with none is answered in code before the planner (SendsNoReadings, below). The planner
@@ -577,7 +582,7 @@ public class MemberChatRoutedDispatchTests
 
     /// <summary>
     /// With nothing to read, the watch-out chip — a question chat could only answer "nothing to
-    /// go on" — gives way to the one the family is actually asking, still six chips.
+    /// go on" — gives way to the one the family is actually asking, still three chips.
     /// </summary>
     [Fact]
     public async Task TheChips_ForAMemberWithNoReadings_AskWhetherAnythingHasComeThrough()
@@ -586,7 +591,7 @@ public class MemberChatRoutedDispatchTests
 
         var chips = (await CreateSut().GetSuggestionsAsync(_userId, _memberId)).Suggestions;
 
-        Assert.Equal(6, chips.Count);
+        Assert.Equal(3, chips.Count);
         Assert.Equal("Has anything come through yet?", chips[0]);
         Assert.DoesNotContain("Anything I should keep an eye on?", chips);
     }
@@ -1375,32 +1380,8 @@ public class MemberChatRoutedDispatchTests
 
     // ---- Suggestion chips ------------------------------------------------------------------
 
-    /// <summary>
-    /// Always six chips: the alert question swaps in for the watch-out one rather than adding a
-    /// seventh, and the last two teach the rungs that act — the journal and the alert settings —
-    /// which no reading question would lead a caregiver to.
-    /// </summary>
-    [Theory]
-    [InlineData(false, "Anything I should keep an eye on?")]
-    [InlineData(true, "What's behind the current alert?")]
-    public async Task TheChips_AreSix_AndTeachTheJournalAndTheAlertSettings(bool unresolvedAlert, string first)
-    {
-        _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(
-            unresolvedAlert ? [new Alert { CardiMemberId = _memberId }] : []);
-
-        var chips = (await CreateSut().GetSuggestionsAsync(_userId, _memberId)).Suggestions;
-
-        Assert.Equal(
-            [
-                first,
-                "How are they doing today?",
-                "How did they sleep last night?",
-                "How active have they been this week?",
-                "Show me yesterday's Daybook",
-                "Which alerts are switched on?",
-            ],
-            chips);
-    }
+    // The chip set itself — recent questions versus the standard three — is covered in
+    // MemberChatSuggestionsTests; the no-readings swap above stays here beside the rung it feeds.
 
     // ---- Progress steps (the streaming endpoint's step events) --------------------------------
 
