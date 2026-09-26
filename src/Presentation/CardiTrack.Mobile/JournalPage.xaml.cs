@@ -280,11 +280,8 @@ public partial class JournalPage : ContentPage
             {
                 // Nobody left to read about: the search and the strip go with the member, since
                 // the no-member empty state has nothing for them to narrow.
-                _memberId = Guid.Empty;
-                _memberFirstName = null;
-                _hasAnyReviews = false;
+                SelectMember(Guid.Empty, null);
                 FilterPanel.IsVisible = false;
-                PaintFilterChrome();
                 await ReloadForNewQuestionAsync();
                 return;
             }
