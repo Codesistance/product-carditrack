@@ -67,6 +67,18 @@ public class MemberChatTurn : BaseEntity
     public string? PendingChange { get; set; }
 
     /// <summary>
+    /// The follow-up this assistant turn ended by offering — another reading over the same days —
+    /// as JSON, encrypted at rest like <see cref="PendingChange"/>. Null on every other turn.
+    /// </summary>
+    /// <remarks>
+    /// Kept for the reason <see cref="PendingChange"/> is: the yes arrives as its own request, and
+    /// what it takes up must be what was shown. Read only from the most recent assistant turn and
+    /// within <c>PendingChatOffer.Validity</c>; never cleared, because a later turn supersedes it.
+    /// Names a reading about a person, hence the encryption.
+    /// </remarks>
+    public string? PendingOffer { get; set; }
+
+    /// <summary>
     /// The answer check's reading of this reply — whether it answered the question, and why not
     /// when it did not — as encrypted JSON. Null on caregiver turns and on replies the check does
     /// not read. Internal: never returned to the app.

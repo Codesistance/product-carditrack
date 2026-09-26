@@ -58,6 +58,16 @@ public sealed record MemberChatWorkflowResult
     /// null — persisted on the assistant turn so the yes applies exactly what was shown.</summary>
     public Services.PendingAlertChange? PendingChange { get; init; }
 
+    /// <summary>
+    /// The one reading this answer was about and the days it read, when the answer was about
+    /// exactly one — what decides the follow-up offered after it. Null on every other reply.
+    /// </summary>
+    public AnsweredReading? AnsweredAbout { get; init; }
+
+    /// <summary>The follow-up this reply ends by offering, or null — persisted on the assistant
+    /// turn so a yes takes up exactly what was offered.</summary>
+    public Services.PendingChatOffer? Offer { get; init; }
+
     /// <summary>True when this turn applied a change to what is watching the member, so the
     /// response can say so and the audit entry can name it.</summary>
     public bool ChangedAlertSettings { get; init; }
@@ -75,3 +85,6 @@ public sealed record MemberChatWorkflowResult
     /// </summary>
     public ChatAnswerAssessment? Assessment { get; init; }
 }
+
+/// <summary>A reply's single subject: which reading, over how many days.</summary>
+public readonly record struct AnsweredReading(ChartMetricKind Metric, int Days);

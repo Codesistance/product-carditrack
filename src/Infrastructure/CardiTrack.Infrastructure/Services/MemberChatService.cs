@@ -502,8 +502,9 @@ public class MemberChatService : IMemberChatService
     /// removed on 2026-09-26 because nothing can take it up. A reply that asks a question makes
     /// "yes" the natural answer, but a bare yes carries no topic: the router sees the caregiver's
     /// questions and never the replies, so it read the yes as small talk and the caregiver got a
-    /// greeting instead of the reading they had just agreed to. Until an offer can be held on the
-    /// turn the way a pending alert change is, the reply ends on the answer.
+    /// greeting instead of the reading they had just agreed to. The rewrite still ends on the
+    /// answer: the offer that follows it is written and held by code (<see cref="WithOffer"/>),
+    /// so a yes has something to take up.
     /// </para>
     /// </remarks>
     private const string RewriteInstructions =
@@ -741,6 +742,30 @@ public class MemberChatService : IMemberChatService
                 pending, pendingTurnId, answer, userId, cardiMemberId, member, utcNow, ct);
         }
 
+        // A yes or no with no change pending answers the follow-up the previous reply offered,
+        // or nothing. A yes takes the offer up as the question code writes for it, and that
+        // question is what every model below reads, so the router sees a question, never the
+        // reply the offer ended. A no, or a yes with nothing to answer, is settled here: routed,
+        // a bare yes reached the casual steer and was greeted (2026-09-26).
+        PendingChatOffer? accepted = null;
+        if (ConfirmationVocabulary.Read(flattened) is { } bare)
+        {
+            if (history.PendingOffer is not { } offer || !offer.IsCurrent(utcNow))
+            {
+                MemberChatTelemetry.TagSource(MemberChatTelemetry.SourceNothingPending);
+                return CodeReplyResult(MemberChatReplies.NothingPendingReply(bare, NamePlaceholder.FirstNameOf(member)));
+            }
+
+            if (bare == ConfirmationAnswer.No)
+            {
+                MemberChatTelemetry.TagSource(MemberChatTelemetry.SourceOfferDeclined);
+                return CodeReplyResult(MemberChatReplies.OfferDeclinedReply(NamePlaceholder.FirstNameOf(member)));
+            }
+
+            MemberChatTelemetry.TagOffer("accepted");
+            accepted = offer;
+        }
+
         // DPIA A20: nothing that reaches Vertex (malicious-check, route, planner, rewrite,
         // steer) may carry the member's name. History is already redacted; the live message
         // was not, so a caregiver who writes "how is Moses" leaked the identifier on every
@@ -748,7 +773,8 @@ public class MemberChatService : IMemberChatService
         // copy so the two prompts cannot disagree about who was named.
         // A member row that is gone (or nameless) has no name to redact against, so the message
         // would cross unredacted — refused here, before the first Rewrite-slot call (#1246).
-        var forModel = NamePlaceholder.RedactMessageOrRefuse(flattened, member?.FullName);
+        var forModel = NamePlaceholder.RedactMessageOrRefuse(
+            accepted?.Question(NamePlaceholder.Token) ?? flattened, member?.FullName);
 
         // History travels with every step that reads the caregiver's message, not just the
         // clinical one — a follow-up like "why?" is only judgeable, and only plannable, in the
@@ -783,7 +809,8 @@ public class MemberChatService : IMemberChatService
         try
         {
             return await RouteAndAnswerAfterPreCheckAsync(
-                forModel, triage, history, session, userId, cardiMemberId, member, utcNow, steps, ct);
+                forModel, triage, history, session, userId, cardiMemberId, member, utcNow, steps,
+                mayOffer: accepted is null, ct);
         }
         finally
         {
@@ -811,6 +838,7 @@ public class MemberChatService : IMemberChatService
         CardiMember? member,
         DateTime utcNow,
         IMemberChatSendProgress? progress,
+        bool mayOffer,
         CancellationToken ct)
     {
         // The first step a stream reports, and deliberately not before this point: until the
@@ -874,8 +902,56 @@ public class MemberChatService : IMemberChatService
         }
 
         var checkedResult = await CheckAnswerAsync(result, forModel, history, member?.FullName, session, progress, ct);
-        return await RemedyAsync(checkedResult, forModel, history, cardiMemberId, member, utcNow, progress, ct);
+        var remedied = await RemedyAsync(checkedResult, forModel, history, cardiMemberId, member, utcNow, progress, ct);
+        // One offer per chain: the answer to a taken-up offer offers nothing more, or a run of
+        // yeses would walk sleep and heart rate back and forth for as long as the caregiver said so.
+        return mayOffer ? WithOffer(remedied, member, utcNow) : remedied;
     }
+
+    /// <summary>
+    /// <paramref name="result"/> ending with the follow-up <see cref="PendingChatOffer.For"/> makes
+    /// for it, held on the turn for a yes to take up, or unchanged when it earns none.
+    /// </summary>
+    /// <remarks>
+    /// Added after the answer check so the check judges the answer alone, and only to an answer
+    /// the check found complete (or did not read): an offer under a reply that missed the question
+    /// would point away from what was asked. Written in code from a closed table, never by the
+    /// rewrite; see <see cref="PendingChatOffer"/> for why a model's offer could not be kept.
+    /// </remarks>
+    private static MemberChatWorkflowResult WithOffer(MemberChatWorkflowResult result, CardiMember? member, DateTime utcNow)
+    {
+        if (result.AnsweredAbout is not { } answered
+            || result.Reply == CouldNotAnswerReply
+            || result.PendingChange is not null
+            || result.Assessment is { Completeness: not AnswerCompleteness.Full }
+            || NamePlaceholder.FirstNameOf(member) is not { } firstName
+            || PendingChatOffer.For(answered.Metric, answered.Days, utcNow) is not { } offer
+            || MemberChatReplies.WithOffer(result.Reply, offer.Sentence(firstName), MaxReplyLength) is not { } reply)
+        {
+            return result;
+        }
+
+        MemberChatTelemetry.TagOffer("offered");
+        return result with { Reply = reply, Offer = offer };
+    }
+
+    /// <summary>A reply written in code that spent no model call, stamped as the casual steer,
+    /// the entry for "not a question at all", as <see cref="NotAQuestionResult"/> is.</summary>
+    private static MemberChatWorkflowResult CodeReplyResult(string reply) => new()
+    {
+        Workflow = MemberChatWorkflow.SteerCasual,
+        Reply = reply,
+        Calls = [],
+    };
+
+    /// <summary>
+    /// The single reading an answer was about, and the days it read, or null when the plan named
+    /// several readings or none, or fetched no stretch of days.
+    /// </summary>
+    private static AnsweredReading? AnsweredReadingOf(DataQueryPlan plan, FetchedMemberData fetched) =>
+        plan.ChartMetrics is [var only] && fetched.RecentActivityWindow is { } window
+            ? new AnsweredReading(only, window.To.DayNumber - window.From.DayNumber + 1)
+            : null;
 
     /// <summary>The clinical workflows — the ones a second attempt can change. Status and advise
     /// replies are assembled in code from what is on file; asking again would compose the same
@@ -1156,6 +1232,7 @@ public class MemberChatService : IMemberChatService
             Workflow = MemberChatWorkflow.Analysis,
             Reply = reply,
             Charts = BuildCharts(fetched, plan.Result.ChartMetrics, age),
+            AnsweredAbout = AnsweredReadingOf(plan.Result, fetched),
             Calls =
             [
                 new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
@@ -1316,6 +1393,7 @@ public class MemberChatService : IMemberChatService
             Workflow = MemberChatWorkflow.Inference,
             Reply = reply,
             Charts = BuildCharts(fetched, plan.Result.ChartMetrics, age),
+            AnsweredAbout = AnsweredReadingOf(plan.Result, fetched),
             Calls = calls,
         };
     }
@@ -2681,6 +2759,11 @@ public class MemberChatService : IMemberChatService
             : null;
         var pendingTurnId = pendingChange is null ? (Guid?)null : lastAssistant!.Id;
 
+        // The follow-up the previous reply offered, read the same way and from the same turn.
+        var pendingOffer = lastAssistant?.PendingOffer is { } storedOffer
+            ? PendingChatOffer.FromJson(Reveal(storedOffer))
+            : null;
+
         string? Block(bool questionsOnly)
         {
             var kept = questionsOnly ? turns.Where(t => t.Role == ChatTurnRole.User).ToList() : turns;
@@ -2695,7 +2778,7 @@ public class MemberChatService : IMemberChatService
 
         return new ChatHistory(
             Block(questionsOnly: false), Block(questionsOnly: true), lastAssistantWasClarify,
-            pendingChange, pendingTurnId, earlierReplies);
+            pendingChange, pendingTurnId, earlierReplies, pendingOffer);
     }
 
     /// <summary>
@@ -2733,13 +2816,18 @@ public class MemberChatService : IMemberChatService
     /// what a yes on this turn applies. Null on every other turn.
     /// </param>
     /// <param name="PendingTurnId">The turn that proposal sits on — what a yes claims.</param>
+    /// <param name="PendingOffer">
+    /// The follow-up the most recent assistant turn offered, when it offered one: what a bare yes
+    /// on this turn takes up. Null on every other turn.
+    /// </param>
     private sealed record ChatHistory(
         string? Full,
         string? QuestionsOnly,
         bool LastAssistantWasClarify = false,
         PendingAlertChange? PendingChange = null,
         Guid? PendingTurnId = null,
-        Lazy<IReadOnlyList<string>>? EarlierReplies = null);
+        Lazy<IReadOnlyList<string>>? EarlierReplies = null,
+        PendingChatOffer? PendingOffer = null);
 
     private static string BuildMaliciousCheckPrompt(string question, string? historyBlock) =>
         historyBlock is null
@@ -3036,6 +3124,10 @@ public class MemberChatService : IMemberChatService
             // level, which is health data wherever it is written.
             PendingChange = result.PendingChange is { } proposal
                 ? _encryption.Encrypt(proposal.ToJson())
+                : null,
+            // Encrypted for the same reason: it names a reading about a person.
+            PendingOffer = result.Offer is { } offer
+                ? _encryption.Encrypt(offer.ToJson())
                 : null,
             Assessment = result.Assessment is { } assessment
                 ? _encryption.Encrypt(assessment.ToJson())

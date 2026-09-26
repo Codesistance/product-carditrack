@@ -721,10 +721,13 @@ public class MemberChatJournalRungTests
         _session!.PendingActionExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1);
         _router.ClearReceivedCalls();
 
-        await Send("yes");
+        var result = await Send("yes");
 
+        // With the offer lapsed the yes answers nothing, and is asked what it meant rather than
+        // routed (2026-09-26): routed, a bare yes reached the casual steer and was greeted.
         await _digests.DidNotReceiveWithAnyArgs().DeleteBookAsync(default, default, default, default);
-        await _router.Received(1).RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        Assert.StartsWith("Happy to help. What would you like to know", result.Reply, StringComparison.Ordinal);
+        await _router.DidNotReceiveWithAnyArgs().RouteAsync(default!, default, default);
     }
 
     /// <summary>
