@@ -556,6 +556,10 @@ public partial class DashboardPage : ContentPage
 
             if (!outcome.IsFresh)
             {
+                // The live summary is skipped below, so a skeleton the render primed would pulse
+                // for ever over a screen with nothing coming: with no answer to wait for, it goes.
+                CompleteThePicture.EndLoadingWithoutAnswer();
+
                 // Saved data is on screen and the banner says so. Nothing more is asked of the
                 // server: a status line generated over a dashboard the API could not serve would
                 // be a guess dressed as a reading, and a failed refresh over existing data stays

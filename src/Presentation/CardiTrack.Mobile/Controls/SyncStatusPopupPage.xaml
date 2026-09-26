@@ -57,8 +57,8 @@
                          The negative margin keeps the box itself in the card's corner while
                          that target overhangs the padding. -->
                     <Grid x:Name="CloseHit"
-                          Padding="6"
-                          Margin="0,-6,-6,0"
+                          Padding="8"
+                          Margin="0,-8,-8,0"
                           BackgroundColor="Transparent"
                           HorizontalOptions="End"
                           VerticalOptions="Start"

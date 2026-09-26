@@ -126,7 +126,7 @@
                  margin gives back the tap band each button carries around its pill. Reconnect takes Refresh's place when the provider
                  itself broke the token — retrying Refresh would repeat the same failure, so there
                  is one live action there, not one that works and one that silently can't. -->
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8" Margin="0,-7">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8" Margin="0,-9">
                 <controls:AppButton x:Name="RefreshButton"
                         Text="Refresh"
                         Icon="icon_btn_refresh_tint.svg"

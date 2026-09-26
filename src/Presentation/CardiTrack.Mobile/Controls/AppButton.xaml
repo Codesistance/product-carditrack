@@ -2,16 +2,14 @@
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.AppButton"
-             MinimumHeightRequest="44">
+             MinimumHeightRequest="48">
 
     <!-- The app's one button (AppButtonTone × AppButtonSize — see the code-behind). The shape is
-         the Border, drawn at the size's own height inside a band never shorter than 44, which is
-         what takes the tap: a small button is easier to fit, never harder to hit. Radius 10 at
-         every size, the unified control radius. -->
+         the Border, drawn at the size's own height inside a band never shorter than 48 (the mobile
+         spec's touch-target floor), which is what takes the tap: a small button is easier to fit,
+         never harder to hit. Radius 10 at every size, the unified control radius. The tap is on
+         the control itself (see the code-behind), the element a screen reader focuses. -->
     <Grid x:Name="Root">
-        <Grid.GestureRecognizers>
-            <TapGestureRecognizer Tapped="OnTapped"/>
-        </Grid.GestureRecognizers>
         <Border x:Name="Fill"
                 VerticalOptions="Center"
                 StrokeThickness="0">

@@ -25,7 +25,7 @@ public enum AppButtonTone
 }
 
 /// <summary>How much room a button takes: 48 for a page's call to action, 36 in sheets, popups
-/// and cards, 30 inside a row. Every size still takes taps across 44.</summary>
+/// and cards, 30 inside a row. Every size still takes taps across 48.</summary>
 public enum AppButtonSize
 {
     L,
@@ -42,7 +42,8 @@ public enum AppButtonSize
 /// Not a <see cref="Button"/>. A native button is floored to 44 high on Android by the implicit
 /// style and draws its press ripple across its whole bounds, so a 30-high button could only be
 /// had by making it 44 — or by drawing it, as the device card's compact buttons did first. This draws
-/// every size the same way: the shape at the size's height, the tap across a 44 band. Announced as
+/// every size the same way: the shape at the size's height, the tap across a 48 band — the mobile
+/// spec's touch-target floor (ui_screens_maui_mobile.md, "Minimum 48x48dp touch targets"). Announced as
 /// a button all the same, with its caption as its name.
 /// </remarks>
 public partial class AppButton : ContentView
@@ -79,6 +80,16 @@ public partial class AppButton : ContentView
     {
         InitializeComponent();
         AutomationProperties.SetIsInAccessibleTree(this, true);
+
+        // On the control, not the inner grid: the control is the node a screen reader focuses
+        // and activates. A hint as well, because a drawn button — unlike a native one — is read
+        // as plain text by TalkBack otherwise (the chat's question chips found this first); a
+        // caller's own hint replaces it.
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += OnTapped;
+        GestureRecognizers.Add(tap);
+        SemanticProperties.SetHint(this, "Double tap to activate");
+
         ApplyLook();
     }
 
@@ -157,7 +168,7 @@ public partial class AppButton : ContentView
 
         Fill.HeightRequest = HeightOf(size);
         Fill.Padding = new Thickness(Tone == AppButtonTone.Text ? 4 : padding, 0);
-        HeightRequest = Math.Max(44, HeightOf(size));
+        HeightRequest = Math.Max(48, HeightOf(size));
         Caption.FontSize = fontSize;
         Glyph.WidthRequest = glyph;
         Glyph.HeightRequest = glyph;

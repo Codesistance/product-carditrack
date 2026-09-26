@@ -54,8 +54,8 @@
 
                     <!-- Dismissal as a mark, in the corner, the same one the other popups use. -->
                     <Grid x:Name="CloseHit"
-                          Padding="6"
-                          Margin="0,-6,-6,0"
+                          Padding="8"
+                          Margin="0,-8,-8,0"
                           BackgroundColor="Transparent"
                           HorizontalOptions="End"
                           VerticalOptions="Start"

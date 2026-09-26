@@ -258,7 +258,11 @@ public partial class AlertFilterSheetPage : ContentPage
     /// </summary>
     private async Task CountDraftAsync(bool debounce)
     {
-        _countCts?.Cancel();
+        if (_countCts is { } previous)
+        {
+            previous.Cancel();
+            previous.Dispose();
+        }
         var cts = _countCts = new CancellationTokenSource();
         var draft = _draft;
         ShowButton.Text = "Show alerts";

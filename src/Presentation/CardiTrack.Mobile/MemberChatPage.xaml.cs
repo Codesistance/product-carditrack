@@ -143,7 +143,6 @@ public partial class MemberChatPage : ContentView
 
         _threadSubtitle = SubtitleFor(memberFirstName);
         ShowThreadSubtitle();
-        _funFactIndex = TakeFunFactIndex();
         ApplyGreeting();
 
         // The greeting's idle loops are for an empty conversation on screen: the first message
@@ -277,6 +276,11 @@ public partial class MemberChatPage : ContentView
         if (_greetingPlayed)
             return;
         _greetingPlayed = true;
+
+        // The rotation moves on only when a greeting is actually seen: an open that resumes a
+        // conversation shows no greeting, and must not spend a fact nobody read.
+        _funFactIndex = TakeFunFactIndex();
+        ApplyGreeting();
 
         StopGreetingLoops();
         GreetingBot.AbortAnimation("greeting");
@@ -910,9 +914,7 @@ public partial class MemberChatPage : ContentView
         UpdateNewConversationAction();
 
         // A new conversation is greeted afresh, with the next thing the assistant can do.
-        _funFactIndex = TakeFunFactIndex();
         _greetingPlayed = false;
-        ApplyGreeting();
         PlayGreeting();
     }
 
@@ -988,6 +990,10 @@ public partial class MemberChatPage : ContentView
         _mode = ChatViewMode.Thread;
         ExitSessionSelection();
         ShowThreadSubtitle();
+
+        // Back on an empty live thread whose greeting has played: the bot picks its idle up again.
+        if (_greetingPlayed && _turns.Count == 0)
+            StartGreetingLoops();
         TurnsList.ItemsSource = _turns;
         InputBar.IsVisible = true;
         BackToChatPanel.IsVisible = false;
@@ -1029,6 +1035,7 @@ public partial class MemberChatPage : ContentView
     {
         _mode = ChatViewMode.HistoryList;
         ExitSessionSelection();
+        StopGreetingLoops();
         ShowSubtitle("Past conversations");
         SuggestionsPanel.IsVisible = false;
         InputBar.IsVisible = false;
@@ -1120,6 +1127,7 @@ public partial class MemberChatPage : ContentView
     private async Task ShowPastSessionAsync(ChatSessionItem item)
     {
         _mode = ChatViewMode.PastSession;
+        StopGreetingLoops();
         _viewedSessionId = item.SessionId;
         _viewedSession = item;
         ShowSubtitle(item.OpenedLabel);

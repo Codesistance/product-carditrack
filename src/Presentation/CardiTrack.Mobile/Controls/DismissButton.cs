@@ -2,7 +2,7 @@ namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
 /// The app's one ✕ for putting something away — a card, a banner, a popup: a 32 tonal square at the
-/// unified control radius, its ✕ in the tonal ink, inside a 44 tap band.
+/// unified control radius, its ✕ in the tonal ink, inside a 48 tap band (the mobile spec's floor).
 /// </summary>
 /// <remarks>
 /// The 2026-09-26 button audit found five of these — grey glyphs at 13, 14 and 15 points in two
@@ -17,12 +17,13 @@ public sealed class DismissButton : ContentView
 
     public DismissButton()
     {
-        WidthRequest = 44;
-        HeightRequest = 44;
+        WidthRequest = 48;
+        HeightRequest = 48;
         HorizontalOptions = LayoutOptions.Center;
         VerticalOptions = LayoutOptions.Center;
         AutomationProperties.SetIsInAccessibleTree(this, true);
         SemanticProperties.SetDescription(this, "Dismiss");
+        SemanticProperties.SetHint(this, "Double tap to dismiss");
 
         _face = new Border
         {
@@ -44,6 +45,7 @@ public sealed class DismissButton : ContentView
             },
         };
 
+        // The tap on the control itself — the node a screen reader focuses and activates.
         var band = new Grid { BackgroundColor = Colors.Transparent, Children = { _face } };
         var tap = new TapGestureRecognizer();
         tap.Tapped += async (_, _) =>
@@ -54,7 +56,7 @@ public sealed class DismissButton : ContentView
             await _face.FadeToAsync(0.7, 70);
             await _face.FadeToAsync(1, 120);
         };
-        band.GestureRecognizers.Add(tap);
+        GestureRecognizers.Add(tap);
         Content = band;
     }
 

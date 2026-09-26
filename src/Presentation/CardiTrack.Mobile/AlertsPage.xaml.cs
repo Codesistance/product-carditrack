@@ -67,7 +67,7 @@ public partial class AlertsPage : ContentPage
     /// </summary>
     private AlertListFilter _filter = AlertListFilter.None;
 
-    /// <summary>Whom the sheet offers, read once on the first open and kept for the page's life.</summary>
+    /// <summary>Whom the sheet last offered — the fallback when a fresh read fails.</summary>
     private IReadOnlyList<AlertFilterMember>? _members;
 
     /// <summary>
@@ -290,11 +290,13 @@ public partial class AlertsPage : ContentPage
             ApplyFilter(chosen);
     }
 
+    /// <summary>
+    /// Read on every open, not once: Shell keeps this page for the app's life, and a member added
+    /// or removed since the last open has to be offered — or not — in the sheet. A failed read
+    /// falls back to the last list this page had, and to none before the first.
+    /// </summary>
     private async Task<IReadOnlyList<AlertFilterMember>> MembersAsync()
     {
-        if (_members is not null)
-            return _members;
-
         try
         {
             var members = await _api.GetCardiMembersAsync();
@@ -305,7 +307,7 @@ public partial class AlertsPage : ContentPage
         }
         catch (ApiException)
         {
-            return [];
+            return _members ?? [];
         }
     }
 
@@ -806,19 +808,20 @@ public partial class AlertsPage : ContentPage
     /// </summary>
     private async Task LoadNudgeSectionAsync(LoadTicket ticket)
     {
-        // The saved answer first, when the card has nothing yet; the skeleton only when the
-        // device has never had one.
-        if (!CompleteThePicture.HasContent)
-        {
-            if (await _api.PeekNotificationSummaryAsync(ticket.Token) is { } saved)
-                CompleteThePicture.ShowSaved(saved);
-            else
-                CompleteThePicture.ShowLoading();
-            NudgeSection.IsVisible = CompleteThePicture.IsVisible;
-        }
-
         try
         {
+            // The saved answer first, when the card has nothing yet; the skeleton only when the
+            // device has never had one. Inside the try: a newer load cancels this ticket, and the
+            // peek's cancellation has to land in the handlers below rather than escape the load.
+            if (!CompleteThePicture.HasContent)
+            {
+                if (await _api.PeekNotificationSummaryAsync(ticket.Token) is { } saved)
+                    CompleteThePicture.ShowSaved(saved);
+                else
+                    CompleteThePicture.ShowLoading();
+                NudgeSection.IsVisible = CompleteThePicture.IsVisible;
+            }
+
             var summary = await _api.GetNotificationSummaryAsync(ticket.Token);
             if (!_gate.IsCurrent(ticket))
                 return;
