@@ -183,7 +183,7 @@
                                             Padding="14,12"
                                             IsVisible="False">
                                         <Border.StrokeShape>
-                                            <RoundRectangle CornerRadius="0,0,20,20"/>
+                                            <RoundRectangle CornerRadius="{StaticResource CardFootCornerRadius}"/>
                                         </Border.StrokeShape>
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnNightCoverageTapped"/>

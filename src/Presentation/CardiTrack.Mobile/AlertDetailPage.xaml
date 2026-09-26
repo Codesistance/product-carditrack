@@ -351,7 +351,7 @@
                                         Padding="14,11"
                                         IsVisible="False">
                                     <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="0,0,20,20"/>
+                                        <RoundRectangle CornerRadius="{StaticResource CardFootCornerRadius}"/>
                                     </Border.StrokeShape>
                                     <Label x:Name="ChangeLabel"
                                            Style="{StaticResource Body2Medium}"
