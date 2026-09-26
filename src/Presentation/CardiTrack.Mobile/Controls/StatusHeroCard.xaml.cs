@@ -17,6 +17,17 @@ public partial class StatusHeroCard : ContentView
     private Guid _memberId;
     private DateTime? _latestJournalEntryAt;
     private DateTime? _adviseGeneratedAt;
+
+    /// <summary>Whether a "Something to try" suggestion is on offer — kept so the no-device gate
+    /// can put the button back when a device is connected.</summary>
+    private bool _hasAdvise;
+
+    /// <summary>
+    /// This member has no active device. The row then keeps only the pin and the no-device
+    /// button: every other button — the journal, questions, alerts, the suggestion — is about
+    /// readings a member with no device is not sending, so each was a door to an empty room.
+    /// </summary>
+    private bool _noDevice;
     private Guid? _pendingQuestionId;
 
     /// <summary>Raised when the card body is tapped — the dashboard's route into M1-13.</summary>
@@ -127,7 +138,7 @@ public partial class StatusHeroCard : ContentView
     /// </summary>
     private void ApplyPendingQuestionnaire(QuestionnaireResponse? pending)
     {
-        QaCluster.IsVisible = pending is not null;
+        QaCluster.IsVisible = pending is not null && !_noDevice;
         _pendingQuestionId = pending?.Id;
 
         if (pending is null)
@@ -156,7 +167,8 @@ public partial class StatusHeroCard : ContentView
     /// </summary>
     private void ApplyAdvise(bool hasAdvise, DateTime? generatedAtUtc)
     {
-        AdviseCluster.IsVisible = hasAdvise;
+        _hasAdvise = hasAdvise;
+        AdviseCluster.IsVisible = hasAdvise && !_noDevice;
         _adviseGeneratedAt = generatedAtUtc;
 
         if (!hasAdvise)
@@ -256,8 +268,19 @@ public partial class StatusHeroCard : ContentView
     /// <summary>Raised by the no-device button beside Alerts; the page shows or hides its card.</summary>
     public event EventHandler? NoDeviceTapped;
 
-    /// <summary>Shows the no-device button while this member has no active device connection.</summary>
-    public void SetNoDevice(bool noDevice) => NoDeviceButton.IsVisible = noDevice;
+    /// <summary>
+    /// Shows the no-device button while this member has no active device connection, and hides
+    /// every other button in the row but the pin (see <see cref="_noDevice"/>).
+    /// </summary>
+    public void SetNoDevice(bool noDevice)
+    {
+        _noDevice = noDevice;
+        NoDeviceButton.IsVisible = noDevice;
+        DaybookCluster.IsVisible = !noDevice;
+        AlertsCluster.IsVisible = !noDevice;
+        QaCluster.IsVisible = !noDevice && _pendingQuestionId is not null;
+        AdviseCluster.IsVisible = !noDevice && _hasAdvise;
+    }
 
     /// <summary>Raised when the caregiver taps the pin; the dashboard owns the pins and the order.</summary>
     public event EventHandler? PinTapped;
