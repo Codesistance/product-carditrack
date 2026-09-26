@@ -15,8 +15,9 @@ Search snippets describe the Code as requiring providers to implement multilayer
 marking of AI-generated outputs and deployers to label deepfakes and certain AI-generated text.
 
 **Where CardiTrack stands.** `docs/compliance/ai_act_classification.md` §7.1 treats Art. 50 as live
-since 2 August and records two open gaps: in-product "AI-written" disclosure on eight surfaces (member
-chat squarely under 50(1); the other seven treated conservatively; tracked as issue #1244), and
+since 2 August and records two open gaps: the in-product "AI-written" line on **seven of the eight**
+surfaces — member chat (squarely under 50(1)) has shown a one-time notice since 2026-09-25, and the
+other seven, treated conservatively, are tracked as issue #1244 — and
 machine-readable marking on API responses serving generated text (OI-15 (c), pending counsel's view on
 whether 50(2) reaches them). Neither the guidelines nor the Code is cited, and neither URL was on the
 digest record. The DPIA's 2026-09-24 entry records no EEA users, so exposure is prospective.
@@ -34,8 +35,8 @@ sweep — it moved Annex III to 2 December 2027 and does not touch Art. 50.
 ## Why flagged
 
 The repo has an open compliance item whose answer now exists as two official instruments, and an
-in-flight issue (#1244) implementing a marking scheme without reference to the Code that defines
-"adequate". Reading two documents closes a question counsel would otherwise bill for.
+in-flight issue (#1244) rolling the disclosure line out to the seven remaining surfaces without
+reference to the Code that defines "adequate". Reading two documents closes a question counsel would otherwise bill for.
 
 ## Question to answer next
 

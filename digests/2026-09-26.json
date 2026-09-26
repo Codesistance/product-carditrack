@@ -1,6 +1,6 @@
 {
   "date": "2026-09-26",
-  "summary": "*CardiTrack digest — 2026-09-26* · 12 items · 2 HIGH, 10 FYI",
+  "summary": "*CardiTrack digest — 2026-09-26* · 11 items · 2 HIGH, 9 FYI",
   "empty_reason": null,
   "notes": [
     {
@@ -15,7 +15,7 @@
         "GitHub `ubuntu-latest` rollout to 26.04 starts 2026-10-19 (HIGH item today).",
         "Auth0 third-party-app security controls EOL 2026-10-23 (27 days).",
         "Google Play target API 36 one-time extension ends 2026-11-01.",
-        "EIC Accelerator next full-application cutoff 2026-11-04 — corrected today from the 2026-10-06 recorded on 2026-09-04.",
+        "EIC Accelerator: short-proposal cutoff 2026-10-06 (10 days) and next full-application batch 2026-11-04, both as recorded 2026-09-04; this run's sweep found only the bimonthly full-application dates on eic.ec.europa.eu, so the October short-proposal date is carried as recorded, not re-verified.",
         "UNITE Digital Health Valleys call 2 closes 2026-12-10 17:00 CET (FYI item today); info session 2026-09-30.",
         "Eurostars-3 Call 12 opens 2026-12-17, closes 2027-03-04 14:00 CET — indexed only; UK strand not yet published by Innovate UK.",
         "Auth0 10 KB profile limit EOL 2027-03-04 (FYI item today).",
@@ -82,15 +82,6 @@
       "category": "grants",
       "brief": "research/queue/2026-09-26-nia-2027-closes-tomorrow-no-application-on-record-early-stage-ineligible.md",
       "text": "*HIGH* — NHS Innovation Accelerator 2027 closes tomorrow (2026-09-27 23:59) — no application on record, and NIA states it does not support start-up or early-stage innovations\nFinal call on the item first recorded 2026-09-09 and chased daily since 2026-09-21. The deadline is unchanged (nhsaccelerator.com is proxy-blocked; confirmed via site-restricted search snippets: applications opened 17 August and close 23:59 on 27 September 2026). Nothing in the repo, the docs or the issue tracker records an application, a Readiness Check or a decision not to apply. New this run: the programme's own eligibility text says it supports innovations \"already in use in at least one site\" with evidence of positive impact and \"does not support start-up or early-stage innovations\"; CardiTrack has no NHS deployment on record, so a Readiness Check would very likely fail. Shortlisting 2026-11-25, interviews 6–15 January 2027.\nSmallest next action: decide today. If no Readiness Check was submitted, record NIA 2027 as not pursued so the tracker stops carrying it, and note the 2028 cohort as the earliest realistic target once a first site is live.\nhttps://nhsaccelerator.com/about-the-nia-programme/apply-for-nia-fellowship/\n\nclaude \"work through @research/queue/2026-09-26-nia-2027-closes-tomorrow-no-application-on-record-early-stage-ineligible.md\""
-    },
-    {
-      "slug": "eic-accelerator-cutoff-corrected-to-2026-11-04",
-      "title": "Correction: EIC Accelerator's next full-application cutoff is 2026-11-04, not the 2026-10-06 recorded on 2026-09-04",
-      "url": "https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator/eic-accelerator-open_en",
-      "severity": "FYI",
-      "category": "grants",
-      "brief": "research/queue/2026-09-26-eic-accelerator-cutoff-corrected-to-2026-11-04.md",
-      "text": "*FYI* — Correction: EIC Accelerator's next full-application cutoff is 2026-11-04, not the 2026-10-06 recorded on 2026-09-04\nUpdate against the recorded URL. An eic.ec.europa.eu-restricted search returns the Work Programme 2026 full-application batching dates as 7 January, 4 March, 6 May, 8 July, 2 September and 4 November 2026; four consultancy pages agree, and no 6 October date appears anywhere. The next cutoff after today is therefore 2026-11-04 (39 days). Short applications stay open continuously with a four-to-six-week turnaround, so only an already-approved short application can feed the November batch. The EIC page itself is proxy-blocked: this is indexed, not read. The draft Work Programme 2027 (unadopted) cuts 2027 to four cutoffs: 3 February, 1 April, 1 September, 3 November.\nSmallest next action: someone with browser access confirms the 2026 dates on the EIC page; the deadline tracker carries 2026-11-04 from today.\nhttps://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator/eic-accelerator-open_en\n\nclaude \"work through @research/queue/2026-09-26-eic-accelerator-cutoff-corrected-to-2026-11-04.md\""
     },
     {
       "slug": "unite-digital-health-valleys-call-2-closes-2026-12-10",
@@ -162,7 +153,7 @@
       "severity": "FYI",
       "category": "regulation",
       "brief": "research/queue/2026-09-26-eu-ai-act-article-50-guidelines-and-code-of-practice.md",
-      "text": "*FYI* — EU AI Act Article 50: the Commission's final transparency guidelines (2026-07-20) and the Code of Practice on AI-generated content (adequacy 2026-07-08) — the official answer sheet for open item OI-15 (c)\nIndexed only (digital-strategy.ec.europa.eu is proxy-blocked). The Art. 50 obligations have applied since 2026-08-02 and ai_act_classification.md §7.1 already treats them as live, with two open gaps: in-product disclosure across eight AI surfaces (issue #1244) and machine-readable marking of generated text (OI-15 (c)). Neither the guidelines — who must comply with interaction disclosure and content marking, and how to show it — nor the Code, which the Commission and the AI Board found adequate as the only EU-wide practical compliance tool for Art. 50(2), (4) and (5), is cited there. The Code is described as requiring multilayered machine-readable marking of AI-generated outputs. The DPIA records no EEA users today, so the exposure is prospective, not current.\nSmallest next action: someone with browser access reads the guidelines' scope section and the Code's text-marking commitments, closes OI-15 (c) one way or the other, cites both in §7.1, and checks #1244's marking against the Code's wording rather than inventing one.\nhttps://digital-strategy.ec.europa.eu/en/library/guidelines-transparency-obligations-providers-and-deployers-ai-systems\n\nclaude \"work through @research/queue/2026-09-26-eu-ai-act-article-50-guidelines-and-code-of-practice.md\""
+      "text": "*FYI* — EU AI Act Article 50: the Commission's final transparency guidelines (2026-07-20) and the Code of Practice on AI-generated content (adequacy 2026-07-08) — the official answer sheet for open item OI-15 (c)\nIndexed only (digital-strategy.ec.europa.eu is proxy-blocked). The Art. 50 obligations have applied since 2026-08-02 and ai_act_classification.md §7.1 already treats them as live, with two open gaps: the in-product \"AI-written\" line on seven of the eight AI surfaces — member chat has carried its one-time notice since 2026-09-25, the other seven are tracked in issue #1244 — and machine-readable marking of generated text (OI-15 (c)). Neither the guidelines — who must comply with interaction disclosure and content marking, and how to show it — nor the Code, which the Commission and the AI Board found adequate as the only EU-wide practical compliance tool for Art. 50(2), (4) and (5), is cited there. The Code is described as requiring multilayered machine-readable marking of AI-generated outputs. The DPIA records no EEA users today, so the exposure is prospective, not current.\nSmallest next action: someone with browser access reads the guidelines' scope section and the Code's text-marking commitments, closes OI-15 (c) one way or the other, cites both in §7.1, and checks #1244's marking against the Code's wording rather than inventing one.\nhttps://digital-strategy.ec.europa.eu/en/library/guidelines-transparency-obligations-providers-and-deployers-ai-systems\n\nclaude \"work through @research/queue/2026-09-26-eu-ai-act-article-50-guidelines-and-code-of-practice.md\""
     },
     {
       "slug": "uk-draft-medical-devices-amendment-regulations-2026",
