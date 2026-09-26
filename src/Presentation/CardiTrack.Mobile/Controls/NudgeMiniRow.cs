@@ -12,7 +12,7 @@ namespace CardiTrack.Mobile.Controls;
 /// The compact form of a notification, for the dashboard's two card slots and the safety banners.
 /// </summary>
 /// <remarks>
-/// Built in code rather than XAML, like <see cref="FilterChipBar"/> and <see cref="SkeletonView"/>:
+/// Built in code rather than XAML, like <see cref="AlertFilterSheetPage"/>'s chips and <see cref="SkeletonView"/>:
 /// it is a single row with no template to speak of, and the dashboard creates it dynamically.
 /// <para>
 /// Deliberately headline-and-tap only. The dashboard is where a caregiver checks whether their

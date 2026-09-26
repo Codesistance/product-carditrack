@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
+using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Domain.Enums;
 
@@ -107,6 +108,32 @@ public sealed class PopupService : IPopupService
             {
                 // Released once the drawer has left the stack, the same handshake the chooser and
                 // the choice sheet make — the tab underneath reads IsShowing to know it never left.
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
+    public Task<AlertListFilter?> ChooseAlertFilterAsync(
+        AlertListFilter current,
+        IReadOnlyList<AlertFilterMember> members,
+        bool archived,
+        Func<AlertListFilter, CancellationToken, Task<int?>> count) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return null;
+
+            var sheet = new AlertFilterSheetPage(current, members, archived, count);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(sheet, animated: false);
+                return await sheet.Result;
+            }
+            finally
+            {
+                // Released once the sheet has left the stack — the same handshake as the drawer
+                // above; the Alerts page reads IsShowing to know it never left.
                 Interlocked.Decrement(ref _open);
             }
         });

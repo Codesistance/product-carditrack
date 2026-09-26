@@ -17,12 +17,12 @@
          edge and pad itself instead — see that control. -->
     <Grid RowDefinitions="Auto,Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
-        <!-- Back arrow and title. Figma's header also carried a filter button; it duplicated the
-             chip row below and is gone, leaving the chips as the single filter affordance. They
-             only disappear when there is nothing to filter (an unfiltered empty list, or the
-             archive), so dropping the button strands no filtered state. -->
+        <!-- Back arrow, title, and the filter button Figma's header carried. The button opens
+             the filter sheet (AlertFilterSheetPage); it replaced the row of five chips that sat
+             under the header, which could hold one choice at a time out of three different
+             questions and put a caret on every chip that opened nothing. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
 
                 <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
@@ -50,23 +50,71 @@
                     <Label Text="Alerts"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
-                    <Label Text="Everything that asked for your attention"
+                    <!-- Says what the list is narrowed to while it is, so a filtered list can
+                         be told from a quiet one without scrolling back to the strip. -->
+                    <Label x:Name="SubtitleLabel"
+                           Text="Everything that asked for your attention"
                            FontFamily="Quicksand"
                            FontSize="12"
                            TextColor="{StaticResource White}"
                            Opacity="0.85"
                            LineBreakMode="TailTruncation"/>
                 </VerticalStackLayout>
+
+                <!-- The white square every header uses for its trailing action (the Dashboard's
+                     bell, Connected Devices' add): radius 12, no shadow. Filled PrimaryDark with a
+                     white glyph while a filter is on, and a count of the parts narrowing the list
+                     on its corner — white, not a status colour: a filter is not an alarm. -->
+                <Grid Grid.Column="2" VerticalOptions="Start">
+                    <Border x:Name="FilterButton"
+                            WidthRequest="40" HeightRequest="40"
+                            BackgroundColor="{StaticResource White}"
+                            StrokeThickness="0"
+                            SemanticProperties.Description="Filter alerts">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12"/>
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnFilterTapped"/>
+                        </Border.GestureRecognizers>
+                        <Image x:Name="FilterIcon"
+                               Source="icon_filter.svg"
+                               WidthRequest="24" HeightRequest="24"/>
+                    </Border>
+                    <Border x:Name="FilterCountBadge"
+                            IsVisible="False"
+                            BackgroundColor="{StaticResource White}"
+                            Stroke="{StaticResource PrimaryDark}"
+                            StrokeThickness="1"
+                            WidthRequest="18" HeightRequest="18"
+                            HorizontalOptions="End" VerticalOptions="Start"
+                            TranslationX="6" TranslationY="-6"
+                            InputTransparent="True">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="9"/>
+                        </Border.StrokeShape>
+                        <Label x:Name="FilterCountLabel"
+                               FontSize="10"
+                               FontFamily="QuicksandSemiBold"
+                               TextColor="{StaticResource PrimaryDark}"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Border>
+                </Grid>
             </Grid>
         </controls:HeaderBand>
 
-        <!-- Chips sit outside the scroller so filtering stays reachable while the list is
-             scrolled, and are hidden in the states where there is nothing to filter. The
-             bottom margin is the gap a scrolled card keeps from the chips: without it the
-             list ran straight under the row, and a card's top edge met the chips' bottom. -->
-        <controls:FilterChipBar x:Name="Filters"
-                                Grid.Row="1"
-                                Margin="0,20,0,12"/>
+        <!-- What the list is narrowed to, one removable pill per part and a way to clear them
+             all — only while a filter is on. Outside the scroller so it stays in view while the
+             list scrolls: a filtered list must never be mistaken for the whole one. The bottom
+             margin is the gap a scrolled card keeps from the strip. -->
+        <ScrollView x:Name="FilterStrip"
+                    Grid.Row="1"
+                    Orientation="Horizontal"
+                    HorizontalScrollBarVisibility="Never"
+                    Margin="0,16,0,4"
+                    IsVisible="False">
+            <HorizontalStackLayout x:Name="FilterStripHost" Spacing="8" Padding="20,0"/>
+        </ScrollView>
 
         <RefreshView x:Name="Refresher"
                      Grid.Row="2"
@@ -204,23 +252,16 @@
                              looking for something about their relative, and a missing phone
                              number must not sit in that stream. It lives here rather than on a
                              screen of its own because the bell is the one place people look for
-                             "what needs me", and a second inbox nobody opens helps nobody. -->
+                             "what needs me", and a second inbox nobody opens helps nobody.
+
+                             Safety banners first and on their own — they say monitoring is
+                             degraded, which is the closest this section gets to being about the
+                             person — then the Dashboard's own "Complete the picture" card, so a
+                             missing emergency contact is one ring on both screens rather than a
+                             ring on one and a loose row on the other. -->
                         <VerticalStackLayout x:Name="NudgeSection" Spacing="10" IsVisible="False">
-                            <BoxView Style="{StaticResource DividerLine}" Margin="0,4"/>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <Label Grid.Column="0"
-                                       Text="Also needs your attention"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
-                                <Label x:Name="NudgeSeeAllLink"
-                                       Grid.Column="1"
-                                       Text="See all"
-                                       Style="{StaticResource SectionLink}">
-                                    <Label.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnSeeAllNudgesTapped"/>
-                                    </Label.GestureRecognizers>
-                                </Label>
-                            </Grid>
-                            <VerticalStackLayout x:Name="NudgeStack" Spacing="10"/>
+                            <VerticalStackLayout x:Name="SafetyBannerList" Spacing="10" IsVisible="False"/>
+                            <controls:CompleteThePictureCard x:Name="CompleteThePicture"/>
                         </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Grid>
