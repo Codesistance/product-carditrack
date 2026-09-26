@@ -54,7 +54,12 @@ public partial class AppButton : ContentView
 
     public static readonly BindableProperty DetailProperty = BindableProperty.Create(
         nameof(Detail), typeof(string), typeof(AppButton), null,
-        propertyChanged: (b, _, _) => ((AppButton)b).ApplyLook());
+        propertyChanged: (b, _, _) =>
+        {
+            var button = (AppButton)b;
+            button.ApplyLook();
+            button.ApplyDescription();
+        });
 
     public static readonly BindableProperty IconProperty = BindableProperty.Create(
         nameof(Icon), typeof(ImageSource), typeof(AppButton),
@@ -209,7 +214,9 @@ public partial class AppButton : ContentView
         DetailCaption.Text = Detail;
         DetailCaption.IsVisible = hasDetail;
         DetailCaption.FontSize = fontSize - 5;
-        ApplyDescription();
+        // Not the spoken name: that follows the words (ApplyText, and Detail above), never a
+        // tone, size or icon change — which would otherwise overwrite a name a caller set after
+        // the words, the way the device card names its Reconnect and Re-pull.
         Glyph.WidthRequest = glyph;
         Glyph.HeightRequest = glyph;
         // No gap after a glyph with no words beside it, or it sits that far off the button's centre.
