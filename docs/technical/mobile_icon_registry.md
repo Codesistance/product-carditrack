@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**142 icons**, **40 distinct colours**, **7 referenced nowhere**.
+**143 icons**, **40 distinct colours**, **7 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -27,7 +27,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#153D66` | 28 | icons.json brand outer stroke |
 | `#3175B9` | 22 | icons.json brand and activity fill, steel blue |
 | `#939DAA` | 17 | MutedText |
-| `#174E86` | 15 | PrimaryDark |
+| `#174E86` | 16 | PrimaryDark |
 | `#C42F2F` | 15 | DangerRed |
 | `#1884DC` | 12 | Primary |
 | `#1F8A72` | 9 | MetricTemperatureInk / DatasetBodyText |
@@ -216,6 +216,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_device_off.svg` | `#C42F2F` | StatusHeroCard |
 | `icon_edit.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_expand.svg` | `#153D66` | MetricTrendCard |
+| `icon_export.svg` | `#174E86` | JournalPage |
 | `icon_export_white.svg` | `#FFFFFF` | ExportAction |
 | `icon_eye.svg` | `#939DAA` | CreateAccountPage, SignInPage |
 | `icon_eye_off.svg` | `#939DAA` | CreateAccountPage, SignInPage |

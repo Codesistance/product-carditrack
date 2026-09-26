@@ -23,9 +23,11 @@
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <!-- Back arrow, same treatment as Alerts and Settings — a tab root falls back to the
-             dashboard when there is no history of its own to pop. The filter button opens the
-             same sheet the Alerts header does (FilterSheetPage); it replaced three chooser chips
-             under the search box, each its own popup for one question at a time. -->
+             dashboard when there is no history of its own to pop. The page's two actions, export
+             and filter, sit together at the trailing edge as the header squares every other page
+             uses for its actions (the Dashboard's bell, Alerts' filter). The filter opens the same
+             sheet the Alerts header does (FilterSheetPage); it replaced three chooser chips under
+             the search box, each its own popup for one question at a time. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
 
@@ -55,9 +57,10 @@
                     <Label Text="CardiJournal"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
-                    <!-- Names whose journal this is once there is more than one it could be, and
-                         what the list is narrowed to while it is — so a filtered list can be told
-                         from a quiet one without scrolling back to the strip. -->
+                    <!-- Whose book this is ("Pop's Daybooks") — the tabs below already say which
+                         book, so the line names the person instead of repeating them — and what
+                         the list is narrowed to while it is, so a filtered list can be told from a
+                         quiet one without scrolling back to the strip. -->
                     <Label x:Name="HeaderSubtitle"
                            Text="Daybooks of finished days"
                            FontFamily="Quicksand"
@@ -67,12 +70,30 @@
                            LineBreakMode="TailTruncation"/>
                 </VerticalStackLayout>
 
+                <HorizontalStackLayout Grid.Column="2" Spacing="8" VerticalOptions="Start">
+
+                <!-- Export every entry in a range of this book. An icon square rather than the
+                     worded ExportAction pill: in the header it sits with the filter as one of the
+                     page's two actions, and a screen reader is told what it does. It still asks
+                     which range, in the book's own unit, before anything is saved. Shown once there
+                     is a member to export — before any entry exists too, since a caregiver can
+                     still ask for a range and be told there is nothing in it. -->
+                <Border x:Name="ExportButton"
+                        IsVisible="False"
+                        SemanticProperties.Description="Export Range"
+                        Style="{StaticResource HeaderActionSquare}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnExportTapped"/>
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_export.svg"
+                           WidthRequest="22" HeightRequest="22"/>
+                </Border>
+
                 <!-- The Alerts header's filter square, unchanged: HeaderActionSquare, filled
                      PrimaryDark with a white glyph while a filter is on, and a count of the parts
                      narrowing the list on its corner. Hidden until there is something to filter
                      or someone else to switch to — see PaintFilterChrome. -->
                 <Grid x:Name="FilterButtonHost"
-                      Grid.Column="2"
                       VerticalOptions="Start"
                       IsVisible="False">
                     <Border x:Name="FilterButton"
@@ -104,35 +125,32 @@
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
                 </Grid>
+                </HorizontalStackLayout>
             </Grid>
         </controls:HeaderBand>
 
-        <!-- Which book is being read, with export of every entry in that book on the
-             opposite side. Visible whether or not the member has any entries yet: a
-             caregiver whose Daybooks have not started is exactly the one who needs to
-             see that weeks exist. Deliberately outside FilterPanel, which hides itself
-             on an empty history — this is navigation between series, not a filter within
-             one.
+        <!-- Which book is being read. Visible whether or not the member has any entries yet: a
+             caregiver whose Daybooks have not started is exactly the one who needs to see that
+             weeks exist. Deliberately outside FilterPanel, which hides itself on an empty
+             history — this is navigation between series, not a filter within one.
 
              Three segments now the Monthbook writes: each one selects a series something
-             actually produces. The clipboard is the same glyph M1-13 uses for export. -->
+             actually produces. The row is the segments alone, in equal thirds across the page:
+             export moved up into the header, and with it went the reason the segments were sized
+             to their words and pushed to one side. -->
         <Grid x:Name="CadenceRow"
               Grid.Row="1"
-              ColumnDefinitions="*,Auto"
-              ColumnSpacing="12"
               Margin="20,16,20,0"
               IsVisible="False">
         <Border x:Name="CadencePanel"
-                Grid.Column="0"
                 Padding="4"
                 StrokeThickness="0"
                 BackgroundColor="{StaticResource SelectedOptionBackground}"
-                HorizontalOptions="Start"
                 VerticalOptions="Center">
             <Border.StrokeShape>
                 <RoundRectangle CornerRadius="14"/>
             </Border.StrokeShape>
-            <Grid ColumnDefinitions="Auto,Auto,Auto" ColumnSpacing="4">
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4">
 
                 <Border x:Name="DaysSegment"
                         Grid.Column="0"
@@ -149,7 +167,8 @@
                     <Label x:Name="DaysSegmentLabel"
                            Text="Days"
                            FontFamily="QuicksandSemiBold"
-                           FontSize="13"/>
+                           FontSize="13"
+                           HorizontalOptions="Center"/>
                 </Border>
 
                 <Border x:Name="WeeksSegment"
@@ -167,7 +186,8 @@
                     <Label x:Name="WeeksSegmentLabel"
                            Text="Weeks"
                            FontFamily="QuicksandSemiBold"
-                           FontSize="13"/>
+                           FontSize="13"
+                           HorizontalOptions="Center"/>
                 </Border>
 
                 <Border x:Name="MonthsSegment"
@@ -185,26 +205,11 @@
                     <Label x:Name="MonthsSegmentLabel"
                            Text="Months"
                            FontFamily="QuicksandSemiBold"
-                           FontSize="13"/>
+                           FontSize="13"
+                           HorizontalOptions="Center"/>
                 </Border>
             </Grid>
         </Border>
-
-        <!-- The app's one export control (ExportAction), in its page tone. It wears the cadence
-             pills' own chrome — the same inner pill, the same 13pt semibold — because it is the
-             same size of decision taken on the same row, and the app's action gradient, which on
-             the pills' own white keeps it from reading as a fourth segment sitting selected. As
-             an icon alone it named itself only to a screen reader, and it exported whatever
-             window the filter chip happened to hold; it now says what it does, and asks which
-             range. The 4-point frame stays transparent only to hold the pills' exact height. -->
-        <controls:ExportAction x:Name="ExportHit"
-                Grid.Column="1"
-                Text="Export Range"
-                Padding="4"
-                HorizontalOptions="End"
-                VerticalOptions="Center"
-                SemanticProperties.Hint="Choose which Daybooks to save"
-                Tapped="OnExportTapped"/>
         </Grid>
 
         <!-- Search and the applied-filter strip sit outside the scroller so what narrows the list
