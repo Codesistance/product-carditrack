@@ -1196,6 +1196,16 @@ public partial class MemberChatPage : ContentView
             if (memberId == _memberId)
                 ShowSuggestions(response);
         }
+        catch (ApiException ex) when (memberId == _memberId
+            && (ex.StatusCode == System.Net.HttpStatusCode.Forbidden || ex.IsNotFound))
+        {
+            // Access to this member is gone (or the member is). The client has already dropped the
+            // saved copy; the chips drawn from it a moment ago go too — they can be this caregiver's
+            // own questions about someone they may no longer see.
+            SuggestionsRow.Clear();
+            SuggestionsCaption.IsVisible = false;
+            SuggestionsPanel.IsVisible = false;
+        }
         catch (Exception ex)
         {
             ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while loading suggestions");
