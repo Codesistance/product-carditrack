@@ -268,7 +268,26 @@ public partial class JournalPage : ContentPage
         if (_memberId == Guid.Empty)
             return;
 
-        await RefreshMembersAsync();
+        FlushPendingSearch();
+
+        // A fresh read that no longer has the member on screen means they have left the account:
+        // the page moves to the primary member rather than letting the sheet offer — and submit —
+        // a journal nobody here can read any more. The sheet's own fallback of keeping the member
+        // on screen is for a read that failed, not for one that succeeded without them.
+        if (await RefreshMembersAsync() && _members.All(m => m.Id != _memberId))
+        {
+            if (PrimaryCardiMember.From(_members) is not { } primary)
+            {
+                _memberId = Guid.Empty;
+                _memberFirstName = null;
+                _hasAnyReviews = false;
+                await ReloadForNewQuestionAsync();
+                return;
+            }
+
+            SelectMember(primary.Id, primary.DisplayFirstName());
+            _ = ReloadForNewQuestionAsync();
+        }
 
         var current = new JournalFilterChoice(CurrentMember(), _filter);
         var chosen = await _popups.ChooseJournalFilterAsync(
@@ -319,16 +338,36 @@ public partial class JournalPage : ContentPage
     /// the first load has to be offered — or not — under "Whose". A failed read keeps the list
     /// already held, which the sheet tops up with the member on screen.
     /// </summary>
-    private async Task RefreshMembersAsync()
+    /// <returns>Whether the read succeeded, so the caller can tell "gone" from "not known".</returns>
+    private async Task<bool> RefreshMembersAsync()
     {
         try
         {
             _members = await _api.GetCardiMembersAsync();
             PaintFilterChrome();
+            return true;
         }
         catch (ApiException)
         {
+            return false;
         }
+    }
+
+    /// <summary>
+    /// Applies words typed within the search debounce before the sheet opens. The sheet counts
+    /// what its choices would list under the current search, so a caregiver who typed and went
+    /// straight to the filter would otherwise be shown a count for the words before theirs.
+    /// </summary>
+    private void FlushPendingSearch()
+    {
+        _searchDebounceCts?.Cancel();
+
+        var typed = string.IsNullOrWhiteSpace(SearchEntry.Text) ? null : SearchEntry.Text.Trim();
+        if (typed == _search)
+            return;
+
+        _search = typed;
+        _ = ReloadForNewQuestionAsync();
     }
 
     private FilterMember CurrentMember() => new(_memberId, _memberFirstName ?? "Unnamed");
