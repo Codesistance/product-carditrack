@@ -629,17 +629,38 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return deleted;
     }
 
-    /// <summary>The keys a chat mutation makes stale — the open thread and the history list.</summary>
+    /// <summary>
+    /// The keys a chat mutation makes stale — the open thread, the history list, and the
+    /// suggested questions, which are built from this caregiver's own recent questions and so
+    /// change with every one they ask.
+    /// </summary>
     private static string[] MemberChatKeys(Guid cardiMemberId) =>
     [
         ApiPaths.CurrentMemberChatSession(cardiMemberId),
         ApiPaths.MemberChatSessions(cardiMemberId),
+        ApiPaths.MemberChatSuggestions(cardiMemberId),
     ];
 
-    public Task<MemberChatSuggestionsResponse> GetMemberChatSuggestionsAsync(
-        Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<MemberChatSuggestionsResponse>(
-            ApiPaths.MemberChatSuggestions(cardiMemberId), ct);
+    /// <summary>
+    /// The chat's suggested questions. A 403 evicts the cached copy on the way out, as the trend
+    /// read does: the list can hold the caregiver's own questions about this member — health
+    /// content — and once their access is withdrawn, an offline open must not put those back on
+    /// screen from disk. (A 404 is evicted by every read already.)
+    /// </summary>
+    public async Task<MemberChatSuggestionsResponse> GetMemberChatSuggestionsAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await GetAsync<MemberChatSuggestionsResponse>(
+                ApiPaths.MemberChatSuggestions(cardiMemberId), ct);
+        }
+        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            await EvictAsync(ApiPaths.MemberChatSuggestions(cardiMemberId));
+            throw;
+        }
+    }
 
     public Task<MemberChatSuggestionsResponse?> PeekMemberChatSuggestionsAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>

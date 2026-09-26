@@ -1156,10 +1156,15 @@ public partial class MemberChatPage : ContentView
 
         // Three at most, whatever the server sends: an API still on the six-chip list must not
         // stack six rows over the greeting.
+        // The caregiver's own recent questions about this member lead with the history glyph and
+        // are captioned as such; the standard ones the server fills a short history with keep
+        // their topic glyph (ChatSuggestionGlyph.IsFromHistory).
+        var listIsRecent = response.Source == MemberChatSuggestionsResponse.SourceRecent;
+        var shown = response.Suggestions.Take(MaxSuggestions).ToList();
         SuggestionsRow.Clear();
-        foreach (var suggestion in response.Suggestions.Take(MaxSuggestions))
-            SuggestionsRow.Add(BuildSuggestionChip(suggestion, fromHistory: false));
-        SuggestionsCaption.IsVisible = false;
+        foreach (var suggestion in shown)
+            SuggestionsRow.Add(BuildSuggestionChip(suggestion, ChatSuggestionGlyph.IsFromHistory(suggestion, listIsRecent)));
+        SuggestionsCaption.IsVisible = shown.Any(s => ChatSuggestionGlyph.IsFromHistory(s, listIsRecent));
 
         SuggestionsPanel.IsVisible = _turns.Count == 0;
     }

@@ -14,6 +14,13 @@ public class ChatSuggestionGlyphTests
     public void AStandardQuestion_GetsItsTopicsGlyph(string suggestion, string glyph) =>
         Assert.Equal(glyph, ChatSuggestionGlyph.For(suggestion, fromHistory: false));
 
+    [Theory]
+    [InlineData("Why did Pop sleep less this week?", true, true)]
+    [InlineData("How are they doing today?", true, false)]
+    [InlineData("Why did Pop sleep less this week?", false, false)]
+    public void OnlyTheCaregiversOwnQuestions_CountAsHistory(string suggestion, bool listIsRecent, bool expected) =>
+        Assert.Equal(expected, ChatSuggestionGlyph.IsFromHistory(suggestion, listIsRecent));
+
     [Fact]
     public void AQuestionFromHistory_IsMarkedAsHistory_WhateverItIsAbout() =>
         Assert.Equal(ChatSuggestionGlyph.History, ChatSuggestionGlyph.For("Why did Pop sleep less?", fromHistory: true));

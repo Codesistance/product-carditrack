@@ -19,6 +19,25 @@ public static class ChatSuggestionGlyph
     public const string Activity = "icon_dataset_activity.svg";
     public const string General = "icon_dataset_heart.svg";
 
+    /// <summary>
+    /// The server's standard questions (MemberChatService.GetSuggestionsAsync), which it uses to
+    /// fill the stack when the caregiver's own recent questions run short. A list marked "recent"
+    /// can carry some of these, and they are not the caregiver's history, so they keep their topic
+    /// glyph. If the server's wording changes, a filler only gets the history glyph by mistake.
+    /// </summary>
+    public static readonly IReadOnlySet<string> StandardQuestions = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "What's behind the current alert?",
+        "Has anything come through yet?",
+        "Anything I should keep an eye on?",
+        "How are they doing today?",
+        "Show me yesterday's Daybook",
+    };
+
+    /// <summary>Whether a chip in a list the server marked recent is one of the caregiver's own.</summary>
+    public static bool IsFromHistory(string suggestion, bool listIsRecent) =>
+        listIsRecent && !StandardQuestions.Contains(suggestion);
+
     public static string For(string suggestion, bool fromHistory)
     {
         if (fromHistory)
