@@ -1,0 +1,168 @@
+{
+  "date": "2026-09-26",
+  "summary": "*CardiTrack digest — 2026-09-26* · 11 items · 2 HIGH, 9 FYI",
+  "empty_reason": null,
+  "notes": [
+    {
+      "heading": "Deadlines on record",
+      "lines": [
+        "NIA 2027 closes tomorrow, Sun 2026-09-27 23:59 — no application on record, and NIA excludes early-stage innovations (HIGH item today).",
+        "Fitbit Web API sunsets 2026-09-30 (4 days) — no extension found; changes nothing here, both live integrations read the Google Health API.",
+        "NHS Productivity Challenge round 1 closes 2026-10-01 — the supplier-list EOI window for it has passed; round 2 (2026-12-01, EOI by about 2026-11-17) is the realistic target; rounds as reported: 2026-10-01, 2026-12-01, 2027-02-01, TRL 4–8, £250k minimum.",
+        "NIHR i4i Product Development Awards: call opens 2026-10-07, outlines due 13:00 2026-12-02.",
+        "UK Health Bill (MHRA reform amendments, recorded 2026-09-09): Lords second reading 2026-10-13.",
+        "FDA generative-AI discussion paper: comments close 2026-10-19.",
+        "GitHub `ubuntu-latest` rollout to 26.04 starts 2026-10-19 (HIGH item today).",
+        "Auth0 third-party-app security controls EOL 2026-10-23 (27 days).",
+        "Google Play target API 36 one-time extension ends 2026-11-01.",
+        "EIC Accelerator: short-proposal cutoff 2026-10-06 (10 days) and next full-application batch 2026-11-04, both as recorded 2026-09-04; this run's sweep found only the bimonthly full-application dates on eic.ec.europa.eu, so the October short-proposal date is carried as recorded, not re-verified.",
+        "UNITE Digital Health Valleys call 2 closes 2026-12-10 17:00 CET (FYI item today); info session 2026-09-30.",
+        "Eurostars-3 Call 12 opens 2026-12-17, closes 2027-03-04 14:00 CET — indexed only; UK strand not yet published by Innovate UK.",
+        "Auth0 10 KB profile limit EOL 2027-03-04 (FYI item today).",
+        "Apple: iOS 27 SDK required for uploads from April 2027 — still no stable .NET 10 iOS workload for Xcode 27; an `xcode-27` runner label now exists."
+      ]
+    },
+    {
+      "heading": "Held — no primary source yet",
+      "lines": [
+        "Samsung Health family heart-health sharing (Seoul briefing 2026-09-09), fourth day: now in Korea Herald and DigitalToday English, still no news.samsung.com post; reads as the Connected Care sharing already previewed at CES and VivaTech — dropped from the daily hold from tomorrow unless a Samsung Newsroom post appears.",
+        "Pixel Watch 2 guaranteed-update window ends 2026-10-01 per press citing Google's support page (proxy-blocked); no Google Health API or sync sunset is tied to it, but Pixel Watch 1's post-EOL update removed sensors on some units.",
+        "Horizon Europe HLTH-2027-02-two-stage: stage 1 2027-02-17, stage 2 2027-09-16, opens 2026-10-29 — now corroborated by two NCPs and the portal call identifier, portal itself unread.",
+        "EHDS implementing regulations (EU) 2026/2083 (MyHealth@EU) and 2026/2098 (secondary-use metadata), OJ 2026-09-21 — EUR-Lex unread; neither touches wellness-app labelling.",
+        "Vertex AI Extensions shutdown after 2026-11-26 — snippet only; nothing in the repo uses Extensions.",
+        "Gemini 3.1 Flash-Lite retirement 2027-05-07 — third-party issue quoting ai.google.dev; prod is on gemini-3.5-flash.",
+        "Meta Connect 2026 (2026-09-23): first Meta smartwatch with health tracking — press only, about.fb.com blocked.",
+        "HAI-DEF terms page unreadable again; a FAQ snippet says \"last verified July 2026\" — unchanged cannot be asserted from a primary today."
+      ]
+    },
+    {
+      "heading": "Checked, nothing new",
+      "lines": [
+        "Google Health API v4 discovery still revision 20260923 (read directly): 21 scopes, PairedDevice unchanged, nothing deprecated; the app still requests seven `.readonly` scopes and no `.writeonly`.",
+        "Google Health API release notes: nothing after 2026-08-17 as indexed; restricted-scope verification unchanged.",
+        "carditrack.com/supported-devices unchanged since 2026-09-22 and matches devices.md (live: Fitbit, Pixel Watch; roadmap: Garmin, Withings; Apple and Samsung via Google Health; Oura and Whoop not built).",
+        ".NET 10.0.12 / SDK 10.0.401 still current; next Patch Tuesday 2026-10-13; the aspnet noble-chiseled image builds on 10.0.12.",
+        "NuGet vulnerability index (2026-09-26): no pinned version affected; no new Actions advisories.",
+        "MAUI 10.0.110 still latest; iOS workload 26.5.10318 (Xcode 26.6), Xcode 27 packs preview-only; macos-26 image still ships Xcode 26.4.1.",
+        "Ollama 0.34.4 latest stable, no security fixes; pinned 0.34.2 digest unchanged; SSRF GHSA-57p7-34ff-7w3w unchanged; no new advisories reaching Ollama's surface.",
+        "MedGemma cards and weights unchanged (1.5-4b-it last modified 2026-04-13); SOTER (arXiv 2609.16804, wearable time-series foundation model) noted, weights and licence unconfirmed.",
+        "hashicorp/google 8.4.0 no breaking changes, ~>7.23 resolves to 7.46.1; Terraform 1.16.4 bug fixes only; CVE-2026-14978 needs an HCP/TFE upload path we do not have.",
+        "QuestPDF 2026.9.1, FirebaseAdmin 3.7.0, PubSub 3.38.0, SkiaSharp 4.152.1, Anthropic 12.50.0: no breaking or security changes; Npgsql EF 11 and Newtonsoft 14 still prerelease.",
+        "Store upload actions: upload-google-play SHA = v1.1.5 (current v1), upload-testflight-build SHA = v5.4.0 (current v5).",
+        "Play policy timeline: nothing after the 2026-09-30 developer-verification entry; Apple developer news nothing after 2026-09-18.",
+        "Fitbit Web API sunset unchanged; Garmin programme still paused; Withings, Whoop, Oura quiet; watchOS 27.0.1 is a bug fix.",
+        "MHRA response to the National Commission (promised September 2026) not published; MDCG Borderline Manual still v5; MDR revision SANT vote 2026-12-03; FDA, NICE, DTAC, ICO unchanged.",
+        "FDA §870.2380 (recorded 2026-09-25): codified text says the type \"is not intended to identify or detect arrhythmias\" — AFib notification stays under the OTC ECG/PPG regulations."
+      ]
+    },
+    {
+      "heading": "Sandbox",
+      "lines": [
+        "Denied by the network policy this run: developers.google.com, blog.google, docs.cloud.google.com (and every cloud.google.com docs redirect), ai.google.dev, firebase.google.com, support.google.com, auth0.com, gov.uk and all MHRA/NHS/NICE/ICO hosts, fda.gov, federalregister.gov, ec.europa.eu and EUR-Lex, nhsaccelerator.com, ukri.org, nihr.ac.uk, eic.ec.europa.eu, unitedigihealth.eu, apple.com, news.samsung.com, developer.garmin.com, withings.com, ollama.com, arxiv.org, osv.dev, api.github.com.",
+        "Reachable and read directly: health.googleapis.com, github.com pages and raw.githubusercontent.com, api.nuget.org, huggingface.co, hub.docker.com, mcr.microsoft.com, registry.terraform.io, developer.android.com, developer.apple.com, cloud.google.com/blog. Each brief says what was read directly and what came from search indexes.",
+        "Nothing read this run asked the routine to post anywhere; no Slack credential is held and none was sought."
+      ]
+    }
+  ],
+  "items": [
+    {
+      "slug": "github-ubuntu-latest-moves-to-26-04-from-2026-10-19",
+      "title": "GitHub moves `ubuntu-latest` to Ubuntu 26.04 in a phased rollout from 2026-10-19 to 2026-11-19 — all 60 CardiTrack jobs ride that label, none pins a version",
+      "url": "https://github.com/actions/runner-images/issues/14748",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-26-github-ubuntu-latest-moves-to-26-04-from-2026-10-19.md",
+      "text": "*HIGH* — GitHub moves `ubuntu-latest` to Ubuntu 26.04 in a phased rollout from 2026-10-19 to 2026-11-19 — all 60 CardiTrack jobs ride that label, none pins a version\nAnnounced 2026-09-17 in runner-images #14748 (read directly). From 19 October the label may resolve to either Ubuntu 24.04 or 26.04 for a month, so a job can pass on one run and fail on the next. Every CardiTrack workflow uses `runs-on: ubuntu-latest` (60 occurrences across the deploy, infra, MedGemma, mobile, vendoring and digest workflows) and none pins `ubuntu-24.04` or `ubuntu-26.04`. GitHub's tool table shows no removals (OS 24.04.5 to 26.04.1, kernel 6.17 to 7.0), but the Android build installs a MAUI workload against the image's JDK and SDK, the tests run Testcontainers against the image's Docker, and the deploys use the image's gcloud, so a mid-rollout break would be intermittent and hard to attribute. Companion notices: Ubuntu 26.04 images are GA now (#14747) and the 22.04 images retire 2027-04-17 (#14254; not used here).\nSmallest next action: pin `runs-on: ubuntu-24.04` across the workflows before 2026-10-19, or run one dev pipeline on `ubuntu-26.04` now and adopt it deliberately.\nhttps://github.com/actions/runner-images/issues/14748\n\nclaude \"work through @research/queue/2026-09-26-github-ubuntu-latest-moves-to-26-04-from-2026-10-19.md\""
+    },
+    {
+      "slug": "nia-2027-closes-tomorrow-no-application-on-record-early-stage-ineligible",
+      "title": "NHS Innovation Accelerator 2027 closes tomorrow (2026-09-27 23:59) — no application on record, and NIA states it does not support start-up or early-stage innovations",
+      "url": "https://nhsaccelerator.com/about-the-nia-programme/apply-for-nia-fellowship/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-26-nia-2027-closes-tomorrow-no-application-on-record-early-stage-ineligible.md",
+      "text": "*HIGH* — NHS Innovation Accelerator 2027 closes tomorrow (2026-09-27 23:59) — no application on record, and NIA states it does not support start-up or early-stage innovations\nFinal call on the item first recorded 2026-09-09 and chased daily since 2026-09-21. The deadline is unchanged (nhsaccelerator.com is proxy-blocked; confirmed via site-restricted search snippets: applications opened 17 August and close 23:59 on 27 September 2026). Nothing in the repo, the docs or the issue tracker records an application, a Readiness Check or a decision not to apply. New this run: the programme's own eligibility text says it supports innovations \"already in use in at least one site\" with evidence of positive impact and \"does not support start-up or early-stage innovations\"; CardiTrack has no NHS deployment on record, so a Readiness Check would very likely fail. Shortlisting 2026-11-25, interviews 6–15 January 2027.\nSmallest next action: decide today. If no Readiness Check was submitted, record NIA 2027 as not pursued so the tracker stops carrying it, and note the 2028 cohort as the earliest realistic target once a first site is live.\nhttps://nhsaccelerator.com/about-the-nia-programme/apply-for-nia-fellowship/\n\nclaude \"work through @research/queue/2026-09-26-nia-2027-closes-tomorrow-no-application-on-record-early-stage-ineligible.md\""
+    },
+    {
+      "slug": "unite-digital-health-valleys-call-2-closes-2026-12-10",
+      "title": "UNITE European Digital Health Valleys second open call — up to €1m per interregional project, closes 2026-12-10 17:00 CET; Scotland and Wales are eligible regions",
+      "url": "https://unitedigihealth.eu/open-call-2",
+      "severity": "FYI",
+      "category": "grants",
+      "brief": "research/queue/2026-09-26-unite-digital-health-valleys-call-2-closes-2026-12-10.md",
+      "text": "*FYI* — UNITE European Digital Health Valleys second open call — up to €1m per interregional project, closes 2026-12-10 17:00 CET; Scotland and Wales are eligible regions\nOpened 2026-09-10: €6m for up to six 18-month projects at up to €1m each (max €600k per beneficiary), running April 2027 to September 2028. A consortium needs at least three organisations from three UNITE regions — a company, a research entity and an end-user organisation — mixing a \"strong\" region (Scotland, Northern Netherlands) with an emerging one (Central Macedonia, Romania, Lombardy, Extremadura, Aragón). Wales joined UNITE in July 2026 and Scottish Enterprise supports applicants. The first call's winners were remote-care and data-sharing projects, which is CardiTrack's space. Online info session 2026-09-30 14:00 CEST. unitedigihealth.eu, gov.wales and scottish-enterprise.com are all proxy-blocked: indexed only.\nSmallest next action: decide whether Codesistance has, or can partner with, a Scottish or Welsh NHS board or university; without one this is not actionable.\nhttps://unitedigihealth.eu/open-call-2\n\nclaude \"work through @research/queue/2026-09-26-unite-digital-health-valleys-call-2-closes-2026-12-10.md\""
+    },
+    {
+      "slug": "firebase-ios-sdk-leaves-cocoapods-after-october-2026",
+      "title": "Firebase Apple SDK stops publishing to CocoaPods after October 2026; Firebase 13 will be Swift Package Manager and zip only — the binding chain under CardiTrack's iOS push",
+      "url": "https://github.com/firebase/firebase-ios-sdk/blob/main/FirebaseCore/CHANGELOG.md",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-26-firebase-ios-sdk-leaves-cocoapods-after-october-2026.md",
+      "text": "*FYI* — Firebase Apple SDK stops publishing to CocoaPods after October 2026; Firebase 13 will be Swift Package Manager and zip only — the binding chain under CardiTrack's iOS push\nThe README on main and the FirebaseCore changelog (read directly) name 12.19.0 as the final scheduled CocoaPods release and describe 13.0.0 (unreleased, on main) as SPM/zip-only, needing Swift tools 6.2.1 and Xcode 26.2 or later, with iOS 15 minimum and the CocoaPods umbrella headers removed. Google's migration page (proxy-blocked; indexed) adds that CocoaPods itself goes read-only in December 2026. CardiTrack's own CI has no CocoaPods, so nothing breaks on the day. The exposure is the binding chain: `Plugin.Firebase.CloudMessaging` 4.0.1 depends on `AdamE.Firebase.iOS.CloudMessaging` ≥12.5.0.4 (NuGet registration, read directly), whose latest release is 12.10.0 from 2026-04-21. That binding wraps the native xcframeworks and must move to the SPM/zip artefacts for any 13.x, or iOS push stays on Firebase 12 while Apple's iOS 27 SDK rule (April 2027, recorded 2026-09-22) arrives.\nSmallest next action: check whether the AdamE binding has a stated Firebase 13 plan; if not, decide to stay on the 12.x line through the Xcode 27 move and record that decision.\nhttps://github.com/firebase/firebase-ios-sdk/blob/main/FirebaseCore/CHANGELOG.md\n\nclaude \"work through @research/queue/2026-09-26-firebase-ios-sdk-leaves-cocoapods-after-october-2026.md\""
+    },
+    {
+      "slug": "auth0-10kb-user-profile-limit-eol-2027-03-04",
+      "title": "Auth0 10 KB user-profile limit: deprecated 2026-08-04, end of life 2027-03-04 — primary page found after three days held",
+      "url": "https://auth0.com/docs/troubleshoot/product-lifecycle/deprecations-and-migrations/migrate-oversized-user-profiles",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-26-auth0-10kb-user-profile-limit-eol-2027-03-04.md",
+      "text": "*FYI* — Auth0 10 KB user-profile limit: deprecated 2026-08-04, end of life 2027-03-04 — primary page found after three days held\nAuth0's \"Migrate Oversized User Profiles\" page (indexed only; auth0.com is proxy-blocked) caps the serialised user profile, including user_metadata and app_metadata, at 10 KB. Until the EOL an extended allowance applies: writes over 10 KB but under it succeed and emit tenant-log warnings, and a tenant can adopt the new behaviour early under Tenant Settings > Advanced > Migrations (\"Uncapped User Profile Data\"). Warnings fire only on activity that updates the profile, so dormant oversized users are not surfaced. No CardiTrack code or Terraform writes user_metadata or app_metadata (grep), and the tenant's single post-login Action does verification gating, claims and social account linking, so profiles here are identity basics. Recorded because it is a dated end of life on the identity provider.\nSmallest next action: search the Auth0 tenant logs for the oversized-profile warning event since 2026-08-04; none means close with no action.\nhttps://auth0.com/docs/troubleshoot/product-lifecycle/deprecations-and-migrations/migrate-oversized-user-profiles\n\nclaude \"work through @research/queue/2026-09-26-auth0-10kb-user-profile-limit-eol-2027-03-04.md\""
+    },
+    {
+      "slug": "google-cloud-storage-v1-5-0-0-breaking-upload-validation",
+      "title": "Google.Cloud.Storage.V1 5.0.0 (2026-09-21) moves resumable-upload checksum validation server-side and replaces the UploadValidationMode API — CardiTrack pins 4.15.0",
+      "url": "https://github.com/googleapis/google-cloud-dotnet/blob/main/apis/Google.Cloud.Storage.V1/docs/history.md",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-26-google-cloud-storage-v1-5-0-0-breaking-upload-validation.md",
+      "text": "*FYI* — Google.Cloud.Storage.V1 5.0.0 (2026-09-21) moves resumable-upload checksum validation server-side and replaces the UploadValidationMode API — CardiTrack pins 4.15.0\nRead directly from history.md and PR #15769. CRC32C validation moves from client-side-after-upload to server-side via an x-goog-hash header on the final chunk; UploadValidationMode.ThrowOnly and DeleteAndThrow are replaced by RejectAndThrow (old members obsoleted with guidance), and the public UploadValidationException is removed in favour of ordinary HTTP errors. CardiTrack's two callers, report storage and profile-photo storage, call UploadObjectAsync with default options and reference none of the changed members (grep across src and tests is empty), so the compile break is not on our path, and the behaviour change — a corrupted upload is rejected rather than deleted afterwards — is strictly better. 4.16.0 (2026-09-17) added an idempotency header only. No CVE, no deprecation date.\nSmallest next action: take 5.0.0 on the next dependency bump and confirm the report and photo upload tests pass.\nhttps://github.com/googleapis/google-cloud-dotnet/blob/main/apis/Google.Cloud.Storage.V1/docs/history.md\n\nclaude \"work through @research/queue/2026-09-26-google-cloud-storage-v1-5-0-0-breaking-upload-validation.md\""
+    },
+    {
+      "slug": "hl7-fhir-r4-6-5-0-breaking-serializer-and-issue-codes",
+      "title": "Hl7.Fhir.R4 6.5.0 (2026-09-14) renumbers two OperationOutcome issue codes and stops serialising empty objects and elements — CardiTrack pins 6.4.0",
+      "url": "https://github.com/FirelyTeam/firely-net-sdk/releases/tag/v6.5.0",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-26-hl7-fhir-r4-6-5-0-breaking-serializer-and-issue-codes.md",
+      "text": "*FYI* — Hl7.Fhir.R4 6.5.0 (2026-09-14) renumbers two OperationOutcome issue codes and stops serialising empty objects and elements — CardiTrack pins 6.4.0\nFrom the Firely release notes (read directly): PROFILE_ELEMENTDEF_SLICENAME_NOMATCH moves 10012→10018 and PROFILE_STRUCTURE_TYPE_MISSING 10014→10019, and the JSON and XML serialisers no longer write empty objects (`{}`) or empty elements (`<x/>`). Also lower parsing and validation allocations, snapshot-generator crash fixes and a terminology-service concurrency fix. CardiTrack's only production use is the FHIR R4 report renderer, which builds a Bundle and serialises it with System.Text.Json's ForFhir options; it does not switch on issue codes or run the validator, so only the empty-element change can alter emitted report JSON, and only if a bundle currently contains one. Before this run's window but never recorded. No CVE.\nSmallest next action: on the next bump, diff a rendered bundle before and after 6.5.0 against the report renderer tests.\nhttps://github.com/FirelyTeam/firely-net-sdk/releases/tag/v6.5.0\n\nclaude \"work through @research/queue/2026-09-26-hl7-fhir-r4-6-5-0-breaking-serializer-and-issue-codes.md\""
+    },
+    {
+      "slug": "ollama-0-40-0-rc0-compat-migration-rewrites-gemma3-store",
+      "title": "Ollama 0.40.0-rc0 introduces manifest-list storage and a lazy \"compatibility migration\" that rewrites legacy Gemma 3 GGUFs on first load — MedGemma 1.5 4B is on that list",
+      "url": "https://github.com/ollama/ollama/releases/tag/v0.40.0-rc0",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-26-ollama-0-40-0-rc0-compat-migration-rewrites-gemma3-store.md",
+      "text": "*FYI* — Ollama 0.40.0-rc0 introduces manifest-list storage and a lazy \"compatibility migration\" that rewrites legacy Gemma 3 GGUFs on first load — MedGemma 1.5 4B is on that list\nPre-release of 2026-09-25, read directly (release page, commit 75b9527, and the compatmigrate/ tree with gemma3.go, gemma3n.go, gemma4.go, embeddinggemma.go). The headline — MLX by default on Apple Silicon — is irrelevant to Cloud Run. The relevant change: runner-specific manifests coexist under one tag (manifest lists), and \"legacy Ollama GGUFs\" of the patched model families are migrated lazily into llama.cpp-compatible children on first use, preserving templates, projectors and split GGUFs. Our image bakes /root/.ollama at build time from the vendored medgemma-1.5-4b-it-Q4_K_M.gguf plus mmproj, asserts the name with `ollama list` and aliases with `ollama cp` — all three touch what changes, and a lazy rewrite inside a Cloud Run instance means cold-start work and container-filesystem writes the build never exercised. Nothing shifts today: the pin is 0.34.2 by digest, 0.34.4 is the latest stable with no security fixes, and the SSRF advisory GHSA-57p7-34ff-7w3w is unchanged.\nSmallest next action: before any bump past 0.34.x, build the MedGemma image once against 0.40.0-rc0 and check the name assertion, first-request latency and /root/.ollama size.\nhttps://github.com/ollama/ollama/releases/tag/v0.40.0-rc0\n\nclaude \"work through @research/queue/2026-09-26-ollama-0-40-0-rc0-compat-migration-rewrites-gemma3-store.md\""
+    },
+    {
+      "slug": "mhra-regulatory-advice-service-987-meeting",
+      "title": "MHRA's paid Regulatory Advice Service — a £987 one-hour meeting with device regulators on whether a specific product is a medical device — promoted on MedRegs 2026-09-21 for \"apps to help patients manage their health\"",
+      "url": "https://www.gov.uk/guidance/medical-devices-get-regulatory-advice-from-the-mhra",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-26-mhra-regulatory-advice-service-987-meeting.md",
+      "text": "*FYI* — MHRA's paid Regulatory Advice Service — a £987 one-hour meeting with device regulators on whether a specific product is a medical device — promoted on MedRegs 2026-09-21 for \"apps to help patients manage their health\"\nThe service has run since December 2025 (gov.uk guidance page; indexed, gov.uk is proxy-blocked): a one-hour meeting with MHRA device regulators, £987, paid at least two weeks ahead, opening with a 10–15 minute presentation by the applicant of the questions and controversies, ending in a non-binding view. The 21 September MedRegs post names \"medical device apps to help patients manage their health\" and AI-enabled products as the intended audience. Neither the service nor the post is anywhere in the repo. DPIA open item OI-2 (medical-device classification for early-warning claims, sharpened again on 2026-09-22 by the rhythm-ingestion row) has been open since the DPIA was drafted, and the AI Act Annex I question in OI-15 waits on it; this is the authoritative voice at a fraction of counsel's cost.\nSmallest next action: decide whether the alerting algorithm card and the intended-purpose wording are ready to present in fifteen minutes; if yes, book with a two-case framing — trend narration only, and narration plus severity-routed alerts.\nhttps://www.gov.uk/guidance/medical-devices-get-regulatory-advice-from-the-mhra\n\nclaude \"work through @research/queue/2026-09-26-mhra-regulatory-advice-service-987-meeting.md\""
+    },
+    {
+      "slug": "eu-ai-act-article-50-guidelines-and-code-of-practice",
+      "title": "EU AI Act Article 50: the Commission's final transparency guidelines (2026-07-20) and the Code of Practice on AI-generated content (adequacy 2026-07-08) — the official answer sheet for open item OI-15 (c)",
+      "url": "https://digital-strategy.ec.europa.eu/en/library/guidelines-transparency-obligations-providers-and-deployers-ai-systems",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-26-eu-ai-act-article-50-guidelines-and-code-of-practice.md",
+      "text": "*FYI* — EU AI Act Article 50: the Commission's final transparency guidelines (2026-07-20) and the Code of Practice on AI-generated content (adequacy 2026-07-08) — the official answer sheet for open item OI-15 (c)\nIndexed only (digital-strategy.ec.europa.eu is proxy-blocked). The Art. 50 obligations have applied since 2026-08-02 and ai_act_classification.md §7.1 already treats them as live, with two open gaps: the in-product \"AI-written\" line on seven of the eight AI surfaces — member chat has carried its one-time notice since 2026-09-25, the other seven are tracked in issue #1244 — and machine-readable marking of generated text (OI-15 (c)). Neither the guidelines — who must comply with interaction disclosure and content marking, and how to show it — nor the Code, which the Commission and the AI Board found adequate as the only EU-wide practical compliance tool for Art. 50(2), (4) and (5), is cited there. The Code is described as requiring multilayered machine-readable marking of AI-generated outputs. The DPIA records no EEA users today, so the exposure is prospective, not current.\nSmallest next action: someone with browser access reads the guidelines' scope section and the Code's text-marking commitments, closes OI-15 (c) one way or the other, cites both in §7.1, and checks #1244's marking against the Code's wording rather than inventing one.\nhttps://digital-strategy.ec.europa.eu/en/library/guidelines-transparency-obligations-providers-and-deployers-ai-systems\n\nclaude \"work through @research/queue/2026-09-26-eu-ai-act-article-50-guidelines-and-code-of-practice.md\""
+    },
+    {
+      "slug": "uk-draft-medical-devices-amendment-regulations-2026",
+      "title": "Draft Medical Devices (Amendment) Regulations 2026: the UK pre-market regime, expected to be laid Q4 2026 and to apply to GB market access around mid-2027 — includes a rule that claims must match the stated intended purpose",
+      "url": "https://www.gov.uk/government/news/mhra-invites-views-on-proposed-changes-to-medical-device-regulation",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-26-uk-draft-medical-devices-amendment-regulations-2026.md",
+      "text": "*FYI* — Draft Medical Devices (Amendment) Regulations 2026: the UK pre-market regime, expected to be laid Q4 2026 and to apply to GB market access around mid-2027 — includes a rule that claims must match the stated intended purpose\nPublished for WTO comment on 2026-05-08 alongside an MHRA stakeholder impact survey (closed 2026-06-19); indexed only, gov.uk is proxy-blocked, and not on the record or in any compliance doc. Content as reported: essential requirements aligned to international practice, IMDRF-aligned IVD classification, technical-documentation retention, custom-made device traceability, and \"requiring manufacturers to align claims about their medical devices with their statement of intended purpose\". Expected laying in Parliament December 2026, in force for GB market access around June 2027, international reliance provisions 2028. No obligation for a product that is not a device, but two things to log: the timetable is the UKCA-side deadline OI-2 should plan against if the answer is \"device\", and the claims rule is the statutory form of the MHRA Ambient Voice precedent (recorded 2026-09-04) — website copy and the MedGemma tone block are the claims, the DPIA §3 intended-purpose wording is the anchor they must not exceed. Whether the draft touches software qualification or the Rule 11 equivalent is unverified.\nSmallest next action: read the draft SI's software provisions; if it changes the qualification test or the Rule 11 equivalent, this becomes HIGH when laid.\nhttps://www.gov.uk/government/news/mhra-invites-views-on-proposed-changes-to-medical-device-regulation\n\nclaude \"work through @research/queue/2026-09-26-uk-draft-medical-devices-amendment-regulations-2026.md\""
+    }
+  ]
+}
