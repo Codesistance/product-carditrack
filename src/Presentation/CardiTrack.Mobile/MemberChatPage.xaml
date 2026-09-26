@@ -238,19 +238,45 @@
                          row below (SuggestionsPanel) rather than in here: they have to survive
                          the first send long enough to be tappable while a reply is in flight,
                          and an EmptyView is torn down the instant the first turn lands. -->
-                    <!-- The greeting a new conversation opens on: the bot springs in and waves
-                         (PlayGreeting), says hello by name, and offers one thing it can do — a
-                         different one each conversation (ChatFunFacts), where this used to be one
-                         fixed paragraph listing everything at once. -->
+                    <!-- The greeting a new conversation opens on: the bot springs in, then stays
+                         alive while the conversation is empty — floating over a soft shadow, a
+                         heartbeat sweeping its screen, its antenna pulsing (PlayGreeting) — says
+                         hello by name, and offers one thing it can do, a different one each
+                         conversation (ChatFunFacts). The bot is layered for that: the body is
+                         icon_chatbot.svg without its antenna tip and trace, which are drawn on top
+                         at the same places (72 of 240, so every figure below is the SVG's × 0.3). -->
                     <CollectionView.EmptyView>
                         <VerticalStackLayout Padding="20,44,20,20" Spacing="12">
-                            <Image x:Name="GreetingBot"
-                                   Source="icon_chatbot.svg"
-                                   WidthRequest="72" HeightRequest="72"
-                                   HorizontalOptions="Center"
-                                   Opacity="0"
-                                   Scale="0.4"
-                                   AnchorY="1"/>
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="2" HorizontalOptions="Center">
+                                <Grid x:Name="GreetingBot"
+                                      WidthRequest="72" HeightRequest="72"
+                                      Opacity="0"
+                                      Scale="0.4"
+                                      AnchorY="1">
+                                    <Image Source="icon_chatbot_body.svg"
+                                           WidthRequest="72" HeightRequest="72"/>
+                                    <Ellipse x:Name="AntennaHalo"
+                                             Fill="#36C09B"
+                                             WidthRequest="4.8" HeightRequest="4.8"
+                                             HorizontalOptions="Start" VerticalOptions="Start"
+                                             Margin="33.6,7.2,0,0"
+                                             Opacity="0"/>
+                                    <Ellipse Fill="#36C09B"
+                                             WidthRequest="4.8" HeightRequest="4.8"
+                                             HorizontalOptions="Start" VerticalOptions="Start"
+                                             Margin="33.6,7.2,0,0"/>
+                                    <controls:EcgTraceView x:Name="GreetingTrace"
+                                                           WidthRequest="34.8" HeightRequest="21.6"
+                                                           HorizontalOptions="Start" VerticalOptions="Start"
+                                                           Margin="18.6,28.2,0,0"/>
+                                </Grid>
+                                <Ellipse x:Name="GreetingShadow"
+                                         Grid.Row="1"
+                                         Fill="#174E86"
+                                         Opacity="0"
+                                         WidthRequest="44" HeightRequest="6"
+                                         HorizontalOptions="Center"/>
+                            </Grid>
                             <Label x:Name="GreetingTitle"
                                    Text="I'm here to help"
                                    Style="{StaticResource Heading3}"

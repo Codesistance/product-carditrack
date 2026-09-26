@@ -146,6 +146,15 @@ public partial class MemberChatPage : ContentView
         _funFactIndex = TakeFunFactIndex();
         ApplyGreeting();
 
+        // The greeting's idle loops are for an empty conversation on screen: the first message
+        // ends them, and so does the sheet closing.
+        _turns.CollectionChanged += (_, _) =>
+        {
+            if (_turns.Count > 0)
+                StopGreetingLoops();
+        };
+        Unloaded += (_, _) => StopGreetingLoops();
+
         // No OnAppearing on a ContentView — the host adds this to its tree only at the moment
         // it's shown (see MemberChatLauncher), so construction time is the right time to load.
         if (memberId == Guid.Empty)
@@ -258,9 +267,10 @@ public partial class MemberChatPage : ContentView
     }
 
     /// <summary>
-    /// The bot springs up into place, waves — a few quick tilts on its base, settling — and the
-    /// fact fades in under the hello. Once per conversation: the empty list is laid out again
-    /// on every state change, and a bot that waved at each of those would be fidgeting.
+    /// The bot springs up into place and the fact fades in under the hello; then the bot stays
+    /// alive for as long as the conversation is empty (<see cref="StartGreetingLoops"/>). Once per
+    /// conversation: the empty list is laid out again on every state change, and a bot that
+    /// sprang in at each of those would be fidgeting.
     /// </summary>
     private void PlayGreeting()
     {
@@ -268,27 +278,68 @@ public partial class MemberChatPage : ContentView
             return;
         _greetingPlayed = true;
 
+        StopGreetingLoops();
         GreetingBot.AbortAnimation("greeting");
         GreetingBot.Scale = 0.4;
         GreetingBot.Opacity = 0;
-        GreetingBot.Rotation = 0;
+        GreetingBot.TranslationY = 0;
+        GreetingShadow.Opacity = 0;
         FunFactCard.Opacity = 0;
 
-        var wave = new Animation();
-        wave.Add(0.00, 0.30, new Animation(v => GreetingBot.Scale = v, 0.4, 1, Easing.SpringOut));
-        wave.Add(0.00, 0.15, new Animation(v => GreetingBot.Opacity = v, 0, 1));
-        wave.Add(0.30, 0.42, new Animation(v => GreetingBot.Rotation = v, 0, -12, Easing.SinOut));
-        wave.Add(0.42, 0.56, new Animation(v => GreetingBot.Rotation = v, -12, 10, Easing.SinInOut));
-        wave.Add(0.56, 0.70, new Animation(v => GreetingBot.Rotation = v, 10, -6, Easing.SinInOut));
-        wave.Add(0.70, 0.82, new Animation(v => GreetingBot.Rotation = v, -6, 0, Easing.SinOut));
-        wave.Add(0.55, 0.85, new Animation(v => FunFactCard.Opacity = v, 0, 1));
-        wave.Commit(GreetingBot, "greeting", 16, 1800, Easing.Linear, (_, _) =>
+        var entrance = new Animation();
+        entrance.Add(0.00, 0.55, new Animation(v => GreetingBot.Scale = v, 0.4, 1, Easing.SpringOut));
+        entrance.Add(0.00, 0.30, new Animation(v => GreetingBot.Opacity = v, 0, 1));
+        entrance.Add(0.20, 0.60, new Animation(v => GreetingShadow.Opacity = v, 0, ShadowRest));
+        entrance.Add(0.45, 1.00, new Animation(v => FunFactCard.Opacity = v, 0, 1));
+        entrance.Commit(GreetingBot, "greeting", 16, 1000, Easing.Linear, (_, _) =>
         {
             GreetingBot.Scale = 1;
             GreetingBot.Opacity = 1;
-            GreetingBot.Rotation = 0;
+            GreetingShadow.Opacity = ShadowRest;
             FunFactCard.Opacity = 1;
+            if (_turns.Count == 0)
+                StartGreetingLoops();
         });
+    }
+
+    /// <summary>How dark the bot's shadow is when it sits lowest.</summary>
+    private const double ShadowRest = 0.22;
+
+    /// <summary>
+    /// The idle life: a slow float over a shadow that thins as the bot rises, the heartbeat
+    /// sweeping its screen, and a pulse off the antenna every few seconds. Looped until the
+    /// conversation has a message or the sheet closes (<see cref="StopGreetingLoops"/>) — it is
+    /// the empty chat's company, not something to keep running under a conversation.
+    /// </summary>
+    private void StartGreetingLoops()
+    {
+        StopGreetingLoops();
+
+        new Animation(v =>
+            {
+                // One full rise and fall per loop, eased at both ends.
+                var lift = (1 - Math.Cos(v * 2 * Math.PI)) / 2;
+                GreetingBot.TranslationY = -6 * lift;
+                GreetingShadow.ScaleX = 1 - (0.2 * lift);
+                GreetingShadow.Opacity = ShadowRest - (0.08 * lift);
+            })
+            .Commit(GreetingBot, "greeting-float", 16, 3000, Easing.Linear, repeat: () => true);
+
+        var pulse = new Animation();
+        pulse.Add(0.00, 0.18, new Animation(v => AntennaHalo.Scale = v, 1, 3.2, Easing.CubicOut));
+        pulse.Add(0.00, 0.18, new Animation(v => AntennaHalo.Opacity = v, 0.55, 0));
+        pulse.Commit(AntennaHalo, "greeting-pulse", 16, 4000, Easing.Linear, repeat: () => true);
+
+        GreetingTrace.Running = true;
+    }
+
+    private void StopGreetingLoops()
+    {
+        GreetingBot.AbortAnimation("greeting-float");
+        AntennaHalo.AbortAnimation("greeting-pulse");
+        GreetingTrace.Running = false;
+        GreetingBot.TranslationY = 0;
+        AntennaHalo.Opacity = 0;
     }
 
     private static string SubtitleFor(string? firstName) =>
