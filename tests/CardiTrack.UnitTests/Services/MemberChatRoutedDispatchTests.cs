@@ -1825,4 +1825,246 @@ public class MemberChatRoutedDispatchTests
         Assert.Equal(MemberChatTelemetry.SourceRefused, span.GetTagItem(MemberChatTelemetry.SourceTag));
         Assert.Null(span.GetTagItem(MemberChatTelemetry.WorkflowTag));
     }
+
+    // ---- Follow-up offers (2026-09-26) -------------------------------------------------
+
+    /// <summary>The pipeline answering a question about steps over a full week: seven days of
+    /// readings, so the coverage gate lets it through to the read.</summary>
+    private void PipelineAnswersAboutSteps()
+    {
+        PipelineAnswers();
+        _planner.PlanAsync(
+                Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<DataQueryPlan>(
+                new DataQueryPlan
+                {
+                    Sources = [DataQueryKind.RecentActivity],
+                    RecentActivityDays = 7,
+                    ChartMetrics = [ChartMetricKind.Steps],
+                },
+                new AiUsage()));
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(Enumerable.Range(0, 7)
+                .Select(i => new ActivityLog { Date = today.AddDays(-i), Steps = 4200 + (i * 100) })
+                .ToList());
+    }
+
+    /// <summary>
+    /// An open conversation whose latest reply offered <paramref name="offer"/> (or nothing).
+    /// With <paramref name="supersededOffer"/>, an older reply offered it and a newer one did not.
+    /// </summary>
+    private void ConversationEndingWith(PendingChatOffer? offer, PendingChatOffer? supersededOffer = null)
+    {
+        var session = new MemberChatSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddMinutes(-5),
+            LastTurnAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        };
+
+        void Exchange(string question, PendingChatOffer? offered, int minutesAgo)
+        {
+            session.Turns.Add(new MemberChatTurn
+            {
+                SessionId = session.Id,
+                Role = ChatTurnRole.User,
+                Content = PromptContextFactory.Encryption.Encrypt(question),
+                CreatedAtUtc = DateTime.UtcNow.AddMinutes(-minutesAgo),
+            });
+            session.Turns.Add(new MemberChatTurn
+            {
+                SessionId = session.Id,
+                Role = ChatTurnRole.Assistant,
+                Workflow = MemberChatWorkflow.Analysis,
+                Content = PromptContextFactory.Encryption.Encrypt("Moses walked a steady amount this week."),
+                PendingOffer = offered is null ? null : PromptContextFactory.Encryption.Encrypt(offered.ToJson()),
+                CreatedAtUtc = DateTime.UtcNow.AddMinutes(-minutesAgo),
+            });
+        }
+
+        if (supersededOffer is not null)
+            Exchange("How much has Moses walked this week?", supersededOffer, 3);
+        Exchange("How is Moses doing?", offer, 1);
+
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(session);
+        _sessions.GetByIdWithTurnsAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+    }
+
+    private static PendingChatOffer SleepOffer(DateTime offeredAtUtc) =>
+        PendingChatOffer.For(ChartMetricKind.Steps, 7, offeredAtUtc)!;
+
+    /// <summary>
+    /// An answer about one reading ends with an offer written in code, never by the rewrite: the
+    /// neighbouring reading over the same days, held on the turn for a yes to take up.
+    /// </summary>
+    [Fact]
+    public async Task AnAnswerAboutOneReading_EndsWithAnOffer_HeldOnTheTurn()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswersAboutSteps();
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+
+        using var span = StartRequestSpan();
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how much has Moses walked this week?");
+
+        Assert.EndsWith("Would you like me to look at how Moses slept over the same days too?", reply.Reply, StringComparison.Ordinal);
+        var stored = PendingChatOffer.FromJson(PromptContextFactory.Encryption.Decrypt(assistant!.PendingOffer!));
+        Assert.Equal(ChartMetricKind.Sleep, stored!.Metric);
+        Assert.Equal(7, stored.Days);
+        Assert.Equal("offered", span.GetTagItem(MemberChatTelemetry.OfferTag));
+    }
+
+    /// <summary>A general answer names no single reading, so it offers nothing.</summary>
+    [Fact]
+    public async Task AGeneralAnswer_OffersNothing()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how has Moses been?");
+
+        Assert.StartsWith("The week looks steady.", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("Would you like", reply.Reply, StringComparison.Ordinal);
+        Assert.Null(assistant!.PendingOffer);
+    }
+
+    /// <summary>An answer the check found short of the question offers nothing: an offer would
+    /// point away from what was asked.</summary>
+    [Fact]
+    public async Task AnAnswerThatMissedTheQuestion_OffersNothing()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswersAboutSteps();
+        CheckerAnswers(new ChatAnswerAssessment
+        {
+            Completeness = AnswerCompleteness.Partial,
+            Cause = AnswerGapCause.NotAddressed,
+        });
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how much has Moses walked this week?");
+
+        Assert.DoesNotContain("Would you like", reply.Reply, StringComparison.Ordinal);
+        Assert.Null(assistant!.PendingOffer);
+    }
+
+    /// <summary>
+    /// A yes takes the offer up as the question code writes for it: that question is what the
+    /// router reads, so it never sees a bare "yes" or the reply the offer ended. The transcript
+    /// keeps what the caregiver actually typed.
+    /// </summary>
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("Yes please!")]
+    [InlineData("ok")]
+    public async Task AYesToACurrentOffer_AsksTheOffersQuestion(string message)
+    {
+        ConversationEndingWith(SleepOffer(DateTime.UtcNow.AddMinutes(-1)));
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+
+        using var span = StartRequestSpan();
+        await CreateSut().SendMessageAsync(_userId, _memberId, message);
+
+        await _router.Received(1).RouteAsync(
+            $"How has {NamePlaceholder.Token} slept this week?", Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        await _unitOfWork.MemberChatTurns.Received().AddAsync(Arg.Is<MemberChatTurn>(t =>
+            t.Role == ChatTurnRole.User && PromptContextFactory.Encryption.Decrypt(t.Content) == MedicalPromptBlocks.Flatten(message)));
+        Assert.Equal("accepted", span.GetTagItem(MemberChatTelemetry.OfferTag));
+    }
+
+    /// <summary>One offer per chain: the answer a yes produced offers nothing more, or sleep and
+    /// heart rate would offer each other for as long as the caregiver kept saying yes.</summary>
+    [Fact]
+    public async Task TheAnswerToATakenUpOffer_OffersNothingMore()
+    {
+        ConversationEndingWith(SleepOffer(DateTime.UtcNow.AddMinutes(-1)));
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswersAboutSteps();
+        MemberChatTurn? assistant = null;
+        _unitOfWork.MemberChatTurns.When(t => t.AddAsync(Arg.Is<MemberChatTurn>(x => x.Role == ChatTurnRole.Assistant)))
+            .Do(call => assistant = call.Arg<MemberChatTurn>());
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
+
+        Assert.DoesNotContain("Would you like", reply.Reply, StringComparison.Ordinal);
+        Assert.Null(assistant!.PendingOffer);
+    }
+
+    /// <summary>A no is settled in code: no model runs, and nothing is billed.</summary>
+    [Fact]
+    public async Task ANoToACurrentOffer_IsAnsweredInCode()
+    {
+        ConversationEndingWith(SleepOffer(DateTime.UtcNow.AddMinutes(-1)));
+
+        using var span = StartRequestSpan();
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "no thanks");
+
+        Assert.Equal(MemberChatReplies.OfferDeclinedReply("Moses"), reply.Reply);
+        await _router.DidNotReceiveWithAnyArgs().RouteAsync(default!, default, default);
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(default!, default);
+        await _usages.DidNotReceiveWithAnyArgs().AddAsync(default!);
+        Assert.Equal(MemberChatTelemetry.SourceOfferDeclined, span.GetTagItem(MemberChatTelemetry.SourceTag));
+    }
+
+    /// <summary>
+    /// A bare yes with nothing to answer asks what they would like, in code, rather than reaching
+    /// the casual steer, which greeted it (2026-09-26). Nothing to answer covers no offer at all, an
+    /// offer past its window, and one a newer reply has superseded.
+    /// </summary>
+    [Theory]
+    [InlineData("none")]
+    [InlineData("lapsed")]
+    [InlineData("superseded")]
+    public async Task AYesWithNothingToAnswer_AsksWhatTheyWouldLike(string state)
+    {
+        switch (state)
+        {
+            case "lapsed":
+                ConversationEndingWith(SleepOffer(DateTime.UtcNow - PendingChatOffer.Validity - TimeSpan.FromMinutes(1)));
+                break;
+            case "superseded":
+                ConversationEndingWith(offer: null, supersededOffer: SleepOffer(DateTime.UtcNow.AddMinutes(-3)));
+                break;
+            default:
+                ConversationEndingWith(offer: null);
+                break;
+        }
+
+        using var span = StartRequestSpan();
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
+
+        Assert.Equal(MemberChatReplies.NothingPendingReply(ConfirmationAnswer.Yes, "Moses"), reply.Reply);
+        await _router.DidNotReceiveWithAnyArgs().RouteAsync(default!, default, default);
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(default!, default);
+        Assert.Equal(MemberChatTelemetry.SourceNothingPending, span.GetTagItem(MemberChatTelemetry.SourceTag));
+    }
+
+    /// <summary>Anything that is not a plain yes or no routes as itself, and the offer lapses.</summary>
+    [Fact]
+    public async Task ANewQuestionAfterAnOffer_RoutesAsItself()
+    {
+        ConversationEndingWith(SleepOffer(DateTime.UtcNow.AddMinutes(-1)));
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "what about his heart rate?");
+
+        await _router.Received(1).RouteAsync(
+            "what about his heart rate?", Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
 }

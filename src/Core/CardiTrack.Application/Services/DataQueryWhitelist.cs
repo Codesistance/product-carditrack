@@ -34,7 +34,7 @@ public static class DataQueryWhitelist
     /// </para>
     /// </remarks>
     private const int MinRecentActivityDays = 1;
-    private const int MaxRecentActivityDays = 7;
+    internal const int MaxRecentActivityDays = 7;
     private const int MinRealtimeAssessmentHours = 1;
     private const int MaxRealtimeAssessmentHours = 72;
 
