@@ -125,12 +125,13 @@
                                 <Label x:Name="EmptyDetailLabel"
                                        Style="{StaticResource Body2}"
                                        HorizontalTextAlignment="Center"/>
-                                <Button Text="Connect"
-                                        Margin="0,10,0,0"
-                                        Style="{StaticResource ActionButtonBlue}"
-                                        ImageSource="icon_btn_connect.svg"
-                                        HorizontalOptions="Center"
-                                        Clicked="OnAddDeviceClicked"/>
+                                <controls:AppButton Text="Connect"
+                                                    Margin="0,10,0,0"
+                                                    Icon="icon_btn_connect.svg"
+                                                    HorizontalOptions="Center"
+                                                    Clicked="OnAddDeviceClicked"
+                                                    Tone="Primary"
+                                                    Size="M"/>
                             </VerticalStackLayout>
                         </Border>
 

@@ -170,14 +170,16 @@
               Padding="20,10,20,16"
               IsVisible="False"
               BackgroundColor="{StaticResource White}">
-            <Button Text="Cancel"
-                    Style="{StaticResource ActionButtonDark}"
-                    ImageSource="icon_btn_close.svg"
-                    Clicked="OnCancelClicked"/>
-            <Button x:Name="SubmitButton"
-                    Grid.Column="1"
-                    Style="{StaticResource ActionButtonBlue}"
-                    Clicked="OnSubmitClicked"/>
+            <controls:AppButton Text="Cancel"
+                                Icon="icon_btn_close.svg"
+                                Clicked="OnCancelClicked"
+                                Tone="Neutral"
+                                Size="M"/>
+            <controls:AppButton x:Name="SubmitButton"
+                                Grid.Column="1"
+                                Clicked="OnSubmitClicked"
+                                Tone="Primary"
+                                Size="M"/>
         </Grid>
     </Grid>
 </ContentPage>

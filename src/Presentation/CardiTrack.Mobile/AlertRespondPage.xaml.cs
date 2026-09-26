@@ -123,7 +123,7 @@ public partial class AlertRespondPage : ContentPage
         SetState(loading: true);
         HeaderTitle.Text = AlertAnswerKinds.Title(_kind);
         SubmitButton.Text = AlertAnswerKinds.ButtonText(_kind);
-        SubmitButton.ImageSource = _kind == AlertAnswerKind.Close ? "icon_btn_resolve.svg" : "icon_check_white.svg";
+        SubmitButton.Icon = _kind == AlertAnswerKind.Close ? "icon_btn_resolve.svg" : "icon_check_white.svg";
 
         try
         {

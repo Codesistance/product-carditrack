@@ -160,7 +160,7 @@
                        FontFamily="Quicksand"
                        FontSize="11"
                        TextColor="{StaticResource MutedText}"
-                       HorizontalTextAlignment="Center"/>
+                       HorizontalTextAlignment="Start"/>
             </VerticalStackLayout>
         </Border>
     </Grid>

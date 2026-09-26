@@ -48,7 +48,7 @@ public partial class AppPopupPage : ContentPage
         ActionButtons.Dress(ConfirmBtn);
         if (_isConfirmation)
         {
-            CancelBtn.Text = cancelText;
+            CancelBtn.Text = cancelText ?? string.Empty;
             ActionButtons.Dress(CancelBtn, isDismiss: true);
             CancelBtn.IsVisible = true;
             CancelColumn.Width = GridLength.Star;

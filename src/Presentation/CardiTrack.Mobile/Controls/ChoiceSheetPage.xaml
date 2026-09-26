@@ -36,7 +36,7 @@
                        HorizontalTextAlignment="Center"/>
                 <Label x:Name="HintLabel"
                        Style="{StaticResource Body2}"
-                       HorizontalTextAlignment="Center"
+                       HorizontalTextAlignment="Start"
                        Margin="0,2,0,0"
                        IsVisible="False"/>
 

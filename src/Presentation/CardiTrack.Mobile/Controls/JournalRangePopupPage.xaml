@@ -97,7 +97,7 @@
                     </Border.StrokeShape>
                     <Label x:Name="SummaryLabel"
                            Style="{StaticResource Body2Dark}"
-                           HorizontalTextAlignment="Center"
+                           HorizontalTextAlignment="Start"
                            LineBreakMode="WordWrap"/>
                 </Border>
 

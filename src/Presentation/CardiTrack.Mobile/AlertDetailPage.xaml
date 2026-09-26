@@ -505,26 +505,29 @@
                                  meaning — blue does the thing, amber takes it back, red removes.
                                  Acknowledge carries no icon: on a red alert it reads "I'm on my
                                  way", which needs the third of the row it has. -->
-                            <Button x:Name="AcknowledgeButton"
-                                    Style="{StaticResource ActionButtonBlue}"
-                                    Padding="6,0"
-                                    Clicked="OnAcknowledgeClicked"/>
-                            <Button x:Name="CloseButton"
-                                    Text="Resolve"
-                                    Style="{StaticResource ActionButtonBlue}"
-                                    ImageSource="icon_btn_resolve.svg"
-                                    Clicked="OnCloseClicked"/>
-                            <Button x:Name="UndoAcknowledgeButton"
-                                    Text="Undo"
-                                    Style="{StaticResource ActionButtonAmber}"
-                                    ImageSource="icon_btn_undo.svg"
-                                    IsVisible="False"
-                                    Clicked="OnUndoAcknowledgeClicked"/>
-                            <Button x:Name="RemoveButton"
-                                    Text="Remove"
-                                    Style="{StaticResource ActionButtonRed}"
-                                    ImageSource="icon_btn_delete.svg"
-                                    Clicked="OnDeleteAlertTapped"/>
+                            <controls:AppButton x:Name="AcknowledgeButton"
+                                                Clicked="OnAcknowledgeClicked"
+                                                Tone="Primary"
+                                                Size="M"/>
+                            <controls:AppButton x:Name="CloseButton"
+                                                Text="Resolve"
+                                                Icon="icon_btn_resolve.svg"
+                                                Clicked="OnCloseClicked"
+                                                Tone="Primary"
+                                                Size="M"/>
+                            <controls:AppButton x:Name="UndoAcknowledgeButton"
+                                                Text="Undo"
+                                                Icon="icon_btn_undo_tint.svg"
+                                                IsVisible="False"
+                                                Clicked="OnUndoAcknowledgeClicked"
+                                                Tone="Tonal"
+                                                Size="M"/>
+                            <controls:AppButton x:Name="RemoveButton"
+                                                Text="Remove"
+                                                Icon="icon_btn_delete.svg"
+                                                Clicked="OnDeleteAlertTapped"
+                                                Tone="Danger"
+                                                Size="M"/>
                         </Grid>
 
                     </VerticalStackLayout>

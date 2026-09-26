@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.QuestionCard">
 
     <!-- One question the service is asking the family, and the answer box it opens into.
@@ -143,20 +144,22 @@
 
                     <!-- Cancel on the left, the way out; Save on the right, the step forward. -->
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <Button x:Name="CancelButton"
-                                Grid.Column="0"
-                                Text="Cancel"
-                                Style="{StaticResource ActionButtonDark}"
-                                ImageSource="icon_btn_close.svg"
-                                Clicked="OnCancelClicked"/>
+                        <controls:AppButton x:Name="CancelButton"
+                                            Grid.Column="0"
+                                            Text="Cancel"
+                                            Icon="icon_btn_close.svg"
+                                            Clicked="OnCancelClicked"
+                                            Tone="Neutral"
+                                            Size="M"/>
 
-                        <Button x:Name="SaveButton"
-                                Grid.Column="1"
-                                Text="Save"
-                                Style="{StaticResource ActionButtonBlue}"
-                                ImageSource="icon_btn_save.svg"
-                                IsEnabled="False"
-                                Clicked="OnSaveClicked"/>
+                        <controls:AppButton x:Name="SaveButton"
+                                            Grid.Column="1"
+                                            Text="Save"
+                                            Icon="icon_btn_save.svg"
+                                            IsEnabled="False"
+                                            Clicked="OnSaveClicked"
+                                            Tone="Primary"
+                                            Size="M"/>
                     </Grid>
                 </VerticalStackLayout>
             </Border>

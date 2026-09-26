@@ -450,7 +450,7 @@ public partial class AlertDetailPage : ContentPage
     /// </summary>
     private void PackActionRow(bool acknowledged)
     {
-        Button[] order = acknowledged
+        AppButton[] order = acknowledged
             ? [CloseButton, UndoAcknowledgeButton, AcknowledgeButton, RemoveButton]
             : [AcknowledgeButton, CloseButton, UndoAcknowledgeButton, RemoveButton];
         var shown = order.Where(button => button.IsVisible).ToList();

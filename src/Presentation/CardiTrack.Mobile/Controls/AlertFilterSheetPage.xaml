@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.AlertFilterSheetPage"
              BackgroundColor="Transparent">
 
@@ -54,16 +55,18 @@
                 <!-- The popups' action pair (MedicalSortPopupPage, ContactEditPopupPage): dark for
                      backing out, blue for going ahead, glyph first. -->
                 <Grid ColumnDefinitions="*,2*" ColumnSpacing="10" Margin="0,16,0,4">
-                    <Button Text="Reset"
-                            Style="{StaticResource ActionButtonDark}"
-                            ImageSource="icon_btn_reset.svg"
-                            Clicked="OnResetClicked"/>
-                    <Button x:Name="ShowButton"
-                            Grid.Column="1"
-                            Text="Show alerts"
-                            Style="{StaticResource ActionButtonBlue}"
-                            ImageSource="icon_btn_resolve.svg"
-                            Clicked="OnShowClicked"/>
+                    <controls:AppButton Text="Reset"
+                                        Icon="icon_btn_reset.svg"
+                                        Clicked="OnResetClicked"
+                                        Tone="Neutral"
+                                        Size="M"/>
+                    <controls:AppButton x:Name="ShowButton"
+                                        Grid.Column="1"
+                                        Text="Show alerts"
+                                        Icon="icon_btn_resolve.svg"
+                                        Clicked="OnShowClicked"
+                                        Tone="Primary"
+                                        Size="M"/>
                 </Grid>
             </VerticalStackLayout>
         </Border>
