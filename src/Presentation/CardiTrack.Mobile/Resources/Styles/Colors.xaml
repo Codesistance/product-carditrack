@@ -116,6 +116,12 @@
     <Color x:Key="CountBadgeNeutral">#5F6B7A</Color>
     <Color x:Key="CountBadgeFavourable">#15644F</Color>
 
+    <!-- A count of things for the caregiver to do (Complete the picture), not a grade of what is
+         behind a section — so it wears the brand's dark blue rather than borrowing the neutral
+         grade above and reading as a verdict about the member. Clears 4.5:1 with white (9.4:1).
+         Picked from samples (N1, 2026-09-26). -->
+    <Color x:Key="CountBadgeTodo">#174E86</Color>
+
     <!-- The strip across the top of an alert banner once the alert has been dealt with. Green
          when the episode is over ("This settled on its own", "Jane resolved this"): StatusGreen's
          family, darkened until white 12px text on it clears 4.5:1 (about 5.3:1) — the strip is a

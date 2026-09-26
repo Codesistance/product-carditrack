@@ -23,15 +23,16 @@
                        Text="Complete the picture"
                        Style="{StaticResource DashboardSectionTitle}"
                        VerticalOptions="Center"/>
-                <!-- The Key Metrics section's count badge, so a count on a section title reads
-                     the same everywhere on the screen. -->
+                <!-- The Key Metrics section's count badge shape, so a count on a section title
+                     reads the same everywhere on the screen — in the to-do colour, since these
+                     are things to do rather than a grade (CountBadgeTodo). -->
                 <Border x:Name="NudgeCountBadge"
                         Grid.Column="1"
                         WidthRequest="20" HeightRequest="20"
                         Margin="8,0,0,0"
                         Padding="0"
                         StrokeThickness="0"
-                        BackgroundColor="{StaticResource CountBadgeNeutral}"
+                        BackgroundColor="{StaticResource CountBadgeTodo}"
                         VerticalOptions="Center"
                         IsVisible="False">
                     <Border.StrokeShape>
