@@ -80,13 +80,14 @@
                            SemanticProperties.Description="Close"/>
                 </controls:SquareBorder>
 
-                <!-- Who this conversation is about, as a pill under the title: their photo and
-                     name in PrimaryDark on white, the one solid thing in the band, so it cannot be
-                     missed the way a faded line of subtitle was. With more than one member it is
-                     also the way to change that: a tap puts the "who" question back in the
-                     conversation area, and the chevron in the pill says so. The plain subtitle
-                     stays for the states that are not about one member — choosing someone,
-                     browsing past conversations. -->
+                <!-- Who this conversation is about, on the subtitle line: "About", their photo
+                     at 16, and their name in full white semibold where the rest of the line is
+                     faded — so it stands out without changing the header. It is the same line,
+                     at the same height, as the plain subtitle the other states show (choosing
+                     someone, browsing past conversations), so the band never grows or jumps when
+                     the caregiver switches member. With more than one member it is also the way
+                     to change that: a tap puts the "who" question back in the conversation area,
+                     and the chevron after the name says so. -->
                 <VerticalStackLayout x:Name="TitleBlock" Grid.Column="1" Spacing="1" VerticalOptions="Start">
                     <VerticalStackLayout.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnSubtitleTapped"/>
@@ -107,34 +108,32 @@
                                Opacity="0.85"
                                LineBreakMode="TailTruncation"
                                VerticalOptions="Center"/>
-                        <Border x:Name="MemberPill"
-                                IsVisible="False"
-                                Margin="0,4,0,0"
-                                Padding="3,3,10,3"
-                                BackgroundColor="{StaticResource White}"
-                                StrokeThickness="0"
-                                HorizontalOptions="Start">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="14"/>
-                            </Border.StrokeShape>
-                            <HorizontalStackLayout Spacing="6">
-                                <controls:MemberAvatar x:Name="PillAvatar"
-                                                       BoxWidth="22"
-                                                       VerticalOptions="Center"/>
-                                <Label x:Name="PillName"
-                                       FontFamily="QuicksandSemiBold"
-                                       FontSize="14"
-                                       TextColor="{StaticResource PrimaryDark}"
-                                       LineBreakMode="TailTruncation"
-                                       MaximumWidthRequest="160"
-                                       VerticalOptions="Center"/>
-                                <Image x:Name="SwitchChevron"
-                                       Source="icon_chevron_down.svg"
-                                       WidthRequest="12" HeightRequest="12"
-                                       VerticalOptions="Center"
-                                       IsVisible="False"/>
-                            </HorizontalStackLayout>
-                        </Border>
+                        <HorizontalStackLayout x:Name="MemberPill"
+                                               IsVisible="False"
+                                               Spacing="5"
+                                               VerticalOptions="Center">
+                            <Label Text="About"
+                                   FontFamily="Quicksand"
+                                   FontSize="12"
+                                   TextColor="{StaticResource White}"
+                                   Opacity="0.85"
+                                   VerticalOptions="Center"/>
+                            <controls:MemberAvatar x:Name="PillAvatar"
+                                                   BoxWidth="16"
+                                                   VerticalOptions="Center"/>
+                            <Label x:Name="PillName"
+                                   FontFamily="QuicksandSemiBold"
+                                   FontSize="12"
+                                   TextColor="{StaticResource White}"
+                                   LineBreakMode="TailTruncation"
+                                   MaximumWidthRequest="160"
+                                   VerticalOptions="Center"/>
+                            <Image x:Name="SwitchChevron"
+                                   Source="icon_chevron_down_white.svg"
+                                   WidthRequest="12" HeightRequest="12"
+                                   VerticalOptions="Center"
+                                   IsVisible="False"/>
+                        </HorizontalStackLayout>
                     </Grid>
                 </VerticalStackLayout>
 
