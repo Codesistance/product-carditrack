@@ -317,8 +317,15 @@ public partial class JournalPage : ContentPage
         new(member.Id, member.DisplayFirstName() ?? "Unnamed");
 
     /// <summary>Points the page, and the chat launcher on it, at one member.</summary>
+    /// <remarks>
+    /// <c>_hasAnyReviews</c> starts over for the same reason it does on a cadence switch: it says
+    /// whether <em>this</em> member's book has had an entry to filter, and another member's history
+    /// would otherwise put a search box over someone whose first entry has not been written.
+    /// </remarks>
     private void SelectMember(Guid id, string? firstName)
     {
+        if (id != _memberId)
+            _hasAnyReviews = false;
         _memberId = id;
         _memberFirstName = firstName;
         ChatBot.MemberId = _memberId;
