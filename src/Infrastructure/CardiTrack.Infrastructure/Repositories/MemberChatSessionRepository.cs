@@ -125,6 +125,41 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<MemberChatAskedQuestion>> ListRecentQuestionsAsync(
+        Guid userId,
+        Guid cardiMemberId,
+        IReadOnlyCollection<MemberChatWorkflow> answeredBy,
+        DateTime askedSinceUtc,
+        int limit,
+        CancellationToken ct = default)
+    {
+        // The nullable copy is what the subquery below yields, so the IN list is compared in the
+        // column's own (by-name) mapping rather than as a bare enum.
+        var workflows = answeredBy.Select(w => (MemberChatWorkflow?)w).ToList();
+        var turns = _context.Set<MemberChatTurn>();
+
+        // One query: the pair's sessions, their caregiver turns in the window, and — per turn —
+        // the workflow stamped on the next reply in the same session, served by the
+        // (SessionId, CreatedAtUtc) index. Only the content and the time cross the wire; the
+        // threads themselves never load.
+        return await _dbSet
+            .AsNoTracking()
+            .Where(s => s.UserId == userId && s.CardiMemberId == cardiMemberId && s.LastTurnAtUtc >= askedSinceUtc)
+            .SelectMany(s => s.Turns)
+            .Where(t => t.Role == ChatTurnRole.User && t.CreatedAtUtc >= askedSinceUtc)
+            .Where(t => workflows.Contains(turns
+                .Where(a => a.SessionId == t.SessionId
+                            && a.Role == ChatTurnRole.Assistant
+                            && a.CreatedAtUtc >= t.CreatedAtUtc)
+                .OrderBy(a => a.CreatedAtUtc)
+                .Select(a => a.Workflow)
+                .FirstOrDefault()))
+            .OrderByDescending(t => t.CreatedAtUtc)
+            .Take(limit)
+            .Select(t => new MemberChatAskedQuestion { Content = t.Content, AskedAtUtc = t.CreatedAtUtc })
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<MemberChatSession>> ListUnthemedCompletedAsync(
         DateTime activeSinceUtc, int limit, CancellationToken ct = default)
     {
