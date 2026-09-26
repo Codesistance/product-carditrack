@@ -3,6 +3,7 @@
              xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:CardiTrack.Mobile"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.WelcomePage"
              Shell.NavBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
@@ -156,44 +157,19 @@
                          CornerRadius="4" Color="{StaticResource InactiveIndicator}"/>
             </HorizontalStackLayout>
 
-            <!-- CTA (Button 1 — 332×52; inner top-left glow approximates Figma's
-                 inset shadow 4,4,10 white 56%) -->
-            <Border x:Name="CtaBorder"
-                    Background="{StaticResource GradientButtonBrush}"
-                    StrokeThickness="0"
-                    WidthRequest="332"
-                    HeightRequest="52"
-                    HorizontalOptions="Center"
-                    Margin="0,24,0,0"
-                    SemanticProperties.Description="Start free 30-day trial"
-                    SemanticProperties.Hint="Opens account creation">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="25"/>
-                </Border.StrokeShape>
-                <Grid>
-                    <Border StrokeThickness="0"
-                            InputTransparent="True">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="25"/>
-                        </Border.StrokeShape>
-                        <Border.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0.7,1">
-                                <GradientStop Color="#66FFFFFF" Offset="0.0"/>
-                                <GradientStop Color="#00FFFFFF" Offset="0.45"/>
-                            </LinearGradientBrush>
-                        </Border.Background>
-                    </Border>
-                    <Label Text="Start Free 30-Day Trial"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="18"
-                           TextColor="{StaticResource White}"
-                           HorizontalOptions="Center"
-                           VerticalOptions="Center"/>
-                </Grid>
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnCtaTapped"/>
-                </Border.GestureRecognizers>
-            </Border>
+            <!-- CTA (Figma M1-02 Button 1, 332 wide) — the shared Primary L, the brand gradient
+                 at 48. A recorded divergence from the frame: Figma draws it 52 high at a pill
+                 radius with an inset top-left glow; the 2026-09-26 button audit put every call to
+                 action on the one button. The 4 it gives back goes to the hero photo, the page's
+                 only flexible row. -->
+            <controls:AppButton Text="Start Free 30-Day Trial"
+                                Tone="Primary"
+                                Size="L"
+                                WidthRequest="332"
+                                HorizontalOptions="Center"
+                                Margin="0,24,0,0"
+                                SemanticProperties.Hint="Opens account creation"
+                                Clicked="OnCtaTapped"/>
 
             <!-- Pricing disclaimer -->
             <Label Text="Then from $7/month - Cancel anytime"

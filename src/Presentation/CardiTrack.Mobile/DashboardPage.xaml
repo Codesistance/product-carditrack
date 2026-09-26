@@ -87,14 +87,12 @@
                                          IsVisible="False"
                                          Padding="0,60,0,0">
                         <Label Text="We couldn't load the dashboard"
-                               Style="{StaticResource Heading3}"
-                               HorizontalTextAlignment="Center"/>
+                               Style="{StaticResource Heading3}"/>
                         <Label x:Name="ErrorDetailLabel"
                                Style="{StaticResource Body2}"
-                               TextColor="{StaticResource BodyText}"
-                               HorizontalTextAlignment="Center"/>
+                               TextColor="{StaticResource BodyText}"/>
                         <controls:AppButton Text="Try again"
-                                            HorizontalOptions="Center"
+                                            HorizontalOptions="Start"
                                             Clicked="OnRefreshClicked"
                                             Tone="Secondary"
                                             Size="L"/>
@@ -106,14 +104,12 @@
                                          IsVisible="False"
                                          Padding="0,60,0,0">
                         <Label Text="Who are you watching over?"
-                               Style="{StaticResource Heading3}"
-                               HorizontalTextAlignment="Center"/>
+                               Style="{StaticResource Heading3}"/>
                         <Label Text="Add the family member you want CardiTrack to keep an eye on."
                                Style="{StaticResource Body2}"
-                               TextColor="{StaticResource BodyText}"
-                               HorizontalTextAlignment="Center"/>
+                               TextColor="{StaticResource BodyText}"/>
                         <controls:AppButton Text="Add CardiMember"
-                                            HorizontalOptions="Center"
+                                            HorizontalOptions="Start"
                                             Clicked="OnAddMemberClicked"
                                             Tone="Primary"
                                             Size="L"/>
@@ -148,7 +144,7 @@
                         </Border>
 
                         <!-- No device connected (M1-09d) is a modal now — NoDevicePopupPage, opened
-                             from the member card's no-device button beside Alerts. -->
+                             from the member card's no-device button on its action line. -->
 
                         <!-- One card per CardiMember the family watches, primary first, then the
                              rest by name (MemberDashboardCard) — built in code, since the family

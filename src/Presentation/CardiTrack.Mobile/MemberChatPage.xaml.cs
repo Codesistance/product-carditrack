@@ -722,21 +722,21 @@ public partial class MemberChatPage : ContentView
         HistoryActions.IsVisible = true;
     }
 
-    /// <summary>The delete pill always states the count it would act on — a caregiver deletes a
+    /// <summary>The delete button always states the count it would act on — a caregiver deletes a
     /// number they have read, never a selection they have lost track of. With nothing picked it
-    /// reads plain "Delete" and sits half-faded, and the tap handler declines.</summary>
+    /// reads plain "Delete" and sits faded (AppButton's disabled look), and the tap handler
+    /// declines. The caption is also its spoken name, so a screen reader hears the count too.</summary>
     private void UpdateDeleteSelectedLabel()
     {
         var count = _sessions.Count(s => s.IsSelected);
-        DeleteSelectedLabel.Text = count switch
+        DeleteSelectedAction.Text = count switch
         {
             0 => "Delete",
             1 => "Delete 1 conversation",
             _ => $"Delete {count} conversations",
         };
-        DeleteSelectedAction.Opacity = count == 0 ? 0.5 : 1;
         // Genuinely disabled, not just dimmed — a screen reader should hear "disabled" rather
-        // than land on a pill that silently does nothing.
+        // than land on a button that silently does nothing. AppButton fades itself for it.
         DeleteSelectedAction.IsEnabled = count > 0;
     }
 
@@ -787,7 +787,7 @@ public partial class MemberChatPage : ContentView
                 foreach (var session in batch)
                     _sessions.Remove(session);
 
-                // Keep the pill honest between batches: if a later one fails, the count it
+                // Keep the button honest between batches: if a later one fails, the count it
                 // shows for the retry is what is actually still selected.
                 UpdateDeleteSelectedLabel();
             }
@@ -857,7 +857,7 @@ public partial class MemberChatPage : ContentView
 
     /// <summary>
     /// A chart carousel's edge arrow: advance one chart the way a swipe would, wrap-around
-    /// included. The carousel is found by walking up from the tapped disc to the Grid that
+    /// included. The carousel is found by walking up from the tapped arrow to the Grid that
     /// holds them both rather than by name — the pair live inside a DataTemplate, whose
     /// namescope is per-bubble, so there is no field for the code-behind to hold.
     /// </summary>
@@ -877,9 +877,9 @@ public partial class MemberChatPage : ContentView
         carousel.Position = (carousel.Position + direction + items.Count) % items.Count;
     }
 
-    private void OnChartPrevTapped(object? sender, TappedEventArgs e) => MoveChartCarousel(sender, -1);
+    private void OnChartPrevTapped(object? sender, EventArgs e) => MoveChartCarousel(sender, -1);
 
-    private void OnChartNextTapped(object? sender, TappedEventArgs e) => MoveChartCarousel(sender, +1);
+    private void OnChartNextTapped(object? sender, EventArgs e) => MoveChartCarousel(sender, +1);
 
     /// <summary>
     /// Ends the current conversation and clears the window for a fresh one. The ended
@@ -1080,7 +1080,7 @@ public partial class MemberChatPage : ContentView
 
             SetState();
             SessionsList.IsVisible = true;
-            // Nothing to select in an empty history, and a Select pill over an empty list is an
+            // Nothing to select in an empty history, and a Select button over an empty list is an
             // affordance for an act that cannot happen.
             SelectSessionsAction.IsVisible = _sessions.Count > 0;
         }

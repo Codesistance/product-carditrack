@@ -23,9 +23,11 @@
         <!-- Initials stay behind the photo rather than being replaced, so a photo that fails to
              load falls back to the gradient monogram rather than an empty tile. -->
         <Grid>
+            <!-- Sized from the box (BoxWidth), not fixed: at a fixed 24 the initials filled the
+                 40 and 48 tiles edge to edge. 20 is the default 64 box's share. -->
             <Label x:Name="InitialsLabel"
                    FontFamily="QuicksandSemiBold"
-                   FontSize="24"
+                   FontSize="20"
                    TextColor="{StaticResource White}"
                    HorizontalOptions="Center"
                    VerticalOptions="Center"/>

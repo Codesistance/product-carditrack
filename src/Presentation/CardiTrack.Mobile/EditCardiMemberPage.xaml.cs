@@ -364,7 +364,8 @@ public partial class EditCardiMemberPage : ContentPage
             return;
 
         _isSaving = true;
-        SaveLabel.Text = "Saving...";
+        // The square has no text to swap, so a screen reader hears the in-flight state instead.
+        SemanticProperties.SetDescription(SaveButton, "Saving");
         SaveButton.IsEnabled = false;
         SaveButton.Opacity = 0.6;
 
@@ -418,7 +419,7 @@ public partial class EditCardiMemberPage : ContentPage
         finally
         {
             _isSaving = false;
-            SaveLabel.Text = "Save";
+            SemanticProperties.SetDescription(SaveButton, "Save");
             SaveButton.IsEnabled = true;
             SaveButton.Opacity = 1;
         }

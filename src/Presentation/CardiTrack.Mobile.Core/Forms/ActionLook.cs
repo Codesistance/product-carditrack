@@ -9,10 +9,10 @@ public enum ActionTone
     /// <summary>Yes.</summary>
     Green,
 
-    /// <summary>No, and anything that removes or ends: Delete, Remove, Leave, Sign out.</summary>
+    /// <summary>Anything that removes or ends: Delete, Remove, Leave, Sign out, Cancel it.</summary>
     Red,
 
-    /// <summary>Back out with nothing changed: Cancel, Later, Keep.</summary>
+    /// <summary>Back out with nothing changed: Cancel, Later, Keep, and a plain No.</summary>
     Dark,
 
     /// <summary>Undo.</summary>
@@ -33,8 +33,15 @@ public static class ActionLooks
     /// <param name="label">The button's text, as shown.</param>
     /// <param name="isDismiss">
     /// True for the button that backs out of a dialog (its Cancel slot). Whatever it says, it is
-    /// the way out — dark, unless it is a plain "No", which answers a question and is red.
+    /// the way out — dark, a plain "No" included: declining an offer ("Use fingerprint unlock?")
+    /// changes nothing, and red there read as a warning about the one harmless answer.
     /// </param>
+    /// <remarks>
+    /// A "Yes," that goes on to name its deed is dressed as the deed: "Yes, remove" removes, and is
+    /// red with a bin like "Remove", where a bare "Yes" is green. The popups word their
+    /// confirmations that way ("Remove Pop?" — "Yes, remove"), so reading only the first word left
+    /// every destructive confirmation in the everyday blue.
+    /// </remarks>
     public static ActionLook For(string? label, bool isDismiss = false)
     {
         var text = (label ?? string.Empty).Trim().ToLowerInvariant();
@@ -44,20 +51,25 @@ public static class ActionLooks
         {
             return first switch
             {
-                "no" => new ActionLook(ActionTone.Red, "icon_btn_close.svg"),
                 "later" or "not" => new ActionLook(ActionTone.Dark, "icon_btn_later.svg"),
                 _ => new ActionLook(ActionTone.Dark, "icon_btn_close.svg"),
             };
         }
 
+        if (first == "yes," && text.Length > first.Length)
+            return For(text[first.Length..]);
+
         return first switch
         {
             "yes" => new ActionLook(ActionTone.Green, "icon_check_white.svg"),
-            "no" => new ActionLook(ActionTone.Red, "icon_btn_close.svg"),
+            "no" => new ActionLook(ActionTone.Dark, "icon_btn_close.svg"),
             "delete" or "remove" => new ActionLook(ActionTone.Red, "icon_btn_delete.svg"),
             "leave" or "revoke" or "discard" or "decline" => new ActionLook(ActionTone.Red, "icon_btn_close.svg"),
             "sign" when text.StartsWith("sign out", StringComparison.Ordinal) => new ActionLook(ActionTone.Red, null),
             "undo" => new ActionLook(ActionTone.Amber, "icon_btn_undo.svg"),
+            // A bare "Cancel" backs out; "Cancel it" on the go-ahead ends something (an
+            // invitation), which is the red meaning, not the dark one.
+            "cancel" when text != "cancel" => new ActionLook(ActionTone.Red, "icon_btn_close.svg"),
             "cancel" or "later" or "keep" => new ActionLook(ActionTone.Dark, "icon_btn_close.svg"),
             "save" => new ActionLook(ActionTone.Blue, "icon_btn_save.svg"),
             "connect" => new ActionLook(ActionTone.Blue, "icon_btn_connect.svg"),

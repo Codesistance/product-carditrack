@@ -223,9 +223,8 @@ public partial class JournalPage : ContentPage
 
         SearchEntry.Placeholder = $"Search the {_cadence.EntryName()}s";
 
-        SemanticProperties.SetDescription(ExportHit, "Export Range");
         SemanticProperties.SetHint(
-            ExportHit,
+            ExportButton,
             $"Asks which {PeriodNoun(_cadence)}s to save, then saves those {_cadence.EntryName()}s");
     }
 
@@ -394,21 +393,24 @@ public partial class JournalPage : ContentPage
     }
 
     /// <summary>
-    /// The header button, its count, the subtitle, and the strip — everything that says whose
-    /// journal this is and what it is narrowed to.
+    /// The header buttons, the filter's count, the subtitle, and the strip — everything that says
+    /// whose journal this is and what it is narrowed to.
     /// </summary>
     /// <remarks>
     /// The member names the subtitle rather than wearing a pill: the list is always one member's,
-    /// so there is no "everyone" for a ✕ to widen to. It is named only once the account has more
-    /// than one member — with one, "whose" has only one answer and the line keeps saying what the
-    /// book is. The button waits for something to filter or someone to switch to, for the same
-    /// reason the search box waits (see <see cref="ShowsFilterControls"/>).
+    /// so there is no "everyone" for a ✕ to widen to. Unfiltered, the line is whose book it is —
+    /// "Pop's Daybooks" — since the tabs below already say which book; filtered, it is who and
+    /// what narrows them. The filter button waits for something to filter or someone to switch
+    /// to, for the same reason the search box waits (see <see cref="ShowsFilterControls"/>); the
+    /// export button appears with the tabs, once there is a member whose book it would export.
     /// </remarks>
     private void PaintFilterChrome()
     {
         var parts = _filter.Parts();
         var narrowed = parts.Count > 0;
-        var named = _members.Count > 1 && !string.IsNullOrWhiteSpace(_memberFirstName);
+        var named = !string.IsNullOrWhiteSpace(_memberFirstName);
+
+        ExportButton.IsVisible = _memberId != Guid.Empty && CadenceRow.IsVisible;
 
         FilterButtonHost.IsVisible = _memberId != Guid.Empty && (ShowsFilterControls || _members.Count > 1);
         FilterButton.BackgroundColor = Tinted(narrowed ? "PrimaryDark" : "White");
@@ -419,18 +421,21 @@ public partial class JournalPage : ContentPage
             FilterButton,
             narrowed ? $"Filter the journal, {parts.Count} on" : "Filter the journal");
 
-        var book = _cadence switch
-        {
-            JournalCadence.Weekbook => "Weekbooks of finished weeks",
-            JournalCadence.Monthbook => "Monthbooks of finished months",
-            _ => "Daybooks of finished days",
-        };
         var said = parts.Select(p => p.Label).ToList();
         if (named)
             said.Insert(0, _memberFirstName!);
-        HeaderSubtitle.Text = narrowed || named
-            ? string.Join(" · ", narrowed ? said : [.. said, book])
-            : book;
+        HeaderSubtitle.Text = (narrowed, named) switch
+        {
+            (true, _) => string.Join(" · ", said),
+            (false, true) => $"{_memberFirstName}'s {_cadence.EntryName()}s",
+            // No name to lead with: say what the book holds, as the line always did.
+            _ => _cadence switch
+            {
+                JournalCadence.Weekbook => "Weekbooks of finished weeks",
+                JournalCadence.Monthbook => "Monthbooks of finished months",
+                _ => "Daybooks of finished days",
+            },
+        };
 
         FilterStripHost.Clear();
         foreach (var (part, label) in parts)
@@ -630,11 +635,12 @@ public partial class JournalPage : ContentPage
         // stays: hiding it on an empty *filtered* result would take away the one control
         // that undoes the emptiness.
         FilterPanel.IsVisible = ShowsFilterControls;
-        PaintFilterChrome();
 
         // Shown as soon as there is a member to read about, empty history or not: a caregiver
         // waiting on their first entries is the one who most needs to see that weeks exist.
+        // Before the chrome is painted, which shows the export button along with it.
         CadenceRow.IsVisible = true;
+        PaintFilterChrome();
 
         if (reviews.Count == 0)
         {
@@ -695,25 +701,17 @@ public partial class JournalPage : ContentPage
             LineBreakMode = LineBreakMode.TailTruncation,
         };
 
-        // A small button, not a link line: "Read" is the card's one action said quietly, and
-        // the whole card is tappable anyway — this is the visible affordance, not the only one.
-        var read = new Border
+        // A small button, not a link line: "Read" is the card's one action said quietly — the
+        // shared Tonal S, the everyday in-card action — and the whole card is tappable anyway;
+        // this is the visible affordance, not the only one. AppButton names itself from its
+        // caption; the hint replaces its generic one with where the tap goes.
+        var read = new AppButton
         {
-            StrokeThickness = 0.5,
-            Stroke = Tinted("PrimaryDark"),
-            BackgroundColor = Colors.Transparent,
-            Padding = new Thickness(14, 5),
+            Text = "Read",
+            Tone = AppButtonTone.Tonal,
+            Size = AppButtonSize.S,
             HorizontalOptions = LayoutOptions.Start,
-            StrokeShape = new RoundRectangle { CornerRadius = 13 },
-            Content = new Label
-            {
-                Text = "Read",
-                FontFamily = "QuicksandSemiBold",
-                FontSize = 12,
-                TextColor = Tinted("PrimaryDark"),
-            },
         };
-        SemanticProperties.SetDescription(read, "Read");
         SemanticProperties.SetHint(read, $"Opens this {PeriodNoun(_cadence)}'s full entry");
 
         // The alert tiles' construction, borrowed whole: a coloured rounded rect underneath and
@@ -754,20 +752,17 @@ public partial class JournalPage : ContentPage
             Content = inner,
         };
 
-        var open = new TapGestureRecognizer
-        {
-            Command = new Command(async () => await Shell.Current.GoToAsync(
-                $"{JournalEntryPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}"
-                + $"&cadence={_cadence.WireValue()}"
-                + $"&name={Uri.EscapeDataString(_memberFirstName ?? string.Empty)}")),
-        };
-        card.GestureRecognizers.Add(open);
-        read.GestureRecognizers.Add(open);
+        var open = new Command(async () => await Shell.Current.GoToAsync(
+            $"{JournalEntryPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}"
+            + $"&cadence={_cadence.WireValue()}"
+            + $"&name={Uri.EscapeDataString(_memberFirstName ?? string.Empty)}"));
+        card.GestureRecognizers.Add(new TapGestureRecognizer { Command = open });
+        read.Command = open;
 
         return card;
     }
 
-    private async void OnExportTapped(object? sender, EventArgs e)
+    private async void OnExportTapped(object? sender, TappedEventArgs e)
     {
         if (_memberId == Guid.Empty)
             return;

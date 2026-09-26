@@ -190,16 +190,14 @@
                                                 Size="L"/>
                         </Grid>
 
-                        <Label Text="Cancel"
-                               Style="{StaticResource PrimaryLink}"
-                               TextDecorations="None"
-                               FontSize="16"
-                               HorizontalOptions="Center"
-                               Margin="0,18,0,0">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnCancelTapped"/>
-                            </Label.GestureRecognizers>
-                        </Label>
+                        <!-- The quiet way out: the shared Text L. Its 48 band carries most of
+                             the gap above it, hence the small margin. -->
+                        <controls:AppButton Text="Cancel"
+                                            HorizontalOptions="Center"
+                                            Margin="0,4,0,0"
+                                            Clicked="OnCancelTapped"
+                                            Tone="Text"
+                                            Size="L"/>
 
                     </VerticalStackLayout>
                 </Grid>

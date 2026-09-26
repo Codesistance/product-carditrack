@@ -17,8 +17,8 @@
                 BackgroundColor="{StaticResource White}"
                 Stroke="{StaticResource Divider}"
                 StrokeThickness="1"
-                Padding="20"
-                Margin="20,40"
+                Padding="24"
+                Margin="32,0"
                 Scale="0.92"
                 HorizontalOptions="Center"
                 VerticalOptions="Center">
@@ -40,9 +40,9 @@
                        HorizontalTextAlignment="Start"
                        LineBreakMode="WordWrap"/>
 
-                <!-- A ScrollView here is safe where the sibling popups avoid one: every piece is
-                     laid out in a Grid whose star column is bounded by the card, so the text has a
-                     width to wrap against. -->
+                <!-- A ScrollView here is safe where the sibling popups avoid one: every piece's
+                     chips wrap in a FlexLayout, the construction the filter sheet's chips already
+                     wrap in inside its own ScrollView, bounded by the card's width. -->
                 <ScrollView Grid.Row="2" x:Name="PiecesScroller">
                     <VerticalStackLayout x:Name="PiecesHost" Spacing="14"/>
                 </ScrollView>

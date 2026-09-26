@@ -86,13 +86,12 @@ public partial class ForgotPasswordPage : ContentPage
         }
     }
 
+    // A disabled AppButton draws itself greyed out, so the cooldown needs no colour of its own.
     private async Task StartResendCooldownAsync()
     {
         ResendLink.IsEnabled = false;
-        ResendLink.TextColor = (Color)App.Current!.Resources["MutedText"];
         await Task.Delay(ResendCooldown);
         ResendLink.IsEnabled = true;
-        ResendLink.TextColor = (Color)App.Current!.Resources["Primary"];
     }
 
     private async void OnBackToSignInTapped(object? sender, EventArgs e)

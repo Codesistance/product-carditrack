@@ -152,7 +152,7 @@ public partial class CaregiverInvitesPage : ContentPage
     {
         var first = _memberName;
         var who = string.IsNullOrWhiteSpace(first) ? "them" : first;
-        HeaderTitle.Text = string.IsNullOrWhiteSpace(first) ? "Who can see them" : $"Who can see {first}";
+        HeaderTitle.Text = string.IsNullOrWhiteSpace(first) ? "Who Can See Them" : $"Who Can See {first}";
         HeaderSubtitle.Text = "The people helping you watch over them";
 
         GrantsList.Apply(

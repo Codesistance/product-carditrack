@@ -54,14 +54,15 @@
                                    Text="Please use a different email or sign in to your account."
                                    Style="{StaticResource Body2}"
                                    TextColor="{StaticResource HeadingText}"/>
-                            <Label Text="Sign in"
-                                   TextColor="{StaticResource Primary}"
-                                   FontFamily="QuicksandSemiBold" FontSize="14"
-                                   Padding="0,4">
-                                <Label.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnSignInTapped"/>
-                                </Label.GestureRecognizers>
-                            </Label>
+                            <!-- The banner's own way out, the shared Text M (compact, inside the
+                                 banner). Pulled left by the Text tone's 4 inset so the caption
+                                 lines up with the lines above it. -->
+                            <controls:AppButton Text="Sign in"
+                                                HorizontalOptions="Start"
+                                                Margin="-4,0,0,0"
+                                                Clicked="OnSignInTapped"
+                                                Tone="Text"
+                                                Size="M"/>
                         </VerticalStackLayout>
                     </Border>
 

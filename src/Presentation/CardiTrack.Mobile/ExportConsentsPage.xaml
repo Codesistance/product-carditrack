@@ -30,7 +30,7 @@
                 </controls:SquareBorder>
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
-                    <Label Text="Export confirmations"
+                    <Label Text="Export Confirmations"
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label Text="Stop a kept one, or see earlier ones"
@@ -75,10 +75,9 @@
 
                 <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="10" Margin="0,24">
                     <Label Text="Couldn't load your export confirmations."
-                           Style="{StaticResource Body1SemiBoldDark}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Body1SemiBoldDark}"/>
                     <controls:AppButton Text="Try again"
-                                        HorizontalOptions="Center"
+                                        HorizontalOptions="Start"
                                         Clicked="OnRetryClicked"
                                         Tone="Primary"
                                         Size="L"/>

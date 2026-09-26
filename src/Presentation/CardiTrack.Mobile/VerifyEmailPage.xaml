@@ -24,7 +24,7 @@
              Create Account, so the "open the link" instruction moved into the body. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,24,20,20" ShowWatermark="True">
             <VerticalStackLayout Spacing="4">
-                <Label Text="Verify your email"
+                <Label Text="Verify Your Email"
                        Style="{StaticResource AuthHeaderTitle}" />
                 <Label Text="Step 1 of 4"
                        Style="{StaticResource AuthHeaderSubtitle}" />

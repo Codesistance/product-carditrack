@@ -3,6 +3,7 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Forms;
 
 namespace CardiTrack.Mobile.Services;
 
@@ -79,7 +80,21 @@ public interface IPopupService
     Task ShowErrorAsync(string message, string? title = null, string? buttonText = null);
 
     /// <summary>Warning-styled confirmation; false when cancelled or dismissed via back.</summary>
-    Task<bool> ConfirmWarningAsync(string message, string? title = null, string? confirmText = null, string? cancelText = null);
+    /// <param name="confirmLook">
+    /// How the confirm button looks, in place of what its words would make it (see
+    /// <see cref="ActionLooks.For"/>). Null for the word rule, which is right almost everywhere; for
+    /// the rare question whose safe answer is the go-ahead and whose way out is the destructive one
+    /// — "Keep my account" / "Go on deleting it" — which no rule about single words can tell apart
+    /// from the usual shape.
+    /// </param>
+    /// <param name="cancelLook">How the cancel button looks, in place of the dark way out; null for that.</param>
+    Task<bool> ConfirmWarningAsync(
+        string message,
+        string? title = null,
+        string? confirmText = null,
+        string? cancelText = null,
+        ActionLook? confirmLook = null,
+        ActionLook? cancelLook = null);
 
     /// <summary>
     /// Info-styled confirmation — an offer rather than a caution, for the "shall I take you
@@ -102,14 +117,27 @@ public interface IPopupService
     Task<string?> ChooseAsync(string title, string cancelText, params string[] options);
 
     /// <summary>
+    /// <see cref="ChooseAsync(string, string, string[])"/> with the rows to draw as Danger named
+    /// outright, in place of the word rule the chooser otherwise dresses them by.
+    /// </summary>
+    /// <remarks>
+    /// For a list where a destructive word is not the destructive row: the medical ledger's
+    /// "Remove" moves a line into the history, one tap away, while "Delete permanently" beside it
+    /// erases it — the word rule made both red, and red on both said they were the same weight.
+    /// </remarks>
+    /// <param name="danger">The options to draw as Danger; every other option is Secondary.</param>
+    Task<string?> ChooseAsync(
+        string title, string cancelText, IReadOnlyList<string> options, IReadOnlyCollection<string> danger);
+
+    /// <summary>
     /// Asks the user to pick one row of a list that already has an answer — what a
     /// <c>ChoiceField</c> opens. The current row is marked so the caregiver sees what is set
     /// before changing it. Returns the tapped row's index, or null when cancelled or dismissed.
     /// </summary>
     /// <remarks>
-    /// Not <see cref="ChooseAsync"/>, which answers a question with no current answer and hands
-    /// back a label: a field's options can repeat a label legitimately, and its page addresses
-    /// them by index, as it did with the Picker.
+    /// Not <see cref="ChooseAsync(string, string, string[])"/>, which answers a question with no
+    /// current answer and hands back a label: a field's options can repeat a label legitimately,
+    /// and its page addresses them by index, as it did with the Picker.
     /// </remarks>
     /// <param name="hint">
     /// One line under the title for a question the options cannot answer alone — "Parent" says
@@ -220,9 +248,10 @@ public interface IPopupService
     Task<ExportDelivery?> ChooseExportDeliveryAsync(string fileName, string? saveHint);
 
     /// <summary>
-    /// Opens the CardiMember card's pending question as a modal — the same <c>QuestionCard</c>
-    /// <c>QuestionnairesPage</c>/<c>CardiMemberDetailPage</c> show inline, in the popup shell
-    /// <see cref="ShowWeatherAsync"/> uses. Completes with what the caregiver did; see
+    /// Opens the CardiMember card's pending question as a modal — the question the inline
+    /// <c>QuestionCard</c> on <c>QuestionnairesPage</c>/<c>CardiMemberDetailPage</c> asks, laid
+    /// out as a popup in the
+    /// shell <see cref="ShowWeatherAsync"/> uses. Completes with what the caregiver did; see
     /// <see cref="QuestionPopupResult"/> for why this doesn't call the API itself.
     /// </summary>
     Task<QuestionPopupResult> ShowPendingQuestionAsync(

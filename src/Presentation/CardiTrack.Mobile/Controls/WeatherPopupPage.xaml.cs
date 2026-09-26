@@ -26,7 +26,11 @@ public partial class WeatherPopupPage : ContentPage
         // modal renders over black.
         On<iOS>().SetModalPresentationStyle(UIModalPresentationStyle.OverFullScreen);
 
-        GlyphLabel.Text = WeatherGlyph.For(weather.Condition);
+        // The info badge's tint, as AppPopupPage mixes it, so the two lead with the same object.
+        IconBadge.BackgroundColor = ControlResources.Color("Primary", Colors.SteelBlue).WithAlpha(0.14f);
+        GlyphImage.Source = WeatherGlyph.IconFor(weather.Condition);
+        // The picture says nothing a reader can hear; the condition and temperature under it do.
+        AutomationProperties.SetIsInAccessibleTree(GlyphImage, false);
         TemperatureLabel.Text = weather.TemperatureCelsius is { } temperature
             ? $"{temperature:F0}°C"
             : "No temperature reading";

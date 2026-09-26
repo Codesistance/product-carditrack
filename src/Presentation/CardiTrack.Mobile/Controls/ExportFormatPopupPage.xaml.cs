@@ -58,7 +58,7 @@ public partial class ExportFormatPopupPage : ContentPage
 
     private async void OnScrimTapped(object? sender, TappedEventArgs e) => await CloseAsync(null);
 
-    private async void OnCloseTapped(object? sender, TappedEventArgs e) => await CloseAsync(null);
+    private async void OnCloseTapped(object? sender, EventArgs e) => await CloseAsync(null);
 
     private async void OnPdfTapped(object? sender, TappedEventArgs e) =>
         await CloseAsync(ReportFormat.Pdf);

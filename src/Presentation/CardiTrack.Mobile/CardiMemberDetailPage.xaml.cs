@@ -766,6 +766,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 : $"Monitoring is paused until {until} — {member.MonitoringPauseReason}";
         }
         PauseRowLabel.Text = member.MonitoringPaused ? "Resume Monitoring" : "Pause Monitoring";
+        ApplyManagementLines(member);
         // Only on the paused branch: Apply also runs on the periodic refresh, and closing a drop
         // down the caregiver is reading mid-refresh would be the refresh taking the choice away.
         if (member.MonitoringPaused)
@@ -1784,6 +1785,33 @@ public partial class CardiMemberDetailPage : ContentPage
               + $"{DateTime.SpecifyKind(lastSynced, DateTimeKind.Utc).ToLocalTime():MMM d, h:mm tt}."
             : "This CardiMember has not synced yet.";
 
+    /// <summary>
+    /// The Management group's per-member words: what the group is for, the lines under the
+    /// device and pause rows, and the two rows that name the member. Only facts this response
+    /// already carries — a line the page would have to fetch or guess is left off (see the
+    /// comment on the group in the XAML).
+    /// </summary>
+    private void ApplyManagementLines(CardiMemberDetailResponse member)
+    {
+        var name = string.IsNullOrWhiteSpace(member.FirstName) ? null : member.FirstName.Trim();
+
+        ManagementSubtitle.Text = $"How CardiTrack watches over {name ?? "them"}";
+        WhoCanSeeLabel.Text = $"Who Can See {name ?? "Them"}";
+        RemoveMemberLabel.Text = name is null ? "Remove CardiMember" : $"Remove {name}";
+
+        DeviceStatusLabel.Text = member.LastSyncedAt is { } lastSynced
+            ? $"Last synced {RelativeTime.Format(lastSynced)}"
+            : "Not synced yet";
+        DeviceStatusLabel.IsVisible = true;
+
+        PauseStatusLabel.Text = member.MonitoringPaused
+            ? member.MonitoringPausedUntil is { } until
+                ? $"Paused until {DateTime.SpecifyKind(until, DateTimeKind.Utc).ToLocalTime():MMM d, h:mm tt}"
+                : "Paused until further notice"
+            : "Monitoring is on";
+        PauseStatusLabel.IsVisible = true;
+    }
+
     private async void OnManageDevicesTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_route.Id}");
 
@@ -1976,7 +2004,10 @@ public partial class CardiMemberDetailPage : ContentPage
         _pauseDurationsAnimating = true;
         _pauseDurationsOpen = true;
 
-        var width = PauseRowLayout.Width > 0 ? PauseRowLayout.Width : Width;
+        // The row now carries the card's side padding itself, so the list is measured at the
+        // width it will actually have inside it.
+        var width = (PauseRowLayout.Width > 0 ? PauseRowLayout.Width : Width)
+                    - PauseRowLayout.Padding.HorizontalThickness;
         var targetHeight = PauseDurationsHost.Measure(width, double.PositiveInfinity).Height;
 
         this.AbortAnimation(PauseDropdownAnimation);
@@ -2037,7 +2068,8 @@ public partial class CardiMemberDetailPage : ContentPage
             $"Monitoring stops immediately and {firstName}'s devices are disconnected. " +
             "Their health history is kept for the retention period.",
             $"Remove {_member.DisplayFirstName()}?",
-            "Yes, remove");
+            "Yes, remove",
+            "Keep them");
         if (!confirmed)
             return;
 

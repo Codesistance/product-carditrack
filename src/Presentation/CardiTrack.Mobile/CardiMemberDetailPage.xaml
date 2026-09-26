@@ -59,16 +59,16 @@
                      halfway down the page; it is navigation, not a setting, and it belongs beside
                      the other way out of this screen rather than competing with the member's own
                      details for the middle of the page. -->
-                <HorizontalStackLayout Grid.Column="2" Spacing="10" VerticalOptions="Start">
+                <HorizontalStackLayout Grid.Column="2" Spacing="8" VerticalOptions="Start">
                     <Border Style="{StaticResource HeaderActionSquare}"
                             SemanticProperties.Description="View alerts"
                             SemanticProperties.Hint="Opens the alerts list">
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnViewAlertsClicked"/>
                         </Border.GestureRecognizers>
-                        <Image Source="icon_bell.svg"
-                               WidthRequest="20"
-                               HeightRequest="20"/>
+                        <Image Source="icon_header_bell.svg"
+                               WidthRequest="24"
+                               HeightRequest="24"/>
                     </Border>
 
                     <!-- Named on the Border, not the button inside it: hiding the button alone
@@ -79,9 +79,9 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnEditClicked"/>
                         </Border.GestureRecognizers>
-                        <Image Source="icon_edit.svg"
-                               WidthRequest="20"
-                               HeightRequest="20"/>
+                        <Image Source="icon_header_edit.svg"
+                               WidthRequest="24"
+                               HeightRequest="24"/>
                     </Border>
                 </HorizontalStackLayout>
             </Grid>
@@ -111,13 +111,11 @@
                                          IsVisible="False"
                                          Padding="0,60,0,0">
                         <Label Text="We couldn't load these details"
-                               Style="{StaticResource Heading3}"
-                               HorizontalTextAlignment="Center"/>
+                               Style="{StaticResource Heading3}"/>
                         <Label x:Name="ErrorDetailLabel"
-                               Style="{StaticResource Body2}"
-                               HorizontalTextAlignment="Center"/>
+                               Style="{StaticResource Body2}"/>
                         <controls:AppButton Text="Try again"
-                                            HorizontalOptions="Center"
+                                            HorizontalOptions="Start"
                                             Clicked="OnRetryClicked"
                                             Tone="Secondary"
                                             Size="L"/>
@@ -302,7 +300,8 @@
                                      the message to the caregiver, and in regular type this one read
                                      as the lighter of the two cards though the ink is the same. -->
                                 <Label x:Name="SummaryLabel"
-                                       Style="{StaticResource Message}"/>
+                                       Style="{StaticResource Message}"
+                                       HorizontalTextAlignment="Justify"/>
 
                                 <!-- The model's own urgency read, alongside — never instead of —
                                      the card's dashboard-driven status colour above. Hidden when
@@ -338,7 +337,8 @@
                                             <Label x:Name="InsightSummaryLabel"
                                                    Style="{StaticResource Body2Dark}"
                                                    IsVisible="False"
-                                                   LineBreakMode="WordWrap"/>
+                                                   LineBreakMode="WordWrap"
+                                                   HorizontalTextAlignment="Justify"/>
                                             <!-- One card per metric that moved, each with the
                                                  figures, what the grade was given on, and an
                                                  alert on that reading. -->
@@ -409,7 +409,8 @@
                                      muted — they are about the message, not the message. -->
                                 <Label x:Name="AdviseSummaryLabel"
                                        Style="{StaticResource Message}"
-                                       LineBreakMode="WordWrap"/>
+                                       LineBreakMode="WordWrap"
+                                       HorizontalTextAlignment="Justify"/>
                                 <Label x:Name="AdviseSuggestionLabel"
                                        Style="{StaticResource Message}"
                                        LineBreakMode="WordWrap"/>
@@ -468,7 +469,8 @@
                                 <Label x:Name="InsightTrendLabel"
                                        Style="{StaticResource Body2Dark}"
                                        IsVisible="False"
-                                       LineBreakMode="WordWrap"/>
+                                       LineBreakMode="WordWrap"
+                                       HorizontalTextAlignment="Justify"/>
 
                                 <!-- The trend's own points. The payload has carried these all
                                      along (MemberInsightComposer sets TrendFindings from the
@@ -647,369 +649,391 @@
                                                    Spacing="6"/>
                         </VerticalStackLayout>
 
-                        <!-- Questions and answers. Always a way in: a caregiver can volunteer a
-                             standing fact here before the service has asked anything. -->
-                        <Border x:Name="QuestionsRow"
-                                Style="{StaticResource ElevatedCard}"
-                                Padding="14,4"
-                                IsVisible="False">
-                            <!-- Described on the Grid, which is the tap target: a layout carrying
-                                 nothing but a gesture recognizer is not an accessibility node, so
-                                 without this the row is neither announced nor reachable. -->
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="Questions and answers"
-                                  SemanticProperties.Hint="Opens the answers saved for this CardiMember">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnQuestionsTapped"/>
-                                </Grid.GestureRecognizers>
-                                <!-- Call-outs rather than the clipboard: the summary card two
-                                     sections up is already a clipboard, and a row repeating it
-                                     read as more of that card rather than as a way somewhere
-                                     else. Two bubbles — one asked, one answered. -->
-                                <Image Grid.Column="0" Source="icon_callout.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Questions &amp; Answers"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
+                        <!-- The record, in one card: what was asked and answered, the journal,
+                             what the family keeps, and the conversation about it — hairlines between
+                             rows rather than four cards, the same grouping as Management below
+                             (picked from samples, M1, and applied here on request 2026-09-26). Each
+                             optional row carries its divider with it, so hiding one never leaves a
+                             stray line at the card's edge. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="0">
+                            <VerticalStackLayout>
 
-                        <!-- Their daybook — the finished days this page's live view sits on
-                             top of. Same row shape as Questions & Answers: a way in, not a
-                             preview. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="CardiJournal"
-                                  SemanticProperties.Hint="Opens this CardiMember's CardiJournal of finished days">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnDaybookTapped"/>
-                                </Grid.GestureRecognizers>
-                                <!-- A book, not the tab bar's written page: that glyph is drawn
-                                     in the unselected-tab grey and read as a disabled row beside
-                                     the blue ones either side of it. -->
-                                <Image Grid.Column="0" Source="icon_book.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="CardiJournal"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
+                                <!-- Questions and answers. Always a way in: a caregiver can
+                                     volunteer a standing fact here before the service has asked
+                                     anything. -->
+                                <VerticalStackLayout x:Name="QuestionsRow" IsVisible="False">
+                                    <!-- Described on the Grid, which is the tap target: a layout
+                                         carrying nothing but a gesture recognizer is not an
+                                         accessibility node, so without this the row is neither
+                                         announced nor reachable. -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,0"
+                                          HeightRequest="52" BackgroundColor="Transparent"
+                                          SemanticProperties.Description="Questions and answers"
+                                          SemanticProperties.Hint="Opens the answers saved for this CardiMember">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnQuestionsTapped"/>
+                                        </Grid.GestureRecognizers>
+                                        <!-- Call-outs rather than the clipboard: the summary card two
+                                             sections up is already a clipboard, and a row repeating
+                                             it read as more of that card rather than as a way
+                                             somewhere else. Two bubbles — one asked, one answered. -->
+                                        <Image Grid.Column="0" Source="icon_callout.svg"
+                                               WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                        <Label Grid.Column="1"
+                                               Text="Questions &amp; Answers"
+                                               Style="{StaticResource Body1SemiBoldDark}"
+                                               VerticalTextAlignment="Center"/>
+                                        <Image Grid.Column="2" Source="icon_chevron.svg"
+                                               WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                    </Grid>
+                                    <BoxView HeightRequest="1" Color="{StaticResource Divider}" Margin="48,0,0,0"/>
+                                </VerticalStackLayout>
 
-                        <!-- Medical information. A way in rather than a drop down, now the same
-                             kind of row as Questions & Answers above it and pointing at the same
-                             kind of thing: something the family keeps, of no fixed length. As a
-                             drop down it pushed everything under it — the whole Management group —
-                             off the bottom of the screen for as long as it stayed open, which is
-                             the wrong trade for content nobody reads on their way past. -->
-                        <Border x:Name="MedicalRow"
-                                Style="{StaticResource ElevatedCard}"
-                                Padding="14,4">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="Medical Information"
-                                  SemanticProperties.Hint="Opens the medical notes kept for this CardiMember">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnMedicalTapped"/>
-                                </Grid.GestureRecognizers>
-                                <!-- The medical mark itself. The padlock this replaces described
-                                     how the notes are held rather than what they are, and read as
-                                     "locked" to the one caregiver who can open them. -->
-                                <Image Grid.Column="0"
-                                       Source="icon_medical_files.svg"
-                                       WidthRequest="22" HeightRequest="22"
-                                       VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Medical Information"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
+                                <!-- Their daybook — the finished days this page's live view sits on
+                                     top of. A way in, not a preview. -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,0"
+                                      HeightRequest="52" BackgroundColor="Transparent"
+                                      SemanticProperties.Description="CardiJournal"
+                                      SemanticProperties.Hint="Opens this CardiMember's CardiJournal of finished days">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnDaybookTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <!-- A book, not the tab bar's written page: that glyph is drawn
+                                         in the unselected-tab grey and read as a disabled row beside
+                                         the blue ones either side of it. -->
+                                    <Image Grid.Column="0" Source="icon_book.svg"
+                                           WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                    <Label Grid.Column="1"
+                                           Text="CardiJournal"
+                                           Style="{StaticResource Body1SemiBoldDark}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image Grid.Column="2" Source="icon_chevron.svg"
+                                           WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                </Grid>
 
-                        <!-- The conversation about this member's readings, persisted rather than
-                             the single-shot Ask card elsewhere. No Figma frame — as-built, see the
-                             design-sync backlog. Always available, not gated on any data existing
-                             yet.
+                                <BoxView HeightRequest="1" Color="{StaticResource Divider}" Margin="48,0,0,0"/>
 
-                             Last of the four, after the medical notes: the rows above are the
-                             record — what is known, what was written down, what the family keeps —
-                             and this is the way to interrogate it. It also reads as "chat
-                             history" rather than "start a chat", which is what it opens: the
-                             thread resumes where it left off. The Dashboard's floating button
-                             remains the way in for someone who has a question and no interest in
-                             this page. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="Chat history"
-                                  SemanticProperties.Hint="Opens the conversation about this CardiMember's readings">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnChatTapped"/>
-                                </Grid.GestureRecognizers>
-                                <!-- The bot, monochrome: the same character as the floating
-                                     launcher rather than a generic speech bubble, drawn in the
-                                     row set's flat blue so it does not announce itself beside
-                                     the four glyphs above it. -->
-                                <Image Grid.Column="0" Source="icon_chatbot_mono.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Chat history"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
+                                <!-- Medical information. A way in rather than a drop down: as a drop
+                                     down it pushed everything under it — the whole Management group —
+                                     off the bottom of the screen for as long as it stayed open,
+                                     which is the wrong trade for content nobody reads on their way
+                                     past. -->
+                                <VerticalStackLayout x:Name="MedicalRow">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,0"
+                                          HeightRequest="52" BackgroundColor="Transparent"
+                                          SemanticProperties.Description="Medical Information"
+                                          SemanticProperties.Hint="Opens the medical notes kept for this CardiMember">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnMedicalTapped"/>
+                                        </Grid.GestureRecognizers>
+                                        <!-- The medical mark itself. The padlock this replaces
+                                             described how the notes are held rather than what they
+                                             are, and read as "locked" to the one caregiver who can
+                                             open them. -->
+                                        <Image Grid.Column="0"
+                                               Source="icon_medical_files.svg"
+                                               WidthRequest="22" HeightRequest="22"
+                                               VerticalOptions="Center"/>
+                                        <Label Grid.Column="1"
+                                               Text="Medical Information"
+                                               Style="{StaticResource Body1SemiBoldDark}"
+                                               VerticalTextAlignment="Center"/>
+                                        <Image Grid.Column="2" Source="icon_chevron.svg"
+                                               WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                    </Grid>
+                                    <BoxView HeightRequest="1" Color="{StaticResource Divider}" Margin="48,0,0,0"/>
+                                </VerticalStackLayout>
+
+                                <!-- The conversation about this member's readings, persisted rather
+                                     than the single-shot Ask card elsewhere. No Figma frame — as-built,
+                                     see the design-sync backlog. Always available, not gated on any
+                                     data existing yet.
+
+                                     Last of the four: the rows above are the record — what is known,
+                                     what was written down, what the family keeps — and this is the way
+                                     to interrogate it. It reads as "chat history" rather than "start a
+                                     chat", which is what it opens: the thread resumes where it left
+                                     off. The Dashboard's floating button remains the way in for
+                                     someone with a question and no interest in this page. -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,0"
+                                      HeightRequest="52" BackgroundColor="Transparent"
+                                      SemanticProperties.Description="Chat History"
+                                      SemanticProperties.Hint="Opens the conversation about this CardiMember's readings">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnChatTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <!-- The bot, monochrome: the same character as the floating
+                                         launcher rather than a generic speech bubble, drawn in the
+                                         row set's flat blue so it does not announce itself beside
+                                         the glyphs above it. -->
+                                    <Image Grid.Column="0" Source="icon_chatbot_mono.svg"
+                                           WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                    <Label Grid.Column="1"
+                                           Text="Chat History"
+                                           Style="{StaticResource Body1SemiBoldDark}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image Grid.Column="2" Source="icon_chevron.svg"
+                                           WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                </Grid>
+                            </VerticalStackLayout>
                         </Border>
 
                         <!-- Management / danger zone -->
                         <VerticalStackLayout Spacing="4" Margin="0,10,0,0">
                             <Label Text="Management" Style="{StaticResource DashboardSectionTitle}"/>
-                            <Label Text="Alerts, the journal, devices, monitoring and removal"
+                            <!-- Named per member in code (Apply): what this group is for, not a
+                                 list of the rows under it. -->
+                            <Label x:Name="ManagementSubtitle"
+                                   Text="How CardiTrack watches over them"
                                    Style="{StaticResource Body2}"/>
                         </VerticalStackLayout>
 
-                        <!-- Which alerts CardiTrack checks for. In Management rather than up with the
-                             rows about the member: it is not a fact about them, it is a setting for
-                             how CardiTrack watches them, which is what this group already collects.
+                        <!-- Two cards, not eight. The ways in to how CardiTrack watches this member
+                             share one card, a hairline between rows; Pause and Remove — the two rows
+                             that change something by themselves — have a card of their own below it,
+                             so the risky pair is set apart by more than colour. Picked from samples
+                             (M1, 2026-09-26); no Figma frame for the grouped list.
 
-                             It leads the group. What a caregiver comes to Management to change is
-                             usually what CardiTrack watches for; the four rows under it are the
-                             journal's schedule they will set once, a device they will set up once,
-                             a pause they will use rarely, and a removal they will use never.
-                             Ordering by consequence — the harmless row first, the destructive one
-                             last — put the most-used row behind the least-used ones, which is a
-                             tidy rule and the wrong outcome. Pause and Remove keep their places at
-                             the bottom, which is what that rule was really protecting.
+                             Order within the first card: Alert Settings leads. What a caregiver comes
+                             to Management to change is usually what CardiTrack watches for; the rows
+                             under it are the journal's schedule they will set once, a device they
+                             will set up once, sharing and export. Ordering by consequence put the
+                             most-used row behind the least-used ones, which is a tidy rule and the
+                             wrong outcome; Pause and Remove keep their places at the bottom, which is
+                             what that rule was really protecting.
 
-                             A page rather than a row that opens in place, like Journal Settings
-                             beside it: the catalogue has grown to more clusters than fit under a
-                             row without burying the four rows beneath, and two settings pages for
-                             two neighbouring rows should look and behave the same. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="Alert Settings"
-                                  SemanticProperties.Hint="Choose which alerts CardiTrack checks for">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnAlertSettingsTapped"/>
-                                </Grid.GestureRecognizers>
-                                <!-- A bell wearing a cog. The bell says which subject, and the cog
-                                     says these are the settings behind the alerts rather than the
-                                     alerts themselves — which is what keeps it apart from the
-                                     header's plain bell, the inbox of what CardiTrack has already
-                                     found. -->
-                                <Image Grid.Column="0"
-                                       Source="icon_bell_cog.svg"
-                                       WidthRequest="22" HeightRequest="22"
-                                       VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Alert Settings"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
+                             A status line sits under a row only where this page already holds the
+                             fact (the last sync, the pause) — a count it would have to fetch, or a
+                             guess, is worse than no line. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="0">
+                            <VerticalStackLayout>
 
-                        <!-- The caregiver's own thresholds, directly under the rules CardiTrack
-                             checks on its own. The pairing is the point: one row says what
-                             CardiTrack looks for, the next says what you have asked it to look for
-                             on top of that, and a caregiver wondering "why did I get told about
-                             this" has both answers in one place.
-
-                             R2, and no Figma frame — on the design-sync backlog. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="Custom Alerts"
-                                  SemanticProperties.Hint="Set the levels you want to be told about">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnMetricAlarmsTapped"/>
-                                </Grid.GestureRecognizers>
-                                <!-- A person wearing a bell, where the row above is a bell wearing
-                                     a cog: these are the alerts the caregiver set, not the rules
-                                     CardiTrack applies on its own. The subject changes rather than
-                                     the badge, because what separates the two rows is whose alerts
-                                     they are. -->
-                                <Image Grid.Column="0"
-                                       Source="icon_user_bell.svg"
-                                       WidthRequest="22" HeightRequest="22"
-                                       VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Custom Alerts"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- When each book is written. In Management rather than under the
-                             CardiJournal row it used to sit beneath: the journal is something you
-                             read, and this is a setting for how CardiTrack behaves — which is what
-                             this group collects. It follows Alert Settings for the same reason that
-                             one leads: both are what CardiTrack does on its own, and neither
-                             changes anything about the member.
-
-                             Named for the whole setting rather than the one question on the page,
-                             so the row reads as a destination beside Device Management rather than a
-                             sentence fragment beside it. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="Journal Settings"
-                                  SemanticProperties.Hint="Choose what time of day each book is written up">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnJournalTimingTapped"/>
-                                </Grid.GestureRecognizers>
-                                <!-- The CardiJournal row's book wearing the same cog Alert Settings
-                                     wears: the journal is the subject, the cog is what makes this
-                                     the setting for it rather than the journal itself. -->
-                                <Image Grid.Column="0" Source="icon_book_cog.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Journal Settings"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- Device Management, which used to be one of a pair of outline buttons
-                             halfway up the page. It is the same kind of thing as the rows either
-                             side of it — a way in to managing this member rather than a fact about
-                             them — and like the alert rules above it, it changes nothing on its
-                             own. The two rows below do. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnManageDevicesTapped"/>
-                            </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
-                                <Image Grid.Column="0" Source="icon_watch.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Device Management"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- Who else watches this person, and the invitations out for them
-                             (Story 4.1). With the other ways in rather than with the two rows
-                             below: sharing somebody changes who can see them, not the member. -->
-                        <!-- Hidden until the page knows the caller runs this member's family:
-                             issuing, listing and revoking invitations are the admin's, and a row
-                             that opens a refusal is worse than no row. -->
-                        <Border x:Name="WhoCanSeeRow"
-                                Style="{StaticResource ElevatedCard}"
-                                Padding="14,4"
-                                IsVisible="False">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnWhoCanSeeTapped"/>
-                            </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
-                                <Image Grid.Column="0" Source="icon_tab_family.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label x:Name="WhoCanSeeLabel"
-                                       Grid.Column="1"
-                                       Text="Who can see them"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- M1-17. Sits with the other ways in rather than with the two rows
-                             below it, because exporting changes nothing about the member — it
-                             hands the caregiver a copy of what is already here. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnExportDataTapped"/>
-                            </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
-                                <Image Grid.Column="0" Source="icon_clipboard_ink.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Export Data"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <VerticalStackLayout x:Name="PauseRowLayout">
-                                <!-- The recognizer sits on the header row, not the card, so taps
-                                     on a duration below reach their own row instead of
-                                     re-toggling the drop down. -->
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                <!-- Which alerts CardiTrack checks for: a setting for how CardiTrack
+                                     watches them, not a fact about them. A page rather than a row
+                                     that opens in place, like Journal Settings: the catalogue has
+                                     outgrown a drop down. -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,0"
+                                      HeightRequest="52" BackgroundColor="Transparent"
+                                      SemanticProperties.Description="Alert Settings"
+                                      SemanticProperties.Hint="Choose which alerts CardiTrack checks for">
                                     <Grid.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnPauseMonitoringTapped"/>
+                                        <TapGestureRecognizer Tapped="OnAlertSettingsTapped"/>
                                     </Grid.GestureRecognizers>
-                                    <Image Grid.Column="0" Source="icon_pause.svg"
-                                           WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                    <!-- Amber, and the icon with it: pausing is the one row here
-                                         that stops CardiTrack watching, so it should not read as
-                                         another neutral way in. Amber rather than red because it
-                                         is reversible from this same row — red is kept for the
-                                         removal below it. -->
-                                    <Label x:Name="PauseRowLabel"
-                                           Grid.Column="1"
-                                           Text="Pause Monitoring"
+                                    <!-- A bell wearing a cog: the settings behind the alerts rather
+                                         than the alerts themselves — which keeps it apart from the
+                                         header's plain bell, the inbox of what has been found. -->
+                                    <Image Grid.Column="0"
+                                           Source="icon_bell_cog.svg"
+                                           WidthRequest="22" HeightRequest="22"
+                                           VerticalOptions="Center"/>
+                                    <Label Grid.Column="1"
+                                           Text="Alert Settings"
                                            Style="{StaticResource Body1SemiBoldDark}"
-                                           TextColor="{StaticResource CautionAmber}"
                                            VerticalTextAlignment="Center"/>
-                                    <Image x:Name="PauseRowChevron"
-                                           Grid.Column="2" Source="icon_chevron.svg"
+                                    <Image Grid.Column="2" Source="icon_chevron.svg"
                                            WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
                                 </Grid>
 
-                                <!-- Duration drop down. The durations used to arrive as a modal
-                                     list of buttons; they now open in place under the row that
-                                     asks for them. Rows are built in code-behind from the same
-                                     PauseDurations table the confirm step reads, and the open
-                                     /close animation is AccordionSection's — a clipping Border
-                                     grown to the measured height, since a plain layout wouldn't
-                                     clip its content mid-slide. -->
-                                <Border x:Name="PauseDurationsClip"
-                                        StrokeThickness="0"
-                                        BackgroundColor="Transparent"
-                                        Padding="0"
-                                        HeightRequest="0">
-                                    <VerticalStackLayout x:Name="PauseDurationsHost"
-                                                         Padding="0,0,0,10"
-                                                         VerticalOptions="Start"/>
-                                </Border>
+                                <BoxView HeightRequest="1" Color="{StaticResource Divider}" Margin="48,0,0,0"/>
+
+                                <!-- The caregiver's own thresholds, directly under the rules
+                                     CardiTrack checks on its own: one row says what CardiTrack looks
+                                     for, the next what you asked it to look for on top — both
+                                     answers to "why did I get told about this" in one place. R2, no
+                                     Figma frame (design-sync backlog). -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,0"
+                                      HeightRequest="52" BackgroundColor="Transparent"
+                                      SemanticProperties.Description="Custom Alerts"
+                                      SemanticProperties.Hint="Set the levels you want to be told about">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnMetricAlarmsTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <!-- A person wearing a bell, where the row above is a bell
+                                         wearing a cog: whose alerts they are is what separates the
+                                         two rows, so the subject changes rather than the badge. -->
+                                    <Image Grid.Column="0"
+                                           Source="icon_user_bell.svg"
+                                           WidthRequest="22" HeightRequest="22"
+                                           VerticalOptions="Center"/>
+                                    <Label Grid.Column="1"
+                                           Text="Custom Alerts"
+                                           Style="{StaticResource Body1SemiBoldDark}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image Grid.Column="2" Source="icon_chevron.svg"
+                                           WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                </Grid>
+
+                                <BoxView HeightRequest="1" Color="{StaticResource Divider}" Margin="48,0,0,0"/>
+
+                                <!-- When each book is written: a setting for how CardiTrack
+                                     behaves, named for the whole setting so it reads as a
+                                     destination beside Device Management. -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,0"
+                                      HeightRequest="52" BackgroundColor="Transparent"
+                                      SemanticProperties.Description="Journal Settings"
+                                      SemanticProperties.Hint="Choose what time of day each book is written up">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnJournalTimingTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <!-- The CardiJournal row's book wearing the same cog Alert
+                                         Settings wears. -->
+                                    <Image Grid.Column="0" Source="icon_book_cog.svg"
+                                           WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                    <Label Grid.Column="1"
+                                           Text="Journal Settings"
+                                           Style="{StaticResource Body1SemiBoldDark}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image Grid.Column="2" Source="icon_chevron.svg"
+                                           WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                </Grid>
+
+                                <BoxView HeightRequest="1" Color="{StaticResource Divider}" Margin="48,0,0,0"/>
+
+                                <!-- A way in to managing this member, and like the rows above it
+                                     changes nothing on its own. Its line is the last sync — the
+                                     one thing about the device this page already knows. -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,9"
+                                      MinimumHeightRequest="52" BackgroundColor="Transparent">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnManageDevicesTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Image Grid.Column="0" Source="icon_watch.svg"
+                                           WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                        <Label Text="Device Management"
+                                               Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <Label x:Name="DeviceStatusLabel"
+                                               Style="{StaticResource Caption}"
+                                               IsVisible="False"/>
+                                    </VerticalStackLayout>
+                                    <Image Grid.Column="2" Source="icon_chevron.svg"
+                                           WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                </Grid>
+
+                                <!-- Who else watches this person, and the invitations out for them
+                                     (Story 4.1). Hidden, with its divider, until the page knows the
+                                     caller runs this member's family: issuing, listing and revoking
+                                     invitations are the admin's, and a row that opens a refusal is
+                                     worse than no row. -->
+                                <VerticalStackLayout x:Name="WhoCanSeeRow" IsVisible="False">
+                                    <BoxView HeightRequest="1" Color="{StaticResource Divider}" Margin="48,0,0,0"/>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,0"
+                                          HeightRequest="52" BackgroundColor="Transparent">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnWhoCanSeeTapped"/>
+                                        </Grid.GestureRecognizers>
+                                        <Image Grid.Column="0" Source="icon_tab_family.svg"
+                                               WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                        <Label x:Name="WhoCanSeeLabel"
+                                               Grid.Column="1"
+                                               Text="Who Can See Them"
+                                               Style="{StaticResource Body1SemiBoldDark}"
+                                               VerticalTextAlignment="Center"/>
+                                        <Image Grid.Column="2" Source="icon_chevron.svg"
+                                               WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                    </Grid>
+                                </VerticalStackLayout>
+
+                                <BoxView HeightRequest="1" Color="{StaticResource Divider}" Margin="48,0,0,0"/>
+
+                                <!-- M1-17. With the ways in rather than with the two rows below:
+                                     exporting changes nothing about the member — it hands the
+                                     caregiver a copy of what is already here. -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,0"
+                                      HeightRequest="52" BackgroundColor="Transparent">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnExportDataTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Image Grid.Column="0" Source="icon_clipboard_ink.svg"
+                                           WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                    <Label Grid.Column="1"
+                                           Text="Export Data"
+                                           Style="{StaticResource Body1SemiBoldDark}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image Grid.Column="2" Source="icon_chevron.svg"
+                                           WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                </Grid>
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- The destructive one: removal takes the member, the caregiver links to
-                             them and their device connections off this account, and the confirm
-                             step behind it should not be the first hint of that. A deeper red than
-                             the severity token (#E53E3E) — that one is drawn as a fill or a dot,
-                             this is 16px label text on white and has to clear 4.5:1 against it. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnRemoveMemberTapped"/>
-                            </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
-                                <Image Grid.Column="0" Source="icon_person_remove.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Remove CardiMember"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       TextColor="{StaticResource DangerRed}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
+                        <!-- The two rows that change something by themselves, in a card of their
+                             own a little further down. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="0" Margin="0,6,0,0">
+                            <VerticalStackLayout>
+                                <VerticalStackLayout x:Name="PauseRowLayout" Padding="14,0">
+                                    <!-- The recognizer sits on the header row, not the card, so taps
+                                         on a duration below reach their own row instead of
+                                         re-toggling the drop down. -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="0,9"
+                                          MinimumHeightRequest="52" BackgroundColor="Transparent">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnPauseMonitoringTapped"/>
+                                        </Grid.GestureRecognizers>
+                                        <Image Grid.Column="0" Source="icon_pause.svg"
+                                               WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                        <!-- Amber, and the icon with it: pausing is the one row here
+                                             that stops CardiTrack watching, so it should not read as
+                                             another neutral way in. Amber rather than red because it
+                                             is reversible from this same row — red is kept for the
+                                             removal below it. The line under it says whether
+                                             CardiTrack is watching now. -->
+                                        <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                            <Label x:Name="PauseRowLabel"
+                                                   Text="Pause Monitoring"
+                                                   Style="{StaticResource Body1SemiBoldDark}"
+                                                   TextColor="{StaticResource CautionAmber}"/>
+                                            <Label x:Name="PauseStatusLabel"
+                                                   Style="{StaticResource Caption}"
+                                                   IsVisible="False"/>
+                                        </VerticalStackLayout>
+                                        <Image x:Name="PauseRowChevron"
+                                               Grid.Column="2" Source="icon_chevron.svg"
+                                               WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                    </Grid>
+
+                                    <!-- Duration drop down. The durations used to arrive as a modal
+                                         list of buttons; they now open in place under the row that
+                                         asks for them. Rows are built in code-behind from the same
+                                         PauseDurations table the confirm step reads, and the open
+                                         /close animation is AccordionSection's — a clipping Border
+                                         grown to the measured height, since a plain layout wouldn't
+                                         clip its content mid-slide. -->
+                                    <Border x:Name="PauseDurationsClip"
+                                            StrokeThickness="0"
+                                            BackgroundColor="Transparent"
+                                            Padding="0"
+                                            HeightRequest="0">
+                                        <VerticalStackLayout x:Name="PauseDurationsHost"
+                                                             Padding="0,0,0,10"
+                                                             VerticalOptions="Start"/>
+                                    </Border>
+                                </VerticalStackLayout>
+
+                                <BoxView HeightRequest="1" Color="{StaticResource Divider}" Margin="48,0,0,0"/>
+
+                                <!-- The destructive one: removal takes the member, the caregiver
+                                     links to them and their device connections off this account,
+                                     and the confirm step behind it should not be the first hint of
+                                     that. A deeper red than the severity token (#E53E3E) — that one
+                                     is drawn as a fill or a dot, this is 16px label text on white
+                                     and has to clear 4.5:1 against it. -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="14,0"
+                                      HeightRequest="52" BackgroundColor="Transparent">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnRemoveMemberTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Image Grid.Column="0" Source="icon_person_remove.svg"
+                                           WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                    <Label x:Name="RemoveMemberLabel"
+                                           Grid.Column="1"
+                                           Text="Remove CardiMember"
+                                           Style="{StaticResource Body1SemiBoldDark}"
+                                           TextColor="{StaticResource DangerRed}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image Grid.Column="2" Source="icon_chevron.svg"
+                                           WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                </Grid>
+                            </VerticalStackLayout>
                         </Border>
 
                     </VerticalStackLayout>

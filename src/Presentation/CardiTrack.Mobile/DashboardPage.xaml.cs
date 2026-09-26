@@ -444,7 +444,17 @@ public partial class DashboardPage : ContentPage
             // Every member on screen, not just the first: the pull is on the whole dashboard.
             // The first refusal is the one reported — they tend to share a reason, and a popup per
             // member would be a stack of the same sentence.
-            foreach (var memberId in _cards.Keys.ToList())
+            //
+            // Not a member the dashboard already knows has no device, though: their card says
+            // "Connect a device" in place of readings, and asking the server to check in with
+            // nothing only came back as a refusal — which, being the first, was the popup after
+            // every pull even when everyone else had synced. A card with no data yet is still
+            // asked; the server knows what the card does not.
+            var syncable = _cards
+                .Where(c => c.Value.Data is not { Device.HasActiveConnection: false })
+                .Select(c => c.Key)
+                .ToList();
+            foreach (var memberId in syncable)
             {
                 try
                 {
@@ -1044,8 +1054,8 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// Both the hero card and the quick-action row's Details tile land on M1-13, for the member
-    /// whose card was tapped.
+    /// The member card lands on M1-13, for the member whose card was tapped — the card itself is
+    /// the way in, now the quick-action row no longer carries a Details tile of its own.
     /// </summary>
     private static void OpenMemberDetails(MemberDashboardCard card)
     {

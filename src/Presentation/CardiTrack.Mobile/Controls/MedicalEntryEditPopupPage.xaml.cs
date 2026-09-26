@@ -2,7 +2,6 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Members;
 using Microsoft.Maui.Controls.PlatformConfiguration;
 using Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific;
-using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -27,7 +26,7 @@ public partial class MedicalEntryEditPopupPage : ContentPage
     private readonly TaskCompletionSource<(MedicalEntryKind Kind, string Text)?> _result = new();
     private readonly MedicalEntryKind _originalKind;
     private readonly string _originalText;
-    private readonly List<(MedicalEntryKind Kind, Border Chip, Label Label)> _chips = [];
+    private readonly List<(MedicalEntryKind Kind, SelectChip Chip)> _chips = [];
     private MedicalEntryKind _kind;
     private bool _closing;
 
@@ -103,56 +102,27 @@ public partial class MedicalEntryEditPopupPage : ContentPage
         for (var i = 0; i < MedicalLedgerLines.Kinds.Count; i++)
         {
             var kind = MedicalLedgerLines.Kinds[i];
-            var label = new Label
-            {
-                Text = MedicalLedgerLines.KindName(kind),
-                FontFamily = "QuicksandSemiBold",
-                FontSize = 12,
-                HorizontalTextAlignment = TextAlignment.Center,
-                VerticalTextAlignment = TextAlignment.Center,
-                LineBreakMode = LineBreakMode.TailTruncation,
-            };
-            var chip = new Border
-            {
-                HeightRequest = 36,
-                Padding = new Thickness(2, 0),
-                StrokeThickness = 1,
-                StrokeShape = new RoundRectangle { CornerRadius = 10 },
-                Content = label,
-            };
-            SemanticProperties.SetDescription(chip, MedicalLedgerLines.KindName(kind));
-            var tap = new TapGestureRecognizer();
-            tap.Tapped += (_, _) =>
+            var chip = new SelectChip { Text = MedicalLedgerLines.KindName(kind) };
+            chip.Tapped += (_, _) =>
             {
                 _kind = kind;
                 ShowKind();
             };
-            chip.GestureRecognizers.Add(tap);
-            Grid.SetColumn(chip, i);
+            Grid.SetColumn(chip, i % 2);
+            Grid.SetRow(chip, i / 2);
             KindRow.Add(chip);
-            _chips.Add((kind, chip, label));
+            _chips.Add((kind, chip));
         }
     }
 
-    /// <summary>The set kind filled in the brand blue, the rest outlined, and the box's hint to match.</summary>
+    /// <summary>The set kind filled, the rest outlined, and the box's hint to match.</summary>
     private void ShowKind()
     {
-        foreach (var (kind, chip, label) in _chips)
-        {
-            var set = kind == _kind;
-            chip.BackgroundColor = set ? Colour("Primary") : Colour("White");
-            chip.Stroke = set ? Colour("Primary") : Colour("Divider");
-            label.TextColor = set ? Colour("White") : Colour("HeadingText");
-            SemanticProperties.SetHint(chip, set ? "Selected" : string.Empty);
-        }
+        foreach (var (kind, chip) in _chips)
+            chip.IsSelected = kind == _kind;
 
         TextEditor.Placeholder = MedicalLedgerLines.Placeholder(_kind);
     }
-
-    private static Color Colour(string key) =>
-        Microsoft.Maui.Controls.Application.Current!.Resources.TryGetValue(key, out var value) && value is Color c
-            ? c
-            : Colors.Transparent;
 
     private void OnTextChanged(object? sender, TextChangedEventArgs e)
     {

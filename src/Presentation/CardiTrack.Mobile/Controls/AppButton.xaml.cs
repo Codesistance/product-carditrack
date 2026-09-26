@@ -52,6 +52,10 @@ public partial class AppButton : ContentView
         nameof(Text), typeof(string), typeof(AppButton), string.Empty,
         propertyChanged: (b, _, n) => ((AppButton)b).ApplyText((string?)n));
 
+    public static readonly BindableProperty DetailProperty = BindableProperty.Create(
+        nameof(Detail), typeof(string), typeof(AppButton), null,
+        propertyChanged: (b, _, _) => ((AppButton)b).ApplyLook());
+
     public static readonly BindableProperty IconProperty = BindableProperty.Create(
         nameof(Icon), typeof(ImageSource), typeof(AppButton),
         propertyChanged: (b, _, _) => ((AppButton)b).ApplyLook());
@@ -97,6 +101,17 @@ public partial class AppButton : ContentView
     {
         get => (string)GetValue(TextProperty);
         set => SetValue(TextProperty, value);
+    }
+
+    /// <summary>
+    /// A second, smaller line under the caption — "about 66 KB" under "Export Data" — for a fact
+    /// the caregiver weighs at the moment of tapping, so it sits on the button rather than on a
+    /// line above it that reads as a separate note. Makes the button 4 taller to hold it. Optional.
+    /// </summary>
+    public string? Detail
+    {
+        get => (string?)GetValue(DetailProperty);
+        set => SetValue(DetailProperty, value);
     }
 
     /// <summary>The glyph before the caption — the white <c>icon_btn_*</c> set on the solid tones,
@@ -153,7 +168,25 @@ public partial class AppButton : ContentView
     private void ApplyText(string? text)
     {
         Caption.Text = text;
-        SemanticProperties.SetDescription(this, text);
+        // The whole look, not just the name: whether there is a caption decides the glyph's gap.
+        ApplyLook();
+    }
+
+    /// <summary>An icon with no words — the chat's chart arrows.</summary>
+    private bool IsIconOnly => string.IsNullOrEmpty(Text) && string.IsNullOrEmpty(Detail);
+
+    /// <summary>
+    /// The caption, and the detail after it when there is one, as a screen reader's name. An
+    /// icon-only button has no caption to be named by, so it keeps the description its caller
+    /// set rather than having it wiped to nothing.
+    /// </summary>
+    private void ApplyDescription()
+    {
+        if (IsIconOnly)
+            return;
+
+        SemanticProperties.SetDescription(
+            this, string.IsNullOrEmpty(Detail) ? Text : $"{Text}, {Detail}");
     }
 
     private void ApplyLook()
@@ -166,13 +199,21 @@ public partial class AppButton : ContentView
             _ => (14d, 14d, 18d, 6d),
         };
 
-        Fill.HeightRequest = HeightOf(size);
+        var hasDetail = !string.IsNullOrEmpty(Detail);
+        var height = HeightOf(size) + (hasDetail ? DetailExtraHeight : 0);
+
+        Fill.HeightRequest = height;
         Fill.Padding = new Thickness(Tone == AppButtonTone.Text ? 4 : padding, 0);
-        HeightRequest = Math.Max(48, HeightOf(size));
+        HeightRequest = Math.Max(48, height);
         Caption.FontSize = fontSize;
+        DetailCaption.Text = Detail;
+        DetailCaption.IsVisible = hasDetail;
+        DetailCaption.FontSize = fontSize - 5;
+        ApplyDescription();
         Glyph.WidthRequest = glyph;
         Glyph.HeightRequest = glyph;
-        Row.Spacing = gap;
+        // No gap after a glyph with no words beside it, or it sits that far off the button's centre.
+        Row.Spacing = IsIconOnly ? 0 : gap;
         Glyph.Source = Icon;
         Glyph.IsVisible = Icon is not null;
 
@@ -214,8 +255,12 @@ public partial class AppButton : ContentView
                 break;
         }
 
+        DetailCaption.TextColor = Caption.TextColor;
         ApplyOpacity();
     }
+
+    /// <summary>How much taller a button is for carrying a <see cref="Detail"/> line.</summary>
+    private const double DetailExtraHeight = 4;
 
     private double RestingOpacity => IsEnabled && !IsDimmed ? 1 : 0.45;
 

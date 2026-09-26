@@ -419,18 +419,45 @@ public partial class FamilyPage : ContentPage
 
             // Only an admin removes anybody, and never themselves — leaving is its own act with
             // its own rule (D-13), and the button below says so.
+            //
+            // The Danger tone's small face — a 30 pale-red square at the control radius — drawn
+            // here rather than as an AppButton: the glyph says it alone, and AppButton with no
+            // caption still spaces an empty label after its glyph, which leaves a wider-than-square
+            // shape with the glyph off its centre. The 48 band around it takes the tap (the mobile
+            // spec's floor), which the bare 22 glyph this replaces did not have.
             if (isAdmin && !person.IsYou)
             {
-                var remove = new ImageButton
+                var remove = new Grid
                 {
-                    Source = "icon_person_remove.svg",
-                    WidthRequest = 22,
-                    HeightRequest = 22,
+                    WidthRequest = 48,
+                    HeightRequest = 48,
                     BackgroundColor = Colors.Transparent,
                     VerticalOptions = LayoutOptions.Center,
                 };
+                remove.Add(new Border
+                {
+                    WidthRequest = 30,
+                    HeightRequest = 30,
+                    StrokeThickness = 0,
+                    BackgroundColor = MetricStatus.Resource("ActionTintRedBackground", Colors.MistyRose),
+                    StrokeShape = new RoundRectangle { CornerRadius = 10 },
+                    HorizontalOptions = LayoutOptions.Center,
+                    VerticalOptions = LayoutOptions.Center,
+                    Content = new Image
+                    {
+                        Source = "icon_person_remove.svg",
+                        WidthRequest = 18,
+                        HeightRequest = 18,
+                        HorizontalOptions = LayoutOptions.Center,
+                        VerticalOptions = LayoutOptions.Center,
+                    },
+                });
+                AutomationProperties.SetIsInAccessibleTree(remove, true);
                 SemanticProperties.SetDescription(remove, $"Remove {person.Name}");
-                remove.Clicked += (_, _) => _ = RemoveAsync(organizationId, person);
+                SemanticProperties.SetHint(remove, "Asks before removing them");
+                var tap = new TapGestureRecognizer();
+                tap.Tapped += (_, _) => _ = RemoveAsync(organizationId, person);
+                remove.GestureRecognizers.Add(tap);
                 row.Add(remove, 2, 0);
             }
 

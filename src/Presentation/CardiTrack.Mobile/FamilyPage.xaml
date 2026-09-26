@@ -22,7 +22,7 @@
         <!-- The family's name is the switcher (D-19): tapping it opens the drawer, and so does
              re-tapping the tab. The chevron says the name is a control rather than a title. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
 
                 <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
@@ -86,13 +86,11 @@
                                          IsVisible="False"
                                          Padding="0,60,0,0">
                         <Label Text="We couldn't load your family"
-                               Style="{StaticResource Heading3}"
-                               HorizontalTextAlignment="Center"/>
+                               Style="{StaticResource Heading3}"/>
                         <Label x:Name="ErrorDetailLabel"
-                               Style="{StaticResource Body2}"
-                               HorizontalTextAlignment="Center"/>
+                               Style="{StaticResource Body2}"/>
                         <controls:AppButton Text="Try again"
-                                            HorizontalOptions="Center"
+                                            HorizontalOptions="Start"
                                             Clicked="OnRetryClicked"
                                             Tone="Secondary"
                                             Size="L"/>
@@ -183,7 +181,7 @@
                                             Padding="14,12"
                                             IsVisible="False">
                                         <Border.StrokeShape>
-                                            <RoundRectangle CornerRadius="0,0,20,20"/>
+                                            <RoundRectangle CornerRadius="{StaticResource CardFootCornerRadius}"/>
                                         </Border.StrokeShape>
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnNightCoverageTapped"/>
@@ -228,22 +226,38 @@
                                     <Label Text="Anybody with this can ask to join. Knowing it is not access — you still decide."
                                            Style="{StaticResource Body2}"
                                            LineBreakMode="WordWrap"/>
-                                    <Label x:Name="FamilyIdLabel"
-                                           Style="{StaticResource Heading2}"
-                                           CharacterSpacing="2"
-                                           SemanticProperties.Description="Your Family ID"/>
-                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                                        <controls:AppButton x:Name="CopyFamilyIdButton"
-                                                            Text="Copy"
-                                                            Clicked="OnCopyFamilyIdClicked"
-                                                            Tone="Secondary"
-                                                            Size="L"/>
-                                        <controls:AppButton Grid.Column="1"
-                                                            Text="Share"
-                                                            Clicked="OnShareFamilyIdClicked"
-                                                            Tone="Primary"
-                                                            Size="L"/>
-                                    </Grid>
+                                    <!-- The code in a tinted chip with its Copy inside it, so the
+                                         copy reads as belonging to the code; sharing, the way an
+                                         admin more often hands it on, gets the card's full width
+                                         under it. No Figma frame: picked from samples (F1). -->
+                                    <Border BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                            StrokeThickness="0"
+                                            Padding="12,8">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10"/>
+                                        </Border.StrokeShape>
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                            <Label x:Name="FamilyIdLabel"
+                                                   Style="{StaticResource Heading2}"
+                                                   CharacterSpacing="2"
+                                                   TextColor="{StaticResource PrimaryDark}"
+                                                   VerticalOptions="Center"
+                                                   SemanticProperties.Description="Your Family ID"/>
+                                            <controls:AppButton x:Name="CopyFamilyIdButton"
+                                                                Grid.Column="1"
+                                                                Text="Copy"
+                                                                Icon="icon_btn_copy_tint.svg"
+                                                                VerticalOptions="Center"
+                                                                Clicked="OnCopyFamilyIdClicked"
+                                                                Tone="Secondary"
+                                                                Size="S"/>
+                                        </Grid>
+                                    </Border>
+                                    <controls:AppButton Text="Share invite"
+                                                        Icon="icon_btn_share.svg"
+                                                        Clicked="OnShareFamilyIdClicked"
+                                                        Tone="Primary"
+                                                        Size="M"/>
                                 </VerticalStackLayout>
                             </Border>
 

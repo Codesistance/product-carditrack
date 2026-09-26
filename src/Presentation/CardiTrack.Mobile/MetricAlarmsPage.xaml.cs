@@ -76,7 +76,7 @@ public partial class MetricAlarmsPage : ContentPage
         {
             _memberName = Uri.UnescapeDataString(value ?? string.Empty);
             if (!string.IsNullOrWhiteSpace(_memberName))
-                HeaderSubtitle.Text = $"Alerts you set yourself for {_memberName}";
+                HeaderSubtitle.Text = $"Limits you set for {_memberName}";
         }
     }
 

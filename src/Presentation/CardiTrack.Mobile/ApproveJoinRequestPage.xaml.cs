@@ -122,7 +122,7 @@ public partial class ApproveJoinRequestPage : ContentPage
         var display = string.IsNullOrWhiteSpace(name) ? "Somebody" : name;
         var first = NameFormatting.FirstName(display);
 
-        HeaderTitle.Text = $"Let {first} in?";
+        HeaderTitle.Text = $"Let {first} In?";
         NameLabel.Text = display;
         AskedLabel.Text = request is null
             ? "This request may have been answered already."

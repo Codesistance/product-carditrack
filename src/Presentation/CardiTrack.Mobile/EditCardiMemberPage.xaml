@@ -53,32 +53,22 @@
                            LineBreakMode="TailTruncation"/>
                 </VerticalStackLayout>
 
-                <!-- A Border pill rather than a Button: Android floors a Button at 44dp whatever
-                     HeightRequest asks for, and those extra 8dp were the reason this band stood
-                     taller than every other header's. The label is named separately because
-                     saving swaps the text; the pill itself is what shows and hides. -->
+                <!-- The white square every header uses for its trailing action (HeaderActionSquare)
+                     — a Border rather than a Button, since Android floors a Button at 44dp whatever
+                     HeightRequest asks for, which stood this band taller than every other header's.
+                     With no label to read "Saving...", the square dims while a save is in flight and
+                     its spoken name says so instead (OnSaveClicked); the square itself is what
+                     shows and hides. -->
                 <Border x:Name="SaveButton"
                         Grid.Column="2"
-                        BackgroundColor="{StaticResource White}"
-                        StrokeThickness="0"
-                        HeightRequest="36"
-                        Padding="18,0"
-                        VerticalOptions="Start"
+                        Style="{StaticResource HeaderActionSquare}"
                         SemanticProperties.Description="Save"
                         SemanticProperties.Hint="Saves the changes to this CardiMember">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="18"/>
-                    </Border.StrokeShape>
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnSaveClicked"/>
                     </Border.GestureRecognizers>
-                    <Label x:Name="SaveLabel"
-                           Text="Save"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="15"
-                           TextColor="{StaticResource Primary}"
-                           VerticalOptions="Center"
-                           HorizontalOptions="Center"/>
+                    <Image Source="icon_header_save.svg"
+                           WidthRequest="24" HeightRequest="24"/>
                 </Border>
             </Grid>
         </controls:HeaderBand>
@@ -97,13 +87,11 @@
                                      IsVisible="False"
                                      Padding="0,60,0,0">
                     <Label Text="We couldn't load this profile"
-                           Style="{StaticResource Heading3}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Heading3}"/>
                     <Label x:Name="ErrorDetailLabel"
-                           Style="{StaticResource Body2}"
-                           HorizontalTextAlignment="Center"/>
+                           Style="{StaticResource Body2}"/>
                     <controls:AppButton Text="Try again"
-                                        HorizontalOptions="Center"
+                                        HorizontalOptions="Start"
                                         Clicked="OnRetryClicked"
                                         Tone="Secondary"
                                         Size="L"/>
@@ -131,7 +119,7 @@
                             <Grid>
                                 <Label x:Name="InitialsLabel"
                                        FontFamily="QuicksandSemiBold"
-                                       FontSize="32"
+                                       FontSize="28"
                                        TextColor="{StaticResource White}"
                                        HorizontalOptions="Center"
                                        VerticalOptions="Center"/>

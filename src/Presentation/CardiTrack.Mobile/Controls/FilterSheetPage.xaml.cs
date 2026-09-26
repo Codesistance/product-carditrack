@@ -1,6 +1,5 @@
 using Microsoft.Maui.Controls.PlatformConfiguration;
 using Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific;
-using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -122,6 +121,9 @@ public partial class FilterSheetPage : ContentPage
 
     private async void OnScrimTapped(object? sender, TappedEventArgs e) => await CloseAsync(false);
 
+    /// <summary>The ✕ closes as the scrim does: the list stays as it was.</summary>
+    private async void OnCloseClicked(object? sender, EventArgs e) => await CloseAsync(false);
+
     private void OnResetClicked(object? sender, EventArgs e)
     {
         _reset();
@@ -166,47 +168,20 @@ public partial class FilterSheetPage : ContentPage
     }
 
     /// <summary>
-    /// One choice as a pill: the gradient fill and white label when set, a hairline PrimaryDark
-    /// outline when not — the chip language the Alerts list's old filter row used, so a caregiver
-    /// who knew that row knows these.
+    /// One choice as the app's pick-one chip (<see cref="SelectChip"/>) — the same chip the medical
+    /// popups ask a line's kind with, so a choice looks the same wherever it is made — with the
+    /// choice's colour dot before its words when it has one.
     /// </summary>
     private View Choice(FilterChoice choice)
     {
-        var label = new Label
+        var chip = new SelectChip
         {
             Text = choice.Text,
-            FontFamily = "QuicksandSemiBold",
-            FontSize = 14,
-            VerticalTextAlignment = TextAlignment.Center,
-            LineBreakMode = LineBreakMode.TailTruncation,
-            MaximumWidthRequest = 200,
-        };
-
-        var content = new HorizontalStackLayout { Spacing = 6 };
-        if (choice.Dot is { } dot)
-        {
-            content.Add(new Ellipse
-            {
-                Fill = new SolidColorBrush(dot),
-                WidthRequest = 8,
-                HeightRequest = 8,
-                VerticalOptions = LayoutOptions.Center,
-            });
-        }
-        content.Add(label);
-
-        var chip = new Border
-        {
-            Padding = new Thickness(14, 7),
+            Dot = choice.Dot,
             Margin = new Thickness(0, 0, 8, 8),
-            MinimumHeightRequest = 36,
-            StrokeShape = new RoundRectangle { CornerRadius = 10 },
-            Content = content,
         };
-        SemanticProperties.SetDescription(chip, choice.Text);
 
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += (_, _) =>
+        chip.Tapped += (_, _) =>
         {
             if (choice.IsSet())
                 return;
@@ -214,18 +189,8 @@ public partial class FilterSheetPage : ContentPage
             Repaint();
             _ = CountDraftAsync(debounce: true);
         };
-        chip.GestureRecognizers.Add(tap);
 
-        _repaints.Add(() =>
-        {
-            var on = choice.IsSet();
-            chip.Background = on ? Resource<Brush>("GradientButtonBrush") : null;
-            chip.BackgroundColor = on ? null : Resource<Color>("White");
-            chip.Stroke = on ? null : Resource<Color>("PrimaryDark");
-            chip.StrokeThickness = on ? 0 : 0.5;
-            label.TextColor = Resource<Color>(on ? "White" : "HeadingText");
-            SemanticProperties.SetHint(chip, on ? "Selected" : string.Empty);
-        });
+        _repaints.Add(() => chip.IsSelected = choice.IsSet());
         return chip;
     }
 

@@ -16,8 +16,8 @@ public sealed record QuickActionTarget(
     string? EmergencyContactName);
 
 /// <summary>
-/// The CardiMember quick-action row — SOS, Call, Message, Details — shared by the Dashboard's
-/// member card and the alert detail screen.
+/// The CardiMember quick-action row — SOS, Call, Message — shared by the Dashboard's member card
+/// and the alert detail screen.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,6 +31,10 @@ public sealed record QuickActionTarget(
 /// Takes <see cref="IPopupService"/> through <see cref="Apply"/> rather than resolving it: a
 /// control built by XAML has no constructor injection, and reaching into the service provider from
 /// here would hide a dependency the hosting page already holds.
+/// </para>
+/// <para>
+/// Compact, the row sets its own <see cref="View.Margin"/> (see <see cref="ApplyLayout"/>), so a
+/// call site that puts it in compact mode leaves the margin to it.
 /// </para>
 /// </remarks>
 public partial class QuickActionRow : ContentView
@@ -49,18 +53,31 @@ public partial class QuickActionRow : ContentView
         InitializeComponent();
     }
 
+    /// <summary>
+    /// The square a compact tile can be hit across, whatever the size of its face — the mobile
+    /// spec's 48dp touch-target floor, the same band <see cref="DismissButton"/> carries.
+    /// </summary>
+    private const double TapBand = 48;
+
     public static readonly BindableProperty CompactProperty = BindableProperty.Create(
         nameof(Compact),
         typeof(bool),
         typeof(QuickActionRow),
         false,
-        propertyChanged: (bindable, _, isCompact) => ((QuickActionRow)bindable).ApplyCompact((bool)isCompact));
+        propertyChanged: (bindable, _, _) => ((QuickActionRow)bindable).ApplyLayout());
+
+    public static readonly BindableProperty DenseProperty = BindableProperty.Create(
+        nameof(Dense),
+        typeof(bool),
+        typeof(QuickActionRow),
+        false,
+        propertyChanged: (bindable, _, _) => ((QuickActionRow)bindable).ApplyLayout());
 
     /// <summary>
-    /// Icon-only, 36-square tiles packed to the right, for a screen where the four actions sit
-    /// inside a card rather than as a row of their own — Alert Details' member card. The tiles
-    /// keep their tints, so SOS is still the red one and a dimmed tile still reads as
-    /// unavailable, and the words move into each tile's accessible name.
+    /// Icon-only, 36-square tiles packed to the right, for a screen where the actions sit inside
+    /// a card rather than as a row of their own — Alert Details' member card, and every member
+    /// card on the dashboard. The tiles keep their tints, so SOS is still the red one and a
+    /// dimmed tile still reads as unavailable, and the words move into each tile's accessible name.
     /// </summary>
     public bool Compact
     {
@@ -68,39 +85,78 @@ public partial class QuickActionRow : ContentView
         set => SetValue(CompactProperty, value);
     }
 
-    private void ApplyCompact(bool compact)
+    /// <summary>
+    /// With <see cref="Compact"/>, 30-square faces 4 apart instead of 36 and 8, for the dashboard
+    /// card's foot, where the three share one line with the Metrics button and whatever news the
+    /// card has (2026-09-26). The tap band stays 48 either way; only the face shrinks.
+    /// </summary>
+    public bool Dense
     {
-        const double Tile = 36;
-        const double Glyph = 18;
+        get => (bool)GetValue(DenseProperty);
+        set => SetValue(DenseProperty, value);
+    }
+
+    /// <summary>
+    /// Sizes the tiles for <see cref="Compact"/> and <see cref="Dense"/>, or puts them back to the
+    /// full labelled row.
+    /// </summary>
+    /// <remarks>
+    /// A compact face is smaller than a finger, so each one sits centred in a
+    /// <see cref="TapBand"/> cell whose negative margin gives the difference back: the cells lay
+    /// out at the face's size and spacing, and only their hit area reaches past it, overlapping
+    /// the neighbours' by a few points. Android will not deliver a touch to a view outside its
+    /// parent's bounds, so the grid carries the same overhang as padding and the row as a negative
+    /// margin of its own — the row still takes only the faces' room, but the outer cells' bands
+    /// are inside it rather than cut off at the faces' edge. How much of that reaches past the row
+    /// is up to the call site's own bounds; the dashboard card makes room for all of it.
+    /// </remarks>
+    private void ApplyLayout()
+    {
+        var compact = Compact;
+        var face = Dense ? 30 : 36;
+        var glyph = Dense ? 16 : 18;
+        var overhang = compact ? (TapBand - face) / 2 : 0;
 
         Tiles.ColumnDefinitions.Clear();
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < 3; i++)
             Tiles.ColumnDefinitions.Add(new ColumnDefinition(compact ? GridLength.Auto : GridLength.Star));
-        Tiles.ColumnSpacing = compact ? 8 : 10;
+        Tiles.ColumnSpacing = compact ? (Dense ? 4 : 8) : 10;
         Tiles.HorizontalOptions = compact ? LayoutOptions.End : LayoutOptions.Fill;
+        Tiles.Padding = new Thickness(overhang);
+        if (compact)
+            Margin = new Thickness(-overhang);
+        else
+            ClearValue(MarginProperty);
 
-        foreach (var (tile, icon, label) in new (Border, Image, Label)[]
+        foreach (var (cell, tile, icon, label) in new (Grid, Border, Image, Label)[]
                  {
-                     (EmergencyCallAction, SosIcon, SosLabel),
-                     (CallAction, CallIcon, CallLabel),
-                     (MessageAction, MessageIcon, MessageLabel),
-                     (DetailsAction, DetailsIcon, DetailsLabel),
+                     (EmergencyCallAction, SosTile, SosIcon, SosLabel),
+                     (CallAction, CallTile, CallIcon, CallLabel),
+                     (MessageAction, MessageTile, MessageIcon, MessageLabel),
                  })
         {
             label.IsVisible = !compact;
-            icon.WidthRequest = icon.HeightRequest = compact ? Glyph : 22;
+            icon.WidthRequest = icon.HeightRequest = compact ? glyph : 22;
 
             if (compact)
             {
-                tile.WidthRequest = tile.HeightRequest = Tile;
+                cell.WidthRequest = cell.HeightRequest = TapBand;
+                cell.Margin = new Thickness(-overhang);
+                tile.WidthRequest = tile.HeightRequest = face;
                 tile.Padding = new Thickness(0);
+                tile.HorizontalOptions = tile.VerticalOptions = LayoutOptions.Center;
             }
             else
             {
                 // Back to whatever QuickActionTile says, rather than a copy of it here.
+                cell.ClearValue(WidthRequestProperty);
+                cell.ClearValue(HeightRequestProperty);
+                cell.ClearValue(MarginProperty);
                 tile.ClearValue(WidthRequestProperty);
                 tile.ClearValue(HeightRequestProperty);
                 tile.ClearValue(Border.PaddingProperty);
+                tile.ClearValue(HorizontalOptionsProperty);
+                tile.ClearValue(VerticalOptionsProperty);
             }
 
             if (tile.Content is VerticalStackLayout stack)
@@ -238,12 +294,6 @@ public partial class QuickActionRow : ContentView
         {
             await ShowWarningAsync("Phone calls aren't supported on this device.");
         }
-    }
-
-    private async void OnViewDetailsTapped(object? sender, EventArgs e)
-    {
-        if (_target is { } target)
-            await Shell.Current.GoToAsync($"{CardiMemberDetailPage.Route}?memberId={target.CardiMemberId}");
     }
 
     /// <summary>

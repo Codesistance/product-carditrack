@@ -20,7 +20,9 @@
          the shaded gaps, their tooltips, the legend and the baseline rule are all its own, and a
          copy would be a second thing to keep in step. Full-bleed, like every page. -->
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*">
+    <!-- Top safe area claimed by this layout, not the page (see AlertsPage): the header band is
+         drawn against the status-bar inset; the bottom is released like every other page's. -->
+    <Grid RowDefinitions="Auto,Auto,Auto,*" SafeAreaEdges="None, Container, None, None">
 
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
@@ -74,14 +76,12 @@
 
             <VerticalStackLayout x:Name="ErrorPanel" Spacing="12" Padding="0,60,0,0" IsVisible="False">
                 <Label Text="We couldn't load this trend"
-                       Style="{StaticResource Heading3}"
-                       HorizontalTextAlignment="Center"/>
+                       Style="{StaticResource Heading3}"/>
                 <Label x:Name="ErrorDetailLabel"
                        Style="{StaticResource Body2}"
-                       TextColor="{StaticResource BodyText}"
-                       HorizontalTextAlignment="Center"/>
+                       TextColor="{StaticResource BodyText}"/>
                 <controls:AppButton Text="Try again"
-                                    HorizontalOptions="Center"
+                                    HorizontalOptions="Start"
                                     Clicked="OnRetryClicked"
                                     Tone="Secondary"
                                     Size="L"/>

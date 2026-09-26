@@ -16,7 +16,12 @@ public partial class AppChooserPage : ContentPage
     private readonly TaskCompletionSource<string?> _result = new();
     private bool _closing;
 
-    public AppChooserPage(string title, string cancelText, IReadOnlyList<string> options)
+    /// <param name="danger">
+    /// The options to draw as Danger, named by the caller, in place of the word rule — for a list
+    /// where a destructive word is not the destructive row. Null for the word rule.
+    /// </param>
+    public AppChooserPage(
+        string title, string cancelText, IReadOnlyList<string> options, IReadOnlyCollection<string>? danger = null)
     {
         InitializeComponent();
         // Without OverFullScreen, iOS removes the page underneath and the transparent
@@ -33,11 +38,13 @@ public partial class AppChooserPage : ContentPage
             // the one to think about before tapping, wherever a caller offers it. M, not L: a
             // choice in a list of four is not a page's call to action, and at 52 the stack ate the
             // card — shorter rows keep the whole list on screen.
-            var danger = ActionLooks.For(option).Tone == ActionTone.Red;
+            var isDanger = danger is not null
+                ? danger.Contains(option)
+                : ActionLooks.For(option).Tone == ActionTone.Red;
             var button = new AppButton
             {
                 Text = option,
-                Tone = danger ? AppButtonTone.Danger : AppButtonTone.Secondary,
+                Tone = isDanger ? AppButtonTone.Danger : AppButtonTone.Secondary,
                 Size = AppButtonSize.M,
             };
             // The label is the identity the caller matches on when this returns, so it is what

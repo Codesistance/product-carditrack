@@ -50,10 +50,11 @@ public partial class BottomNavBar : ContentView
 
     /// <summary>
     /// How far the glyphs of the tabs not selected sit below their centred place, closing the gap
-    /// to their label by the same amount — the stack's 4 became 2, which read as one mark and its
-    /// word rather than a glyph floating over a caption.
+    /// to their label by the same amount, so each reads as one mark and its word rather than a
+    /// glyph floating over a caption. 2 first, then 4 (picked from samples, 2026-09-26): at 2 the
+    /// words still sat apart from their glyphs; 5 crowded the bell's clapper and the cog's teeth.
     /// </summary>
-    private const double UnselectedIconDrop = 2;
+    private const double UnselectedIconDrop = 4;
 
     /// <summary>
     /// How far the selected glyph is lifted off the tabs' shared centre line. None: the pill is

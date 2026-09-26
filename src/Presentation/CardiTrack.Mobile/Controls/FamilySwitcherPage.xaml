@@ -43,8 +43,21 @@
                          HorizontalOptions="Center"
                          Margin="0,0,0,12"/>
 
-                <Label Text="Your families"
-                       Style="{StaticResource Heading3}"/>
+                <!-- The title centred like every popup's, in the space left of the ✕ (36 clear on
+                     the right only, so a normal-length title stays on one line) — the ✕ being the
+                     sheet's way out without choosing, which closes as the scrim does. -->
+                <Grid>
+                    <Label Text="Your families"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"
+                           VerticalOptions="Center"
+                           Margin="0,0,36,0"/>
+                    <controls:DismissButton Margin="0,-8,-8,0"
+                                            HorizontalOptions="End"
+                                            VerticalOptions="Start"
+                                            SemanticProperties.Description="Close"
+                                            Clicked="OnCloseClicked"/>
+                </Grid>
                 <Label Text="Where the open alerts are, and which one this tab is showing"
                        Style="{StaticResource Body2}"
                        Margin="0,0,0,8"/>
@@ -62,23 +75,18 @@
                      it was. The same pair the tab's no-family state draws, in the same weights:
                      starting a family is the primary act and joining one the secondary, so two
                      identical outlines read as two equal unknowns where one is the answer for
-                     most people. -->
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,2,0,4">
+                     most people. M, the size every sheet and popup's buttons are. -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,2,0,8">
                     <controls:AppButton Text="Start a family"
                                         Clicked="OnStartFamilyClicked"
                                         Tone="Primary"
-                                        Size="L"/>
+                                        Size="M"/>
                     <controls:AppButton Grid.Column="1"
                                         Text="Join with an ID"
                                         Clicked="OnJoinFamilyClicked"
                                         Tone="Secondary"
-                                        Size="L"/>
+                                        Size="M"/>
                 </Grid>
-
-                <controls:AppButton Text="Close"
-                        Tone="Text"
-                        Size="M"
-                        Clicked="OnCloseClicked"/>
             </VerticalStackLayout>
         </Border>
     </Grid>

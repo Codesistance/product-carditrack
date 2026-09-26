@@ -408,19 +408,6 @@
         <Setter Property="TextColor" Value="{StaticResource MutedText}"/>
     </Style>
 
-    <!-- A choice that belongs with the tiles above it but is not one of them: the export
-         popup's "Open", which is not a place to put the file but a look at it before you
-         decide. Same surface and radius as FormatTile, laid out as a row across the card's
-         width, so it reads as the quieter thing under the pair rather than a third of three. -->
-    <Style x:Key="FormatRow" TargetType="Border">
-        <Setter Property="StrokeThickness" Value="0"/>
-        <Setter Property="Padding" Value="14,11"/>
-        <Setter Property="BackgroundColor" Value="{StaticResource InputBackground}"/>
-        <Setter Property="StrokeShape">
-            <RoundRectangle CornerRadius="16"/>
-        </Setter>
-    </Style>
-
     <Style x:Key="QuickActionTile" TargetType="Border">
         <Setter Property="StrokeThickness" Value="0"/>
         <Setter Property="Padding" Value="6,12,6,9"/>
@@ -440,6 +427,12 @@
          card read as a pill-ended sheet rather than as a card. Pills, chips, popups and chat
          bubbles keep their own rounder corners — those are not cards. -->
     <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
+
+    <!-- The bottom corners only, for a band laid across a card's foot (the family card's night
+         row, the alert detail's comparison band). A band rounder than its card shows the white
+         face through at both corners — which both bands did, left at the old 20 when the card
+         was halved to 10. Order is TL, TR, BL, BR. -->
+    <CornerRadius x:Key="CardFootCornerRadius">0,0,10,10</CornerRadius>
 
     <Style x:Key="ElevatedCard" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource White}"/>

@@ -41,13 +41,19 @@
                        HorizontalTextAlignment="Start"
                        LineBreakMode="WordWrap"/>
 
-                <!-- The four kinds as a segmented row, the set one filled. A row rather than a
-                     choice sheet: four short words fit across the card, and the kind is a
-                     one-tap decision a caregiver makes on the way to typing. Built in code. -->
+                <!-- The four kinds as segmented chips (SelectChip), the set one filled. Chips
+                     rather than a choice sheet: the kind is a one-tap decision a caregiver makes on
+                     the way to typing. Two by two, not four across: at the chip's 14 points
+                     "Medication" does not fit a quarter of the card, and a cut label is a wrong
+                     one. Built in code. -->
                 <Label Text="What is it?"
                        Margin="0,20,0,6"
                        Style="{StaticResource AuthFieldLabel}"/>
-                <Grid x:Name="KindRow" ColumnDefinitions="*,*,*,*" ColumnSpacing="6"/>
+                <Grid x:Name="KindRow"
+                      ColumnDefinitions="*,*"
+                      RowDefinitions="Auto,Auto"
+                      ColumnSpacing="8"
+                      RowSpacing="8"/>
 
                 <VerticalStackLayout Spacing="4" Margin="0,16,0,0">
                     <!-- Same borrowed field as the notes form. MaxLength is the server's ceiling

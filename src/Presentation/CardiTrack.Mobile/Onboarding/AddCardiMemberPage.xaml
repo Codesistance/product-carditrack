@@ -193,16 +193,14 @@
                                         Tone="Primary"
                                         Size="L"/>
 
-                    <Label Text="Skip for now"
-                           Style="{StaticResource PrimaryLink}"
-                           TextDecorations="None"
-                           FontSize="16"
-                           HorizontalOptions="Center"
-                           Margin="0,18,0,0">
-                        <Label.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnSkipTapped"/>
-                        </Label.GestureRecognizers>
-                    </Label>
+                    <!-- The quiet way out: the shared Text L. Its 48 band carries most of the
+                         gap under the CTA, hence the small margin. -->
+                    <controls:AppButton Text="Skip for now"
+                                        HorizontalOptions="Center"
+                                        Margin="0,4,0,0"
+                                        Clicked="OnSkipTapped"
+                                        Tone="Text"
+                                        Size="L"/>
 
                 </VerticalStackLayout>
             </Grid>

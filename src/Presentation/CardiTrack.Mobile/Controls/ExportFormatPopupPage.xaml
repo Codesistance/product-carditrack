@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.ExportFormatPopupPage"
              BackgroundColor="Transparent">
 
@@ -36,36 +37,21 @@
             <VerticalStackLayout Spacing="16">
 
                 <Grid>
+                    <!-- Like every popup's title, but centred in the space left of the ✕ (36 clear
+                         on the right only): held clear of both edges to stay on the card's exact
+                         centre line, it lost 80dp and wrapped this title onto two lines. The few dp
+                         the centre moves left are not visible beside the ✕. -->
                     <Label Text="How should this copy look?"
                            Style="{StaticResource Heading3}"
-                           Margin="0,0,28,0"/>
+                           HorizontalTextAlignment="Center"
+                           Margin="0,0,36,0"/>
 
                     <!-- Dismissal as a mark, in the corner, the same one the other popups use. -->
-                    <Grid x:Name="CloseHit"
-                          Padding="8"
-                          Margin="0,-8,-8,0"
-                          BackgroundColor="Transparent"
-                          HorizontalOptions="End"
-                          VerticalOptions="Start"
-                          SemanticProperties.Description="Close">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnCloseTapped"/>
-                        </Grid.GestureRecognizers>
-                        <Border BackgroundColor="{StaticResource ActionTintBlueBackground}"
-                                StrokeThickness="0"
-                                WidthRequest="32"
-                                HeightRequest="32">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="10"/>
-                            </Border.StrokeShape>
-                            <Label Text="✕"
-                                   TextColor="{StaticResource ActionTintBlueInk}"
-                                   FontFamily="QuicksandSemiBold"
-                                   FontSize="13"
-                                   HorizontalOptions="Center"
-                                   VerticalOptions="Center"/>
-                        </Border>
-                    </Grid>
+                    <controls:DismissButton Margin="0,-8,-8,0"
+                                            HorizontalOptions="End"
+                                            VerticalOptions="Start"
+                                            SemanticProperties.Description="Close"
+                                            Clicked="OnCloseTapped"/>
                 </Grid>
 
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
