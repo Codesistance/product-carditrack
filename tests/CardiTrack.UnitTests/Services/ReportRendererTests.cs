@@ -805,6 +805,19 @@ public class ReportRendererTests
     }
 
     [Fact]
+    public void Pdf_NamesDevicesAsTheAppDoes_NotByTheirEnumName()
+    {
+        var watch = BuildDevice();
+        watch.DeviceType = DeviceType.AppleWatch;
+        var member = BuildData(devices: [watch]).Members[0];
+
+        var facts = PdfReportRenderer.MemberFacts(member, AllSections, periodDays: 31);
+
+        Assert.Contains("Apple Watch", facts);
+        Assert.DoesNotContain("AppleWatch", facts);
+    }
+
+    [Fact]
     public void Pdf_CountsTheDaysWithReadings_WhenMetricsWereExported()
     {
         var member = BuildData(logs: [FullDay(), EmptyDay()]).Members[0];

@@ -284,7 +284,7 @@ public class PdfReportRenderer : IReportRenderer
         if (sections.IncludeDevices && member.Devices.Count > 0)
         {
             var types = member.Devices
-                .Select(d => d.DeviceType.ToString())
+                .Select(d => d.DeviceType.GetDisplayName())
                 .Distinct()
                 .OrderBy(t => t, StringComparer.Ordinal);
             facts.Add(string.Join(", ", types));
