@@ -68,6 +68,7 @@ public class MedicalPromptToneTests
     [
         "MemberChatService.MaliciousCheckInstructions",
         "MemberChatService.CasualSteerInstructions",
+        "MemberChatService.CasualSteerMidConversationInstructions",
         "MemberChatService.OffTopicSteerInstructions",
         "MemberChatService.WaitingSentencesInstructions",
     ];
@@ -649,6 +650,39 @@ public class MedicalPromptToneTests
         Assert.DoesNotContain(MedicalPromptBlocks.ToneNoDiagnosis, status, StringComparison.Ordinal);
         Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), status, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The chat reply ends on its answer. A closing offer invites a bare "yes", and nothing can
+    /// act on one: the router sees only the caregiver's questions, so the yes was read as small
+    /// talk and answered with a greeting (2026-09-26).
+    /// </summary>
+    [Fact]
+    public void The_chat_rewrite_makes_no_closing_offer()
+    {
+        var rewrite = Flatten(AllPrompts().Single(p => $"{p.Service}.{p.Field}" == "MemberChatService.RewriteInstructions").Prompt);
+
+        Assert.DoesNotContain("close with one short offer", rewrite, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("End on the answer itself: no closing question, and no offer", rewrite, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A casual message part-way through a conversation is not welcomed as if it opened one: the
+    /// greeting and the list of what the chat can do belong to the empty-session brief only.
+    /// </summary>
+    [Fact]
+    public void The_mid_conversation_casual_steer_neither_greets_nor_lists_what_the_chat_can_do()
+    {
+        var opening = Flatten(AllPrompts().Single(p => p.Field == "CasualSteerInstructions").Prompt);
+        var underwayPrompt = AllPrompts().Single(p => p.Field == "CasualSteerMidConversationInstructions").Prompt;
+        var underway = Flatten(underwayPrompt);
+
+        Assert.Contains("mention what you can help with", opening, StringComparison.Ordinal);
+        Assert.DoesNotContain("mention what you can help with", underway, StringComparison.Ordinal);
+        Assert.Contains("do not greet them, introduce yourself, or list what you can help with", underway, StringComparison.Ordinal);
+        Assert.EndsWith(MedicalPromptBlocks.ChatMessageGuardrail, underwayPrompt, StringComparison.Ordinal);
+    }
+
+    private static string Flatten(string prompt) => string.Join(' ', prompt.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     [Fact]
     public void The_learning_prompt_uses_caregiver_language_and_names_no_forbidden_words()
