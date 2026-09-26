@@ -220,34 +220,55 @@ public class PdfReportRenderer : IReportRenderer
     /// repeated the header and said nothing about the period. The heading names the member and
     /// the period instead, the same way whichever screen asked for it.
     /// </remarks>
-    private static void TitleBlock(IContainer container, ReportDataSet data, string documentType) =>
+    private static void TitleBlock(IContainer container, ReportDataSet data, string documentType)
+    {
+        // Read once, so the title's "last 30 days" and the "Prepared" date below it are measured
+        // from the same day.
+        var preparedOn = DateOnly.FromDateTime(DateTime.UtcNow);
+
         container.Column(column =>
         {
             column.Item().Element(e => ReportLayout.Overline(e, documentType));
 
-            column.Item().PaddingTop(3).Text(Title(data))
+            column.Item().PaddingTop(3).Text(Title(data, preparedOn))
                 .FontSize(ReportLayout.TitleSize).Bold().FontColor(Ink).LineHeight(1.1f);
 
             column.Item().PaddingTop(4).Text(
                     $"{Date(data.From, "d MMMM yyyy")} to {Date(data.To, "d MMMM yyyy")}"
-                    + $"  ·  {Days(PeriodDays(data))}  ·  Prepared {Date(DateTime.UtcNow, "d MMMM yyyy")}")
+                    + $"  ·  {Days(PeriodDays(data))}  ·  Prepared {Date(preparedOn, "d MMMM yyyy")}")
                 .FontSize(10).FontColor(Secondary);
         });
+    }
 
     /// <summary>
     /// "Margaret's September 2026" where the range is exactly one calendar month — the shape every
-    /// Monthbook export and most appointment printouts take — and "Margaret's 28 Aug 2026 – 26 Sep
-    /// 2026" otherwise. A family export has no one first name to lead with, so its heading is the
-    /// period alone; each member is named on their own line below it.
+    /// Monthbook export and most appointment printouts take — "Margaret's last 30 days" where it
+    /// runs up to the day the document was prepared, and "Margaret's 7 Feb 2026 – 9 Mar 2026"
+    /// otherwise. A family export has no one first name to lead with, so its heading is the period
+    /// alone; each member is named on their own line below it.
     /// </summary>
-    internal static string Title(ReportDataSet data)
+    /// <remarks>
+    /// The rolling form is the app's presets (last 7, 30, 90 days), which end on the caregiver's
+    /// own today. Its dates are exactly what the meta line under the title already says, so
+    /// repeating them made the heading read twice; "last 30 days" is what the caregiver chose.
+    /// It is only said of a range that really ends now: a day either side of
+    /// <paramref name="preparedOn"/> is allowed, because that is UTC and the caregiver's today may
+    /// already be tomorrow or still yesterday there, but a range that stopped earlier keeps its
+    /// dates — a June range printed in September is not anyone's last 30 days. A single day keeps
+    /// its date too; "last 1 day" says less than the date does.
+    /// </remarks>
+    /// <param name="preparedOn">The day the document is prepared, as its meta line says.</param>
+    internal static string Title(ReportDataSet data, DateOnly preparedOn)
     {
+        var days = PeriodDays(data);
         var period = IsCalendarMonth(data.From, data.To)
             ? Date(data.From, "MMMM yyyy")
-            : ReportLayout.Range(data.From, data.To);
+            : days > 1 && Math.Abs(data.To.DayNumber - preparedOn.DayNumber) <= 1
+                ? $"last {days} days"
+                : ReportLayout.Range(data.From, data.To);
 
         if (data.Members.Count != 1)
-            return period;
+            return char.ToUpperInvariant(period[0]) + period[1..];
 
         var member = data.Members[0].Member;
         var name = string.IsNullOrWhiteSpace(member.FirstName) ? member.FullName.Trim() : member.FirstName.Trim();
