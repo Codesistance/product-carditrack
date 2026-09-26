@@ -413,7 +413,7 @@ public partial class JournalPage : ContentPage
 
             // The same rule the dashboard and the device-setup launcher use for "which member",
             // so the three cannot drift apart about who the app means when it has not been told —
-            // and the full list is kept, because the chooser above offers every member on the
+            // and the full list is kept, because the filter sheet offers every member on the
             // account once there is more than one to choose between.
             if (_memberId == Guid.Empty)
             {
@@ -518,8 +518,8 @@ public partial class JournalPage : ContentPage
     /// must not itself be a round trip: it happens before the entries can even be peeked, so a
     /// network call here would put the whole screen back behind the network on a cold start —
     /// the wait this page exists to remove. The saved list is enough to name the primary member
-    /// and to size the chooser; the entries fetched under it are the live read, and the next
-    /// load's own member fetch corrects the list if it has changed.
+    /// and to size the filter sheet's "Whose"; the entries fetched under it are the live read,
+    /// and the next load's own member fetch corrects the list if it has changed.
     /// </summary>
     /// <remarks>
     /// A saved <em>empty</em> list deliberately does not count, unlike every other peek in the
