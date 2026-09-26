@@ -159,6 +159,12 @@ Guide to enum extensions and helper methods used throughout the solution.
 #### [user_onboarding_process.md](./technical/user_onboarding_process.md)
 Step-by-step guide to the user onboarding process, device connection flows, and OAuth integration.
 
+#### [member_chat_routing.md](./technical/member_chat_routing.md)
+How a caregiver's chat message is routed to the workflow that answers it: the ladder, the routing call, the workflow catalogue, the dataset registry, and the seed eval set.
+
+#### [member_chat_evaluation.md](./technical/member_chat_evaluation.md)
+Design ADR for judging member-chat replies: a layered harness on synthetic members (deterministic checks, golden and adversarial corpora, a calibrated model judge), and the production signals (turn feedback, behavioural proxies, dashboard) that stay inside DPIA row A20.
+
 ---
 
 ### Compliance
@@ -289,6 +295,9 @@ dotnet build
 ---
 
 ## 📝 Documentation Version History
+
+### Version 2.5 (September 26, 2026)
+- ✅ Indexed technical/member_chat_routing.md and the new technical/member_chat_evaluation.md (chat reply evaluation design)
 
 ### Version 2.4 (August 14, 2026)
 - ✅ Alert detail shipped as one `AlertDetailPage` covering M1-11/12/16 (all 17 Figma M1 frames built; M1-17 export shipped 2026-09-07)

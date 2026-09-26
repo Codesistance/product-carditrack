@@ -782,6 +782,7 @@ Still open, with an owner:
 - **What counts as "close" alternatives** — settable only against shadow-phase traffic.
 - **The on-demand findings budget** — how much 30-day aggregation `analysis` can absorb, and whether a per-turn memo is enough. Cloud SQL read amplification becomes a read-replica conversation at roughly ten times current scale, not now.
 - **Re-measure latency post-GPU.** The 47.6 s figure that set the one-week activity window is a CPU-era number and the whole cost argument rests on it.
+- **How replies are judged, end to end** — engineering. Designed 2026-09-26 in [member_chat_evaluation.md](./member_chat_evaluation.md): a harness that runs the real service against synthetic members with deterministic, golden and adversarial layers and a calibrated judge. Step 1's blind two-person labelling becomes that document's calibration set (§5.2), and `tools/ChatRoutingEval` folds into the new tool in its phase 1.
 
 ## 13. Review log
 
