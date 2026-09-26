@@ -220,12 +220,13 @@
                         </Border>
                     </Grid>
 
-                    <Button x:Name="ContinueBtn"
-                            Text="Continue with Fitbit"
-                            Style="{StaticResource AuthGradientButton}"
-                            HorizontalOptions="Fill"
-                            Margin="0,24,0,0"
-                            Clicked="OnContinueClicked"/>
+                    <controls:AppButton x:Name="ContinueBtn"
+                                        Text="Continue with Fitbit"
+                                        HorizontalOptions="Fill"
+                                        Margin="0,24,0,0"
+                                        Clicked="OnContinueClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
 
                     <Label Text="Don't see their device? We can help"
                            Style="{StaticResource PrimaryLink}"

@@ -157,10 +157,11 @@ public sealed class MovementCards : VerticalStackLayout
 
     private View AlertButton(MemberMovementResponse movement)
     {
-        var button = new Button
+        var button = new AppButton
         {
             Text = "Set up an alert",
-            Style = NamedStyle("CardActionButton"),
+            Tone = AppButtonTone.Tonal,
+            Size = AppButtonSize.S,
             HorizontalOptions = LayoutOptions.Start,
             Margin = new Thickness(MarkerSize + AfterMarker, BeforeButton - WithinCard, 0, 0),
         };

@@ -70,10 +70,11 @@
                        Style="{StaticResource Body2}"
                        TextColor="{StaticResource BodyText}"
                        HorizontalTextAlignment="Center"/>
-                <Button Text="Try again"
-                        Style="{StaticResource SecondaryOutlineButton}"
-                        HorizontalOptions="Center"
-                        Clicked="OnRetryClicked"/>
+                <controls:AppButton Text="Try again"
+                                    HorizontalOptions="Center"
+                                    Clicked="OnRetryClicked"
+                                    Tone="Secondary"
+                                    Size="L"/>
             </VerticalStackLayout>
 
             <RefreshView x:Name="Refresher" Refreshing="OnPullToRefresh">
@@ -96,13 +97,14 @@
                                            VerticalOptions="Center"/>
                                     <!-- Only for the caregiver who can act on it: the API refuses a
                                          change from anyone else, so offering it would be a trap. -->
-                                    <Button x:Name="AddButton"
-                                            Grid.Column="1"
-                                            Text="Add"
-                                            Style="{StaticResource ActionButtonBlue}"
-                                            ImageSource="icon_btn_plus.svg"
-                                            IsVisible="False"
-                                            Clicked="OnAddClicked"/>
+                                    <controls:AppButton x:Name="AddButton"
+                                                        Grid.Column="1"
+                                                        Text="Add"
+                                                        Icon="icon_btn_plus.svg"
+                                                        IsVisible="False"
+                                                        Clicked="OnAddClicked"
+                                                        Tone="Primary"
+                                                        Size="M"/>
                                 </Grid>
 
                                 <!-- Where the list stands, as a chip: green while every line is
@@ -123,13 +125,14 @@
                                                FontFamily="QuicksandSemiBold"
                                                FontSize="12"/>
                                     </Border>
-                                    <Button x:Name="AllAccurateButton"
-                                            Grid.Column="2"
-                                            Text="All accurate"
-                                            Style="{StaticResource ActionButtonGreen}"
-                                            ImageSource="icon_btn_resolve.svg"
-                                            IsVisible="False"
-                                            Clicked="OnAllAccurateClicked"/>
+                                    <controls:AppButton x:Name="AllAccurateButton"
+                                                        Grid.Column="2"
+                                                        Text="All accurate"
+                                                        Icon="icon_btn_resolve.svg"
+                                                        IsVisible="False"
+                                                        Clicked="OnAllAccurateClicked"
+                                                        Tone="Primary"
+                                                        Size="M"/>
                                 </Grid>
 
                                 <!-- A block of old notes, written before there were lines: offered
@@ -152,12 +155,13 @@
                                         <Label Text="Sort them into lines so allergies and medicines stand out."
                                                FontSize="13"
                                                TextColor="{StaticResource ActionAmberInk}"/>
-                                        <Button Text="Sort into lines"
-                                                Margin="0,6,0,0"
-                                                Style="{StaticResource ActionButtonAmber}"
-                                                ImageSource="icon_btn_sort.svg"
-                                                HorizontalOptions="Start"
-                                                Clicked="OnSortClicked"/>
+                                        <controls:AppButton Text="Sort into lines"
+                                                            Margin="0,6,0,0"
+                                                            Icon="icon_btn_sort.svg"
+                                                            HorizontalOptions="Start"
+                                                            Clicked="OnSortClicked"
+                                                            Tone="Tonal"
+                                                            Size="M"/>
                                     </VerticalStackLayout>
                                 </Border>
 

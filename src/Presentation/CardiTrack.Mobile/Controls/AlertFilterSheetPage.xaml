@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.Controls.AlertFilterSheetPage"
+             BackgroundColor="Transparent">
+
+    <!-- The Alerts list's filter, opened from the header button. A sheet from the bottom like the
+         family switcher (FamilySwitcherPage), whose shell this borrows — scrim, a card that
+         swallows its own taps, a Result the caller awaits — because it is opened from the top of
+         the screen and every choice in it has to be in reach of a thumb. Radius on the top
+         corners only: the sheet runs to the bottom edge of the screen.
+
+         One question per section, each a single choice, all combining. No Figma frame: the
+         design's header carried a filter button but never drew what it opened. -->
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                StrokeThickness="0"
+                Padding="20,20,20,12"
+                VerticalOptions="End"
+                TranslationY="40"
+                SafeAreaEdges="None, None, None, Container">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="24,24,0,0"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout Spacing="4">
+                <BoxView HeightRequest="4"
+                         WidthRequest="40"
+                         CornerRadius="2"
+                         Color="{StaticResource Gray300}"
+                         HorizontalOptions="Center"
+                         Margin="0,0,0,12"/>
+
+                <Label Text="Filter alerts"
+                       Style="{StaticResource Heading3}"/>
+
+                <ScrollView x:Name="SectionsScroll" HorizontalScrollBarVisibility="Never">
+                    <VerticalStackLayout x:Name="SectionsHost" Spacing="4"/>
+                </ScrollView>
+
+                <!-- Reset clears the draft, not the list: nothing changes until the caregiver
+                     shows the results, so trying a combination costs nothing. The primary button
+                     counts what the draft would show, so a combination that matches nothing is
+                     seen before it is applied rather than after. -->
+                <!-- The popups' action pair (MedicalSortPopupPage, ContactEditPopupPage): dark for
+                     backing out, blue for going ahead, glyph first. -->
+                <Grid ColumnDefinitions="*,2*" ColumnSpacing="10" Margin="0,16,0,4">
+                    <controls:AppButton Text="Reset"
+                                        Icon="icon_btn_reset.svg"
+                                        Clicked="OnResetClicked"
+                                        Tone="Neutral"
+                                        Size="M"/>
+                    <controls:AppButton x:Name="ShowButton"
+                                        Grid.Column="1"
+                                        Text="Show alerts"
+                                        Icon="icon_btn_resolve.svg"
+                                        Clicked="OnShowClicked"
+                                        Tone="Primary"
+                                        Size="M"/>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

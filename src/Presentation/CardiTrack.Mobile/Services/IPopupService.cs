@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
+using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 
 namespace CardiTrack.Mobile.Services;
@@ -122,6 +123,17 @@ public interface IPopupService
     /// </summary>
     Task<FamilySwitcherChoice?> ChooseFamilyAsync(
         IReadOnlyList<FamilySwitcherRow> families, IReadOnlyList<string> waitingOn);
+
+    /// <summary>
+    /// The Alerts list's filter sheet, starting from <paramref name="current"/>. Returns the filter
+    /// to apply, or null when the caregiver closed it without showing results.
+    /// </summary>
+    /// <param name="count">How many alerts a filter would show, for the sheet's button; null when unknown.</param>
+    Task<AlertListFilter?> ChooseAlertFilterAsync(
+        AlertListFilter current,
+        IReadOnlyList<AlertFilterMember> members,
+        bool archived,
+        Func<AlertListFilter, CancellationToken, Task<int?>> count);
 
     /// <summary>
     /// Opens the M1-13 contact carousel's own edit form on one record: the emergency contact, or

@@ -734,6 +734,29 @@ public class CardiTrackApiClientTests
     }
 
     /// <summary>
+    /// The suggested questions can be the caregiver's own questions about a member. When their
+    /// access is withdrawn, the saved copy goes with it, so an offline open cannot show them again.
+    /// </summary>
+    [Fact]
+    public async Task GetMemberChatSuggestions_Forbidden_EvictsTheSavedQuestions()
+    {
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        var memberId = Guid.NewGuid();
+        var key = $"api/v1/member-chat/members/{memberId}/suggestions";
+        cache.Items[key] = new OfflineCacheEntry(
+            """{"suggestions":["Why did Pop sleep less this week?"],"source":"recent"}""", DateTimeOffset.UtcNow);
+
+        http.Enqueue(HttpStatusCode.Forbidden, """
+            {"success":false,"message":"no access","timestamp":"2026-08-01T00:00:00Z"}
+            """);
+
+        await Assert.ThrowsAsync<ApiException>(() => client.GetMemberChatSuggestionsAsync(memberId));
+
+        Assert.False(cache.Items.ContainsKey(key));
+    }
+
+    /// <summary>
     /// One key's eviction must not stop a different key caching.
     /// </summary>
     /// <remarks>

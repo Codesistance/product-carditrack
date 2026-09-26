@@ -64,14 +64,16 @@
                     </VerticalStackLayout>
                 </Border>
 
-                <Button x:Name="AddMemberButton"
-                        Text="Add the first person to watch"
-                        Style="{StaticResource PrimaryGradientButton}"
-                        Clicked="OnAddMemberClicked"/>
+                <controls:AppButton x:Name="AddMemberButton"
+                                    Text="Add the first person to watch"
+                                    Clicked="OnAddMemberClicked"
+                                    Tone="Primary"
+                                    Size="L"/>
 
-                <Button Text="Not now"
-                        Style="{StaticResource SecondaryOutlineButton}"
-                        Clicked="OnNotNowClicked"/>
+                <controls:AppButton Text="Not now"
+                                    Clicked="OnNotNowClicked"
+                                    Tone="Secondary"
+                                    Size="L"/>
             </VerticalStackLayout>
         </ScrollView>
     </Grid>

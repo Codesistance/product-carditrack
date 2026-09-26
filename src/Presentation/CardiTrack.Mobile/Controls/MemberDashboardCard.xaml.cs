@@ -36,6 +36,15 @@ public partial class MemberDashboardCard : ContentView
         Hero.DaybookTapped += (_, _) => DaybookRequested?.Invoke(this, EventArgs.Empty);
         Hero.AlertsTapped += (_, _) => AlertsRequested?.Invoke(this, EventArgs.Empty);
         Hero.NoDeviceTapped += (_, _) => NoDeviceRequested?.Invoke(this, EventArgs.Empty);
+
+        // The footer line is a link only while it says "Connect a device" (ApplyFreshness).
+        var connectTap = new TapGestureRecognizer();
+        connectTap.Tapped += (_, _) =>
+        {
+            if (_connectLinkShown)
+                NoDeviceRequested?.Invoke(this, EventArgs.Empty);
+        };
+        LastUpdatedFooterLabel.GestureRecognizers.Add(connectTap);
         Hero.QaTapped += (_, _) => QuestionRequested?.Invoke(this, EventArgs.Empty);
         Hero.AdviseTapped += (_, _) => AdviseRequested?.Invoke(this, EventArgs.Empty);
         Hero.WeatherTapped += (_, weather) => WeatherRequested?.Invoke(this, weather);
@@ -52,6 +61,9 @@ public partial class MemberDashboardCard : ContentView
     public event EventHandler? DaybookRequested;
     public event EventHandler? AlertsRequested;
     public event EventHandler? NoDeviceRequested;
+
+    /// <summary>The footer line is showing the "Connect a device" link rather than the sync age.</summary>
+    private bool _connectLinkShown;
     public event EventHandler? QuestionRequested;
     public event EventHandler? AdviseRequested;
     public event EventHandler<WeatherSnapshotResponse>? WeatherRequested;
@@ -166,19 +178,35 @@ public partial class MemberDashboardCard : ContentView
         var ageWorthShowing = DataAge.IsWorthShowing(data.LastSyncedAt, DateTime.UtcNow);
 
         var showAge = freshnessRelevant && (neverSynced || ageWorthShowing);
-        LastUpdatedFooterLabel.IsVisible = showAge;
-        LastUpdatedFooterLabel.Text = data.LastSyncedAt is { } lastSynced
-            ? $"Updated {RelativeTime.Format(lastSynced)}"
-            : "Not synced yet";
-        LastUpdatedFooterLabel.TextColor = freshnessColor;
-        SemanticProperties.SetDescription(
-            LastUpdatedFooterLabel, $"{data.DataFreshnessMessage}. {LastUpdatedFooterLabel.Text}");
+
+        // With no device, the line stops reporting the gap and says how to close it: "Not synced
+        // yet" in red told a caregiver something was wrong without saying what to do, and the
+        // no-device button beside Alerts is a small glyph to find. The link opens the same offer.
+        _connectLinkShown = freshnessRelevant && !data.Device.HasActiveConnection;
+        LastUpdatedFooterLabel.IsVisible = showAge || _connectLinkShown;
+        if (_connectLinkShown)
+        {
+            LastUpdatedFooterLabel.Text = "Connect a device ›";
+            LastUpdatedFooterLabel.TextColor = MetricStatus.Resource("Primary", Colors.Blue);
+            SemanticProperties.SetDescription(LastUpdatedFooterLabel, $"{data.DataFreshnessMessage}. Connect a device");
+            SemanticProperties.SetHint(LastUpdatedFooterLabel, "Double tap to connect a device");
+        }
+        else
+        {
+            LastUpdatedFooterLabel.Text = data.LastSyncedAt is { } lastSynced
+                ? $"Updated {RelativeTime.Format(lastSynced)}"
+                : "Not synced yet";
+            LastUpdatedFooterLabel.TextColor = freshnessColor;
+            SemanticProperties.SetDescription(
+                LastUpdatedFooterLabel, $"{data.DataFreshnessMessage}. {LastUpdatedFooterLabel.Text}");
+            SemanticProperties.SetHint(LastUpdatedFooterLabel, string.Empty);
+        }
 
         // Exactly one node announces the freshness state, and only while there is a state worth
         // announcing — the label whenever it is on screen, the block only while the learning bar
         // alone keeps it there.
         SemanticProperties.SetDescription(
-            FreshnessBlock, showAge ? string.Empty : data.DataFreshnessMessage);
+            FreshnessBlock, LastUpdatedFooterLabel.IsVisible ? string.Empty : data.DataFreshnessMessage);
 
         // Baseline-learning progress only while the window is still running.
         LearningProgress.IsVisible = data.Baseline.IsLearning && data.Device.HasActiveConnection

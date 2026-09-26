@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.AppPopupPage"
              BackgroundColor="Transparent">
 
@@ -83,15 +84,17 @@
                          (ActionButtons.Dress): "Remove" red with a bin, "Yes" green, Cancel
                          dark, and so on — the callers word these, so the rule lives in one
                          place rather than at every call site. -->
-                    <Button x:Name="CancelBtn"
-                            Grid.Column="0"
-                            Style="{StaticResource ActionButtonDark}"
-                            IsVisible="False"
-                            Clicked="OnCancelClicked"/>
-                    <Button x:Name="ConfirmBtn"
-                            Grid.Column="1"
-                            Style="{StaticResource ActionButtonBlue}"
-                            Clicked="OnConfirmClicked"/>
+                    <controls:AppButton x:Name="CancelBtn"
+                                        Grid.Column="0"
+                                        IsVisible="False"
+                                        Clicked="OnCancelClicked"
+                                        Tone="Neutral"
+                                        Size="M"/>
+                    <controls:AppButton x:Name="ConfirmBtn"
+                                        Grid.Column="1"
+                                        Clicked="OnConfirmClicked"
+                                        Tone="Primary"
+                                        Size="M"/>
                 </Grid>
             </VerticalStackLayout>
         </Border>

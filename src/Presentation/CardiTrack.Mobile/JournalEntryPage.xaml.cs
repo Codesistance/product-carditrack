@@ -85,6 +85,7 @@ public partial class JournalEntryPage : ContentPage
     public JournalEntryPage(ICardiTrackApiClient api, IPopupService popups, IJournalExportFlow export)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _export = export;
@@ -574,59 +575,73 @@ public partial class JournalEntryPage : ContentPage
         plot.Add(chart, 1);
         stack.Add(plot);
 
-        // The key names only marks the chart actually drew, and the band carries its publisher —
-        // a shaded band with nobody's name on it is a claim wearing no authority.
-        if (MetricChartKey.For(metric, axisFormat, unit) is { } key)
-        {
-            stack.Add(new Label
-            {
-                Text = key,
-                Style = Styled("MetricRowCaption"),
-                TextColor = Tinted("MutedText"),
-                LineBreakMode = LineBreakMode.WordWrap,
-            });
-        }
+        // One line per mark the chart drew, led by that mark's own swatch — the key and the count
+        // fused. They used to be two things: a key line naming each figure ("Dashed: their usual
+        // 5.5h · Shaded: recommended 7–8h (NSF)") and then a sentence per mark naming the same
+        // figure again, so every number under the chart was said twice. Now the sentence is the
+        // key: the swatch says which mark it is about, the words say the figure and how the days
+        // fell against it. A mark with no count to give — too few measured days, or a metric that
+        // is not counted against it — still gets its line, with the figure alone, since the chart
+        // draws it and a mark nobody names is one the caregiver has to guess at.
+        var ink = MetricStatus.Resource(inkKey, Colors.Gray);
 
-        // Counts the caregiver can check against the chart above them — never scores. Two
-        // possible lines: against the member's own usual, and against the published band the
-        // chart shades, each said only when its yardstick exists.
-        if (usualDirection is { } direction && metric.Baseline is { } usual)
+        if (metric.Baseline is { } usual)
         {
             // The figure rides in the sentence — "their usual 4h" — so the claim can be checked
-            // against the dashed rule without a round trip through the key line above it.
+            // against the dashed rule without a key to look it up in.
             var usualText = string.Create(
                 System.Globalization.CultureInfo.CurrentCulture,
                 $"their usual {string.Format(axisFormat, usual)}{unit}");
 
-            if (TrendAwareness.Line(window, usual, direction, usualText, dayWord, windowDays) is { } usualLine)
-            {
-                stack.Add(new Label
-                {
-                    Text = usualLine,
-                    Style = Styled("Body2Dark"),
-                });
-            }
+            var usualLine = usualDirection is { } direction
+                ? TrendAwareness.Line(window, usual, direction, usualText, dayWord, windowDays)
+                : null;
+            stack.Add(MarkLine(
+                new TrendLegendSwatch(TrendLegendMark.Baseline) { Ink = ink },
+                usualLine ?? Capitalized(usualText)));
         }
 
-        if (band is not null && metric.Reference is { } published)
+        if (metric.Reference is { } published)
         {
-            var bound = band.AgainstLow ? published.Low : published.High;
-            var boundText = string.Create(
-                System.Globalization.CultureInfo.CurrentCulture,
-                $"the recommended {string.Format(axisFormat, bound)}{unit} ({published.Source})");
-
-            if (TrendAwareness.BandLine(window, bound, band.Direction, boundText, dayWord, windowDays) is { } bandLine)
+            string? bandLine = null;
+            if (band is not null)
             {
-                stack.Add(new Label
-                {
-                    Text = bandLine,
-                    Style = Styled("Body2Dark"),
-                });
+                var bound = band.AgainstLow ? published.Low : published.High;
+                var boundText = string.Create(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    $"the recommended {string.Format(axisFormat, bound)}{unit} ({published.Source})");
+                bandLine = TrendAwareness.BandLine(window, bound, band.Direction, boundText, dayWord, windowDays);
             }
+
+            // The whole band when there is no count to give: it is what the shading covers, and it
+            // carries its publisher — a shaded band with nobody's name on it is a claim wearing no
+            // authority.
+            var rangeText = string.Create(
+                System.Globalization.CultureInfo.CurrentCulture,
+                $"Recommended {string.Format(axisFormat, published.Low)}–{string.Format(axisFormat, published.High)}{unit} ({published.Source})");
+            stack.Add(MarkLine(new TrendLegendSwatch(TrendLegendMark.Reference), bandLine ?? rangeText));
         }
 
         return new Border { Style = Styled("ElevatedCard"), Content = stack };
     }
+
+    /// <summary>A mark's swatch and the sentence about it, the swatch on the sentence's first line.</summary>
+    private static View MarkLine(View swatch, string text)
+    {
+        swatch.VerticalOptions = LayoutOptions.Start;
+        swatch.Margin = new Thickness(0, 5, 0, 0);
+        var row = new Grid
+        {
+            ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
+            ColumnSpacing = 8,
+        };
+        row.Add(swatch);
+        row.Add(new Label { Text = text, Style = Styled("Body2Dark") }, 1);
+        return row;
+    }
+
+    private static string Capitalized(string text) =>
+        text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
 
     /// <summary>
     /// One axis number, dressed the way the member detail's trend cards dress theirs — muted,

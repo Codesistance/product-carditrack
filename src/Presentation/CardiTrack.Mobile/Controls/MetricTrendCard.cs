@@ -118,7 +118,7 @@ public sealed class MetricTrendCard : ContentView
     /// Large enough to be seen as a control rather than a full stop, at the 44dp effective target
     /// its padded wrapper already gave it.
     /// </summary>
-    private const double HintDiscSize = 30;
+    private const double HintDiscSize = 32;
 
     private MetricTrend? _trend;
 
@@ -620,7 +620,7 @@ public sealed class MetricTrendCard : ContentView
             BackgroundColor = MetricStatus.Resource("SelectedOptionBackground", Colors.LightGray),
             // Fully qualified: Microsoft.Maui.Controls.Shapes is not among the SDK's implicit
             // usings, and importing it here would put its Path beside System.IO's.
-            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = HintDiscSize / 2 },
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
             Content = new Label
             {
                 Text = "i",
@@ -665,7 +665,7 @@ public sealed class MetricTrendCard : ContentView
         };
         expandDisc.StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle
         {
-            CornerRadius = HintDiscSize / 2,
+            CornerRadius = 10,
         };
 
         _expand = new Grid

@@ -3,26 +3,36 @@ using CardiTrack.Mobile.Core.Forms;
 namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
-/// Dresses a <see cref="Button"/> as one of the action buttons (Styles.xaml ActionButton*) from
-/// its <see cref="ActionLook"/> — the style for its colour and the icon beside its word.
+/// Dresses an <see cref="AppButton"/> from its <see cref="ActionLook"/> — the tone for its meaning
+/// and the glyph beside its word — for the popups whose buttons are worded by their caller.
 /// </summary>
+/// <remarks>
+/// <see cref="ActionLooks"/> still speaks the five colours the popups first had, one per meaning.
+/// The unified button (2026-09-26) has fewer tones, so two of those meanings share one: Yes is the
+/// primary action like Save, and Undo is the everyday tonal action rather than a colour of its own.
+/// The words decide the tone exactly as before; only the palette they land on changed.
+/// </remarks>
 public static class ActionButtons
 {
-    /// <summary>Styles <paramref name="button"/> from the words on it; see <see cref="ActionLooks.For"/>.</summary>
-    public static void Dress(Button button, bool isDismiss = false) =>
+    /// <summary>Dresses <paramref name="button"/> from the words on it; see <see cref="ActionLooks.For"/>.</summary>
+    public static void Dress(AppButton button, bool isDismiss = false) =>
         Dress(button, ActionLooks.For(button.Text, isDismiss));
 
-    public static void Dress(Button button, ActionLook look)
+    public static void Dress(AppButton button, ActionLook look)
     {
-        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-        button.Style = (Style)resources[look.Tone switch
+        button.Tone = look.Tone switch
         {
-            ActionTone.Green => "ActionButtonGreen",
-            ActionTone.Red => "ActionButtonRed",
-            ActionTone.Dark => "ActionButtonDark",
-            ActionTone.Amber => "ActionButtonAmber",
-            _ => "ActionButtonBlue",
-        }];
-        button.ImageSource = look.Icon is { } icon ? ImageSource.FromFile(icon) : null;
+            ActionTone.Red => AppButtonTone.Danger,
+            ActionTone.Dark => AppButtonTone.Neutral,
+            ActionTone.Amber => AppButtonTone.Tonal,
+            _ => AppButtonTone.Primary,
+        };
+
+        // The tonal fill is pale, so it takes the blue-ink version of a glyph rather than the
+        // white one the solid tones carry.
+        var icon = look.Icon;
+        if (icon is not null && button.Tone == AppButtonTone.Tonal)
+            icon = icon.Replace(".svg", "_tint.svg", StringComparison.Ordinal);
+        button.Icon = icon is not null ? ImageSource.FromFile(icon) : null;
     }
 }

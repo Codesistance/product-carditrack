@@ -29,15 +29,17 @@
                         MinimumHeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource HeaderButtonTint}"
-                        VerticalOptions="Fill">
+                        VerticalOptions="Fill"
+                                       SemanticProperties.Description="Back">
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackClicked"/>
+                    </controls:SquareBorder.GestureRecognizers>
                     <controls:SquareBorder.StrokeShape>
                         <RoundRectangle CornerRadius="99"/>
                     </controls:SquareBorder.StrokeShape>
-                    <ImageButton Source="icon_back_white.svg"
-                                 WidthRequest="20" HeightRequest="20"
-                                 BackgroundColor="Transparent"
-                                 SemanticProperties.Description="Back"
-                                 Clicked="OnBackClicked"/>
+                    <Image Source="icon_back_white.svg"
+                           WidthRequest="20"
+                           HeightRequest="20"/>
                 </controls:SquareBorder>
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
@@ -70,10 +72,11 @@
                     <Label x:Name="ErrorDetailLabel"
                            Style="{StaticResource Body2}"
                            HorizontalTextAlignment="Center"/>
-                    <Button Text="Try again"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            HorizontalOptions="Center"
-                            Clicked="OnRetryClicked"/>
+                    <controls:AppButton Text="Try again"
+                                        HorizontalOptions="Center"
+                                        Clicked="OnRetryClicked"
+                                        Tone="Secondary"
+                                        Size="L"/>
                 </VerticalStackLayout>
 
                 <!-- M1-17a — the form -->
@@ -98,18 +101,26 @@
                             <!-- Presets first: the four windows a caregiver actually asks for.
                                  The pickers below stay live for anything else. -->
                             <HorizontalStackLayout x:Name="PresetRow" Spacing="8">
-                                <Button Text="7 days" Style="{StaticResource SecondaryOutlineButton}"
-                                        FontSize="12" Padding="12,6" HeightRequest="34"
-                                        CommandParameter="7" Clicked="OnPresetClicked"/>
-                                <Button Text="30 days" Style="{StaticResource SecondaryOutlineButton}"
-                                        FontSize="12" Padding="12,6" HeightRequest="34"
-                                        CommandParameter="30" Clicked="OnPresetClicked"/>
-                                <Button Text="90 days" Style="{StaticResource SecondaryOutlineButton}"
-                                        FontSize="12" Padding="12,6" HeightRequest="34"
-                                        CommandParameter="90" Clicked="OnPresetClicked"/>
-                                <Button Text="All" Style="{StaticResource SecondaryOutlineButton}"
-                                        FontSize="12" Padding="12,6" HeightRequest="34"
-                                        CommandParameter="365" Clicked="OnPresetClicked"/>
+                                <controls:AppButton Text="7 days"
+                                                    CommandParameter="7"
+                                                    Clicked="OnPresetClicked"
+                                                    Tone="Secondary"
+                                                    Size="S"/>
+                                <controls:AppButton Text="30 days"
+                                                    CommandParameter="30"
+                                                    Clicked="OnPresetClicked"
+                                                    Tone="Secondary"
+                                                    Size="S"/>
+                                <controls:AppButton Text="90 days"
+                                                    CommandParameter="90"
+                                                    Clicked="OnPresetClicked"
+                                                    Tone="Secondary"
+                                                    Size="S"/>
+                                <controls:AppButton Text="All"
+                                                    CommandParameter="365"
+                                                    Clicked="OnPresetClicked"
+                                                    Tone="Secondary"
+                                                    Size="S"/>
                             </HorizontalStackLayout>
 
                             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
@@ -172,10 +183,11 @@
                            Style="{StaticResource Body2}"
                            HorizontalTextAlignment="Center"/>
 
-                    <Button x:Name="ExportButton"
-                            Text="Export Data"
-                            Style="{StaticResource AuthGradientButton}"
-                            Clicked="OnExportClicked"/>
+                    <controls:AppButton x:Name="ExportButton"
+                                        Text="Export Data"
+                                        Clicked="OnExportClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
                 </VerticalStackLayout>
 
                 <!-- M1-17b — generating -->
@@ -187,10 +199,11 @@
                     <Label x:Name="GeneratingDetailLabel"
                            Style="{StaticResource Body2}"
                            HorizontalTextAlignment="Center"/>
-                    <Button Text="Cancel"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            HorizontalOptions="Center"
-                            Clicked="OnCancelGenerationClicked"/>
+                    <controls:AppButton Text="Cancel"
+                                        HorizontalOptions="Center"
+                                        Clicked="OnCancelGenerationClicked"
+                                        Tone="Secondary"
+                                        Size="L"/>
                 </VerticalStackLayout>
 
                 <!-- M1-17c — complete -->
@@ -207,19 +220,23 @@
                          save inside it. The same two choices the export popup offers, in the
                          same words, with Open under them: looking at the file is a real thing
                          to want, and is not a place to put it. -->
-                    <Button x:Name="SaveButton"
-                            Text="Save to this phone"
-                            Style="{StaticResource AuthGradientButton}"
-                            Clicked="OnSaveClicked"/>
-                    <Button Text="Share"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            Clicked="OnShareClicked"/>
-                    <Button Text="Open"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            Clicked="OnOpenClicked"/>
-                    <Button Text="Export something else"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            Clicked="OnStartOverClicked"/>
+                    <controls:AppButton x:Name="SaveButton"
+                                        Text="Save to this phone"
+                                        Clicked="OnSaveClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
+                    <controls:AppButton Text="Share"
+                                        Clicked="OnShareClicked"
+                                        Tone="Secondary"
+                                        Size="L"/>
+                    <controls:AppButton Text="Open"
+                                        Clicked="OnOpenClicked"
+                                        Tone="Secondary"
+                                        Size="L"/>
+                    <controls:AppButton Text="Export something else"
+                                        Clicked="OnStartOverClicked"
+                                        Tone="Secondary"
+                                        Size="L"/>
                 </VerticalStackLayout>
 
                 <!-- M1-17d — error -->
@@ -230,9 +247,10 @@
                     <Label x:Name="FailedDetailLabel"
                            Style="{StaticResource Body2}"
                            HorizontalTextAlignment="Center"/>
-                    <Button Text="Try again"
-                            Style="{StaticResource AuthGradientButton}"
-                            Clicked="OnStartOverClicked"/>
+                    <controls:AppButton Text="Try again"
+                                        Clicked="OnStartOverClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
                 </VerticalStackLayout>
             </Grid>
         </ScrollView>

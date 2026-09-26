@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.QuestionCard">
 
     <!-- One question the service is asking the family, and the answer box it opens into.
@@ -34,18 +35,11 @@
                        VerticalOptions="Center"
                        LineBreakMode="WordWrap"/>
 
-                <Button x:Name="DismissButton"
-                        Grid.Column="2"
-                        Text="✕"
-                        FontFamily="QuicksandSemiBold"
-                        FontSize="15"
-                        TextColor="{StaticResource MutedText}"
-                        BackgroundColor="Transparent"
-                        WidthRequest="40"
-                        HeightRequest="40"
-                        SemanticProperties.Description="Skip this question"
-                        SemanticProperties.Hint="We won't ask it again"
-                        Clicked="OnDismissClicked"/>
+                <controls:DismissButton x:Name="DismissButton"
+                                        Grid.Column="2"
+                                        SemanticProperties.Description="Skip this question"
+                                        SemanticProperties.Hint="We won't ask it again"
+                                        Clicked="OnDismissClicked"/>
 
                 <!-- Same slot as skip, only on an answered card. The archive used to hang this
                      trash outside the card, which made the row look like a card plus a toolbar. -->
@@ -60,13 +54,13 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnDeleteTapped"/>
                     </Border.GestureRecognizers>
-                    <Border WidthRequest="28" HeightRequest="28"
+                    <Border WidthRequest="32" HeightRequest="32"
                             StrokeThickness="0"
-                            BackgroundColor="{StaticResource AlertActionBackground}"
+                            BackgroundColor="{StaticResource ActionTintRedBackground}"
                             HorizontalOptions="Center"
                             VerticalOptions="Center">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="14"/>
+                            <RoundRectangle CornerRadius="10"/>
                         </Border.StrokeShape>
                         <Image Source="icon_trash.svg"
                                WidthRequest="15" HeightRequest="15"
@@ -112,11 +106,11 @@
                    IsVisible="False"
                    LineBreakMode="WordWrap"/>
 
-            <Button x:Name="OpenButton"
-                    Style="{StaticResource PrimaryGradientButton}"
-                    HeightRequest="40"
-                    Margin="0,2,0,0"
-                    Clicked="OnOpenClicked"/>
+            <controls:AppButton x:Name="OpenButton"
+                                Margin="0,2,0,0"
+                                Clicked="OnOpenClicked"
+                                Tone="Primary"
+                                Size="M"/>
 
             <!-- Clipped to zero and animated open, the same construction as the pause-duration
                  drop-down: the answer box belongs to the question, so it arrives under it rather
@@ -143,20 +137,22 @@
 
                     <!-- Cancel on the left, the way out; Save on the right, the step forward. -->
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <Button x:Name="CancelButton"
-                                Grid.Column="0"
-                                Text="Cancel"
-                                Style="{StaticResource ActionButtonDark}"
-                                ImageSource="icon_btn_close.svg"
-                                Clicked="OnCancelClicked"/>
+                        <controls:AppButton x:Name="CancelButton"
+                                            Grid.Column="0"
+                                            Text="Cancel"
+                                            Icon="icon_btn_close.svg"
+                                            Clicked="OnCancelClicked"
+                                            Tone="Neutral"
+                                            Size="M"/>
 
-                        <Button x:Name="SaveButton"
-                                Grid.Column="1"
-                                Text="Save"
-                                Style="{StaticResource ActionButtonBlue}"
-                                ImageSource="icon_btn_save.svg"
-                                IsEnabled="False"
-                                Clicked="OnSaveClicked"/>
+                        <controls:AppButton x:Name="SaveButton"
+                                            Grid.Column="1"
+                                            Text="Save"
+                                            Icon="icon_btn_save.svg"
+                                            IsEnabled="False"
+                                            Clicked="OnSaveClicked"
+                                            Tone="Primary"
+                                            Size="M"/>
                     </Grid>
                 </VerticalStackLayout>
             </Border>

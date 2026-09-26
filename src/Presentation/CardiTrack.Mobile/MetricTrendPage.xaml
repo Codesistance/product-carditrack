@@ -80,10 +80,11 @@
                        Style="{StaticResource Body2}"
                        TextColor="{StaticResource BodyText}"
                        HorizontalTextAlignment="Center"/>
-                <Button Text="Try again"
-                        Style="{StaticResource SecondaryOutlineButton}"
-                        HorizontalOptions="Center"
-                        Clicked="OnRetryClicked"/>
+                <controls:AppButton Text="Try again"
+                                    HorizontalOptions="Center"
+                                    Clicked="OnRetryClicked"
+                                    Tone="Secondary"
+                                    Size="L"/>
             </VerticalStackLayout>
 
             <controls:MetricTrendCard x:Name="Card" IsVisible="False" VerticalOptions="Fill"/>

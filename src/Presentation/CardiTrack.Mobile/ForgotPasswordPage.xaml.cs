@@ -26,8 +26,7 @@ public partial class ForgotPasswordPage : ContentPage
     private void UpdateSendButtonState()
     {
         var complete = !string.IsNullOrWhiteSpace(EmailEntry.Text) && EmailEntry.Text.Contains('@');
-        SendBtn.Background = (Brush)App.Current!.Resources[
-            complete ? "GradientButtonBrush" : "GradientButtonLightBrush"];
+        SendBtn.IsDimmed = !complete;
     }
 
     private async void OnSendClicked(object? sender, EventArgs e) =>

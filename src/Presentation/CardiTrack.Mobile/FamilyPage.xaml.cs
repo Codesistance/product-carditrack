@@ -57,6 +57,7 @@ public partial class FamilyPage : ContentPage
     public FamilyPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _feedback = new RefreshFeedback(SavedBanner, Updating);
@@ -328,10 +329,11 @@ public partial class FamilyPage : ContentPage
         stack.Add(new Label { Text = title, Style = Named("DashboardSectionTitle") });
         stack.Add(new Label { Text = detail, Style = Named("Body2"), LineBreakMode = LineBreakMode.WordWrap });
 
-        var button = new Button
+        var button = new AppButton
         {
             Text = FamilyCopy.CanAskAgain(ask) ? "Ask again" : "Withdraw",
-            Style = Named(FamilyCopy.CanAskAgain(ask) ? "SecondaryOutlineButton" : "DangerOutlineButton"),
+            Tone = FamilyCopy.CanAskAgain(ask) ? AppButtonTone.Secondary : AppButtonTone.Danger,
+            Size = AppButtonSize.M,
         };
         if (FamilyCopy.CanAskAgain(ask))
             button.Clicked += (_, _) => JoinEntry.Focus();
@@ -369,9 +371,11 @@ public partial class FamilyPage : ContentPage
                 ColumnDefinitions = [new(GridLength.Star), new(GridLength.Star)],
                 ColumnSpacing = 10,
             };
-            var decline = new Button { Text = "Decline", Style = Named("SecondaryOutlineButton") };
+            // Decline in Danger, as the popups' word rule has it (ActionLooks): it turns someone
+            // away, which the outline it used to wear did not say.
+            var decline = new AppButton { Text = "Decline", Tone = AppButtonTone.Danger, Size = AppButtonSize.M };
             decline.Clicked += (_, _) => _ = DeclineAsync(request);
-            var review = new Button { Text = "Review", Style = Named("PrimaryGradientButton") };
+            var review = new AppButton { Text = "Review", Tone = AppButtonTone.Primary, Size = AppButtonSize.M };
             review.Clicked += (_, _) => _ = ReviewAsync(request);
             actions.Add(decline, 0, 0);
             actions.Add(review, 1, 0);

@@ -1,4 +1,5 @@
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -18,8 +19,11 @@ internal static class MemberChatLauncher
         if (hostRoot.Children.OfType<MemberChatPage>().Any())
             return;
 
+        // The caregiver's own first name, for the greeting's hello — the same split the
+        // dashboard header makes of the signed-in name.
+        var caregiverFirstName = ServiceHelper.GetRequiredService<IAuthService>().CurrentUserName?.Split(' ')[0];
         var overlay = new MemberChatPage(
-            ServiceHelper.GetRequiredService<ICardiTrackApiClient>(), memberId, memberFirstName);
+            ServiceHelper.GetRequiredService<ICardiTrackApiClient>(), memberId, memberFirstName, caregiverFirstName);
 
         Grid.SetRow(overlay, 0);
         Grid.SetRowSpan(overlay, Math.Max(1, hostRoot.RowDefinitions.Count));

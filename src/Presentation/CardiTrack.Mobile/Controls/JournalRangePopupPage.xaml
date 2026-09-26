@@ -45,8 +45,8 @@
 
                     <!-- Dismissal as a mark, in the corner, the same one the sync popup uses. -->
                     <Grid x:Name="CloseHit"
-                          Padding="12"
-                          Margin="0,-12,-12,0"
+                          Padding="8"
+                          Margin="0,-8,-8,0"
                           BackgroundColor="Transparent"
                           HorizontalOptions="End"
                           VerticalOptions="Start"
@@ -54,17 +54,17 @@
                         <Grid.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnCloseTapped"/>
                         </Grid.GestureRecognizers>
-                        <Border BackgroundColor="{StaticResource ErrorRed}"
+                        <Border BackgroundColor="{StaticResource ActionTintBlueBackground}"
                                 StrokeThickness="0"
-                                WidthRequest="20"
-                                HeightRequest="20">
+                                WidthRequest="32"
+                                HeightRequest="32">
                             <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="4"/>
+                                <RoundRectangle CornerRadius="10"/>
                             </Border.StrokeShape>
                             <Label Text="✕"
-                                   TextColor="{StaticResource White}"
+                                   TextColor="{StaticResource ActionTintBlueInk}"
                                    FontFamily="QuicksandSemiBold"
-                                   FontSize="11"
+                                   FontSize="13"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center"/>
                         </Border>
@@ -97,15 +97,15 @@
                     </Border.StrokeShape>
                     <Label x:Name="SummaryLabel"
                            Style="{StaticResource Body2Dark}"
-                           HorizontalTextAlignment="Center"
+                           HorizontalTextAlignment="Start"
                            LineBreakMode="WordWrap"/>
                 </Border>
 
-                <Button x:Name="ExportBtn"
-                        Text="Export"
-                        Style="{StaticResource PrimaryGradientButton}"
-                        Padding="12,0"
-                        Clicked="OnExportClicked"/>
+                <controls:AppButton x:Name="ExportBtn"
+                                    Text="Export"
+                                    Clicked="OnExportClicked"
+                                    Tone="Primary"
+                                    Size="L"/>
             </VerticalStackLayout>
         </Border>
     </Grid>

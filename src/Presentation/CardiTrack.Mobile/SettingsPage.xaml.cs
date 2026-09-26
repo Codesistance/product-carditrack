@@ -1,3 +1,4 @@
+using CardiTrack.Mobile.Controls;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
@@ -12,7 +13,6 @@ using CardiTrack.Mobile.Notifications;
 #endif
 // CardiTrack.Application (the DTO assembly's root namespace) shadows MAUI's Application in
 // any file importing it, so the control type is aliased rather than qualified at each use.
-using MauiApplication = Microsoft.Maui.Controls.Application;
 
 namespace CardiTrack.Mobile;
 
@@ -37,6 +37,7 @@ public partial class SettingsPage : ContentPage
         ICardiTrackApiClient api)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _authService = authService;
         _popups = popups;
         _alertDrafts = alertDrafts;
@@ -399,20 +400,12 @@ public partial class SettingsPage : ContentPage
         if (Resources.TryGetValue("Body2", out var bodyStyle) && bodyStyle is Style style)
             label.Style = style;
 
-        var undo = new Button
+        var undo = new AppButton
         {
             Text = "Turn back on",
-            FontFamily = "QuicksandSemiBold",
-            FontSize = 13,
-            BackgroundColor = Colors.Transparent,
-            Padding = new Thickness(8, 0),
-            HeightRequest = 36
+            Tone = AppButtonTone.Text,
+            Size = AppButtonSize.S,
         };
-        if (MauiApplication.Current?.Resources.TryGetValue("Primary", out var primary) == true
-            && primary is Color colour)
-        {
-            undo.TextColor = colour;
-        }
 
         undo.Clicked += async (_, _) => await RemoveMuteAsync(mute.Id);
 

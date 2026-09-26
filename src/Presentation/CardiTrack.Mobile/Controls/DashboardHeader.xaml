@@ -50,27 +50,25 @@
 
             <Grid Grid.Column="2" VerticalOptions="Start">
                 <!-- The white square every detail header uses for its trailing action
-                     (Member Details, Connected Devices, Medical Information): radius 12, no
+                     (Member Details, Connected Devices, Medical Information) — HeaderActionSquare, no
                      shadow. This one had its own radius and a drop shadow, so the same slot
                      read differently on the one tab a caregiver sees most. -->
-                <Border WidthRequest="40" HeightRequest="40"
-                        BackgroundColor="{StaticResource White}"
-                        StrokeThickness="0">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="12"/>
-                    </Border.StrokeShape>
+                <Border x:Name="BellTarget"
+                        SemanticProperties.Description="Alerts"
+                        Style="{StaticResource HeaderActionSquare}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBellClicked"/>
+                    </Border.GestureRecognizers>
                     <!-- Description is rewritten by SetUnreadCount: the badge carries the
                          count visually, so without that a screen reader loses it. -->
                     <!-- AnchorY 0 so the shake (SetUnreadCount) swings the bell from its
                          crown the way a real one hangs, rather than spinning it about its
                          middle. -->
-                    <ImageButton x:Name="BellButton"
-                                 Source="icon_bell.svg"
-                                 WidthRequest="24" HeightRequest="24"
-                                 BackgroundColor="Transparent"
-                                 AnchorY="0"
-                                 SemanticProperties.Description="Alerts"
-                                 Clicked="OnBellClicked"/>
+                    <Image x:Name="BellButton"
+                           Source="icon_bell.svg"
+                           WidthRequest="24"
+                           HeightRequest="24"
+                           AnchorY="0"/>
                 </Border>
 
                 <Border x:Name="BellBadge"

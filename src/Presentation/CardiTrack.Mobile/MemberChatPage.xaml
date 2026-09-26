@@ -80,9 +80,14 @@
                            SemanticProperties.Description="Close"/>
                 </controls:SquareBorder>
 
-                <!-- The subtitle names who this conversation is about. With more than one member
-                     it is also the way to change that: a tap puts the "who" question back in the
-                     conversation area, and the chevron beside it says so. -->
+                <!-- Who this conversation is about, on the subtitle line: "About", their photo
+                     at 16, and their name in full white semibold where the rest of the line is
+                     faded — so it stands out without changing the header. It is the same line,
+                     at the same height, as the plain subtitle the other states show (choosing
+                     someone, browsing past conversations), so the band never grows or jumps when
+                     the caregiver switches member. With more than one member it is also the way
+                     to change that: a tap puts the "who" question back in the conversation area,
+                     and the chevron after the name says so. -->
                 <VerticalStackLayout x:Name="TitleBlock" Grid.Column="1" Spacing="1" VerticalOptions="Start">
                     <VerticalStackLayout.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnSubtitleTapped"/>
@@ -90,10 +95,11 @@
                     <Label Text="Chat"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
-                    <!-- A Grid, not a HorizontalStackLayout: a stack measures its children with
-                         unbounded width, so the subtitle never truncated and its overflow squeezed
-                         the header's round buttons out of shape. -->
-                    <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="4" HorizontalOptions="Start">
+                    <!-- The label is in a Grid, not a HorizontalStackLayout: a stack measures its
+                         children with unbounded width, so the subtitle never truncated and its
+                         overflow squeezed the header's round buttons out of shape. The pill's
+                         name is capped for the same reason. -->
+                    <Grid HorizontalOptions="Start">
                         <Label x:Name="SubtitleLabel"
                                Text="What would you like to know?"
                                FontFamily="Quicksand"
@@ -102,13 +108,32 @@
                                Opacity="0.85"
                                LineBreakMode="TailTruncation"
                                VerticalOptions="Center"/>
-                        <Image x:Name="SwitchChevron"
-                               Grid.Column="1"
-                               Source="icon_chevron_down_white.svg"
-                               WidthRequest="12" HeightRequest="12"
-                               Opacity="0.85"
-                               VerticalOptions="Center"
-                               IsVisible="False"/>
+                        <HorizontalStackLayout x:Name="MemberPill"
+                                               IsVisible="False"
+                                               Spacing="5"
+                                               VerticalOptions="Center">
+                            <Label Text="About"
+                                   FontFamily="Quicksand"
+                                   FontSize="12"
+                                   TextColor="{StaticResource White}"
+                                   Opacity="0.85"
+                                   VerticalOptions="Center"/>
+                            <controls:MemberAvatar x:Name="PillAvatar"
+                                                   BoxWidth="16"
+                                                   VerticalOptions="Center"/>
+                            <Label x:Name="PillName"
+                                   FontFamily="QuicksandSemiBold"
+                                   FontSize="12"
+                                   TextColor="{StaticResource White}"
+                                   LineBreakMode="TailTruncation"
+                                   MaximumWidthRequest="160"
+                                   VerticalOptions="Center"/>
+                            <Image x:Name="SwitchChevron"
+                                   Source="icon_chevron_down_white.svg"
+                                   WidthRequest="12" HeightRequest="12"
+                                   VerticalOptions="Center"
+                                   IsVisible="False"/>
+                        </HorizontalStackLayout>
                     </Grid>
                 </VerticalStackLayout>
 
@@ -153,10 +178,11 @@
                        Style="{StaticResource Body2}"
                        TextColor="{StaticResource BodyText}"
                        HorizontalTextAlignment="Center"/>
-                <Button Text="Try again"
-                        Style="{StaticResource SecondaryOutlineButton}"
-                        HorizontalOptions="Center"
-                        Clicked="OnRetryClicked"/>
+                <controls:AppButton Text="Try again"
+                                    HorizontalOptions="Center"
+                                    Clicked="OnRetryClicked"
+                                    Tone="Secondary"
+                                    Size="L"/>
             </VerticalStackLayout>
 
             <!-- "Who do you want to chat about?" — asked by the bot, in the conversation area,
@@ -212,15 +238,62 @@
                          row below (SuggestionsPanel) rather than in here: they have to survive
                          the first send long enough to be tappable while a reply is in flight,
                          and an EmptyView is torn down the instant the first turn lands. -->
+                    <!-- The greeting a new conversation opens on: the bot springs in, then stays
+                         alive while the conversation is empty — floating over a soft shadow, a
+                         heartbeat sweeping its screen, its antenna pulsing (PlayGreeting) — says
+                         hello by name, and offers one thing it can do, a different one each
+                         conversation (ChatFunFacts). The bot is layered for that: the body is
+                         icon_chatbot.svg without its antenna tip and trace, which are drawn on top
+                         at the same places (72 of 240, so every figure below is the SVG's × 0.3). -->
                     <CollectionView.EmptyView>
-                        <VerticalStackLayout Padding="20,60,20,20" Spacing="8">
-                            <Label Text="I'm here to help"
+                        <VerticalStackLayout Padding="20,44,20,20" Spacing="12">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="2" HorizontalOptions="Center">
+                                <Grid x:Name="GreetingBot"
+                                      WidthRequest="72" HeightRequest="72"
+                                      Opacity="0"
+                                      Scale="0.4"
+                                      AnchorY="1">
+                                    <Image Source="icon_chatbot_body.svg"
+                                           WidthRequest="72" HeightRequest="72"/>
+                                    <Ellipse x:Name="AntennaHalo"
+                                             Fill="#36C09B"
+                                             WidthRequest="4.8" HeightRequest="4.8"
+                                             HorizontalOptions="Start" VerticalOptions="Start"
+                                             Margin="33.6,7.2,0,0"
+                                             Opacity="0"/>
+                                    <Ellipse Fill="#36C09B"
+                                             WidthRequest="4.8" HeightRequest="4.8"
+                                             HorizontalOptions="Start" VerticalOptions="Start"
+                                             Margin="33.6,7.2,0,0"/>
+                                    <controls:EcgTraceView x:Name="GreetingTrace"
+                                                           WidthRequest="34.8" HeightRequest="21.6"
+                                                           HorizontalOptions="Start" VerticalOptions="Start"
+                                                           Margin="18.6,28.2,0,0"/>
+                                </Grid>
+                                <Ellipse x:Name="GreetingShadow"
+                                         Grid.Row="1"
+                                         Fill="#174E86"
+                                         Opacity="0"
+                                         WidthRequest="44" HeightRequest="6"
+                                         HorizontalOptions="Center"/>
+                            </Grid>
+                            <Label x:Name="GreetingTitle"
+                                   Text="I'm here to help"
                                    Style="{StaticResource Heading3}"
                                    HorizontalTextAlignment="Center"/>
-                            <Label Text="Ask how they've been sleeping and moving, what's behind an alert, or for a look at their journal. I can switch alerts on or off and set alarms for you, too."
-                                   Style="{StaticResource Body2}"
-                                   TextColor="{StaticResource BodyText}"
-                                   HorizontalTextAlignment="Center"/>
+                            <Border x:Name="FunFactCard"
+                                    BackgroundColor="{StaticResource White}"
+                                    StrokeThickness="0"
+                                    Padding="14,10"
+                                    Opacity="0">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="12"/>
+                                </Border.StrokeShape>
+                                <Label x:Name="FunFactLabel"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource BodyText}"
+                                       LineBreakMode="WordWrap"/>
+                            </Border>
                         </VerticalStackLayout>
                     </CollectionView.EmptyView>
 
@@ -309,7 +382,7 @@
                                                         BackgroundColor="{StaticResource SelectedOptionBackground}"
                                                         SemanticProperties.Description="Previous chart">
                                                     <Border.StrokeShape>
-                                                        <RoundRectangle CornerRadius="99"/>
+                                                        <RoundRectangle CornerRadius="10"/>
                                                     </Border.StrokeShape>
                                                     <Border.GestureRecognizers>
                                                         <TapGestureRecognizer Tapped="OnChartPrevTapped"/>
@@ -331,7 +404,7 @@
                                                         BackgroundColor="{StaticResource SelectedOptionBackground}"
                                                         SemanticProperties.Description="Next chart">
                                                     <Border.StrokeShape>
-                                                        <RoundRectangle CornerRadius="99"/>
+                                                        <RoundRectangle CornerRadius="10"/>
                                                     </Border.StrokeShape>
                                                     <Border.GestureRecognizers>
                                                         <TapGestureRecognizer Tapped="OnChartNextTapped"/>
@@ -541,13 +614,23 @@
             <!-- Question chips, shown until the caregiver's first message of the session: what
                  this assistant can be asked, in its own words, tappable. Deterministic server
                  copy (no model call), so they appear instantly with the sheet. A horizontal
-                 scroller rather than a wrap panel — same pill language as FilterChipBar, which
-                 this deliberately mirrors rather than generalises, since that control is
-                 enum-typed to AlertFilter. -->
-            <ScrollView x:Name="SuggestionsPanel" Grid.Row="2" Orientation="Horizontal"
-                        HorizontalScrollBarVisibility="Never" Margin="0,0,0,4" IsVisible="False">
-                <HorizontalStackLayout x:Name="SuggestionsRow" Padding="16,4" Spacing="9"/>
-            </ScrollView>
+                 scroller rather than a wrap panel — same pill language as the Alerts filter
+                 sheet's chips (AlertFilterSheetPage), which this deliberately mirrors rather than
+                 shares, since those are built for its four fixed questions. -->
+            <!-- Stacked, three at most, every question readable in full: a sideways row showed
+                 one and a half of six and hid the rest behind a swipe nobody was told about.
+                 The caption names where the questions came from when they are the caregiver's
+                 own recent ones (ShowSuggestions). -->
+            <VerticalStackLayout x:Name="SuggestionsPanel" Grid.Row="2" Padding="16,4" Spacing="8"
+                                 Margin="0,0,0,4" IsVisible="False">
+                <Label x:Name="SuggestionsCaption"
+                       Text="Recently you asked"
+                       Style="{StaticResource Body2}"
+                       FontSize="12"
+                       TextColor="{StaticResource MutedText}"
+                       IsVisible="False"/>
+                <VerticalStackLayout x:Name="SuggestionsRow" Spacing="8"/>
+            </VerticalStackLayout>
 
             <!-- Pinned input bar. SendButton is a sibling of the Border, not a child of it —
                  Border clips its content to StrokeShape regardless of how much padding surrounds
@@ -671,13 +754,10 @@
                  control — and still the only one here — without out-shouting what it follows. -->
             <Grid x:Name="ContinuePanel" Grid.Row="3" Margin="16,6,16,14" IsVisible="False">
                 <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
-                    <Button Text="Continue this conversation"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            FontSize="14"
-                            HeightRequest="40"
-                            CornerRadius="20"
-                            Padding="20,0"
-                            Clicked="OnContinueClicked"/>
+                    <controls:AppButton Text="Continue this conversation"
+                                        Clicked="OnContinueClicked"
+                                        Tone="Secondary"
+                                        Size="M"/>
                     <!-- Beside Continue, not instead of it: a conversation worth keeping a copy
                          of is usually one the caregiver is about to take somewhere, and the two
                          are the only things there is to do with a finished thread. The app's one

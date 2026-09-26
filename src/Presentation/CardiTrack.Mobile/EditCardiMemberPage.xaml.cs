@@ -71,6 +71,7 @@ public partial class EditCardiMemberPage : ContentPage
     public EditCardiMemberPage(ICardiTrackApiClient api, IPopupService popups, IProfilePhotoTranscoder photoTranscoder)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _photoTranscoder = photoTranscoder;

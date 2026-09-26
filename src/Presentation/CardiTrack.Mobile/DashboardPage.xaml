@@ -46,16 +46,9 @@
                        Style="{StaticResource Body2}"
                        TextColor="{StaticResource HeadingText}"
                        VerticalOptions="Center"/>
-                <Button Grid.Column="1"
-                        Text="✕"
-                        FontSize="14"
-                        TextColor="{StaticResource BodyText}"
-                        BackgroundColor="Transparent"
-                        Padding="6,0"
-                        MinimumWidthRequest="32"
-                        MinimumHeightRequest="32"
-                        VerticalOptions="Center"
-                        Clicked="OnDismissVerifyEmailClicked"/>
+                <controls:DismissButton Grid.Column="1"
+                                        VerticalOptions="Center"
+                                        Clicked="OnDismissVerifyEmailClicked"/>
             </Grid>
         </Border>
 
@@ -100,10 +93,11 @@
                                Style="{StaticResource Body2}"
                                TextColor="{StaticResource BodyText}"
                                HorizontalTextAlignment="Center"/>
-                        <Button Text="Try again"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                HorizontalOptions="Center"
-                                Clicked="OnRefreshClicked"/>
+                        <controls:AppButton Text="Try again"
+                                            HorizontalOptions="Center"
+                                            Clicked="OnRefreshClicked"
+                                            Tone="Secondary"
+                                            Size="L"/>
                     </VerticalStackLayout>
 
                     <!-- ── No CardiMember yet ── -->
@@ -118,10 +112,11 @@
                                Style="{StaticResource Body2}"
                                TextColor="{StaticResource BodyText}"
                                HorizontalTextAlignment="Center"/>
-                        <Button Text="Add CardiMember"
-                                Style="{StaticResource AuthGradientButton}"
-                                HorizontalOptions="Center"
-                                Clicked="OnAddMemberClicked"/>
+                        <controls:AppButton Text="Add CardiMember"
+                                            HorizontalOptions="Center"
+                                            Clicked="OnAddMemberClicked"
+                                            Tone="Primary"
+                                            Size="L"/>
                     </VerticalStackLayout>
 
                     <!-- ── Loaded content ── -->
@@ -229,70 +224,9 @@
                         </Border>
 
                         <!-- "Complete the picture", below the members and their alerts: it loads
-                             last, and above them it pushed every card down when it arrived.
-                             Every open item: a sideways row, each item a little
-                             narrower than the card so the next one shows at the edge and says the
-                             row scrolls, and a count on the title so "there are others" is said
-                             before anybody swipes. One item fills the card. The horizontal padding
-                             lives on the heading and the row's content rather than on the Border, as
-                             on the Recent Alerts card: Android clips a Border's content to its padded
-                             area, and the row has to slide out under the rounded edge. -->
-                        <Border x:Name="CompleteThePictureCard"
-                                IsVisible="False"
-                                Style="{StaticResource ElevatedCard}"
-                                Padding="0,14,0,17">
-                            <VerticalStackLayout Spacing="12">
-                                <Grid x:Name="NudgeHeader"
-                                      ColumnDefinitions="Auto,Auto,*,Auto"
-                                      Margin="14,0,13,0">
-                                    <Label Grid.Column="0"
-                                           Text="Complete the picture"
-                                           Style="{StaticResource DashboardSectionTitle}"
-                                           VerticalOptions="Center"/>
-                                    <!-- The Key Metrics section's count badge, so a count on a
-                                         section title reads the same everywhere on the screen. -->
-                                    <Border x:Name="NudgeCountBadge"
-                                            Grid.Column="1"
-                                            WidthRequest="20" HeightRequest="20"
-                                            Margin="8,0,0,0"
-                                            Padding="0"
-                                            StrokeThickness="0"
-                                            BackgroundColor="{StaticResource CountBadgeNeutral}"
-                                            VerticalOptions="Center"
-                                            IsVisible="False">
-                                        <Border.StrokeShape>
-                                            <RoundRectangle CornerRadius="10"/>
-                                        </Border.StrokeShape>
-                                        <Label x:Name="NudgeCountLabel"
-                                               FontFamily="QuicksandSemiBold"
-                                               FontSize="11"
-                                               TextColor="{StaticResource White}"
-                                               HorizontalTextAlignment="Center"
-                                               VerticalTextAlignment="Center"/>
-                                    </Border>
-                                    <Label x:Name="CompleteThePictureLink"
-                                           Grid.Column="3"
-                                           Text="See all"
-                                           Style="{StaticResource SectionLink}">
-                                        <Label.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnSeeAllNudgesTapped"/>
-                                        </Label.GestureRecognizers>
-                                    </Label>
-                                </Grid>
-                                <!-- One line per member with set-up left to do: a ring filled to
-                                     how much is done, "Pop's profile 3 of 5", and the next step,
-                                     which a tap opens (SetupProgressLine). The set-up reminders
-                                     the rings stand for leave the rows below. -->
-                                <VerticalStackLayout x:Name="SetupRingList" Spacing="8" Margin="14,0,13,0" IsVisible="False"/>
-                                <ContentView x:Name="SingleNudgeHost" IsVisible="False" Margin="14,0,13,0"/>
-                                <ScrollView x:Name="NudgeScroller"
-                                            Orientation="Horizontal"
-                                            HorizontalScrollBarVisibility="Never"
-                                            IsVisible="False">
-                                    <HorizontalStackLayout x:Name="NudgeList" Spacing="10" Padding="14,0,13,0"/>
-                                </ScrollView>
-                            </VerticalStackLayout>
-                        </Border>
+                             last, and above them it pushed every card down when it arrived. The
+                             card itself is shared with Alerts — see CompleteThePictureCard. -->
+                        <controls:CompleteThePictureCard x:Name="CompleteThePicture"/>
 
                     </VerticalStackLayout>
                 </Grid>

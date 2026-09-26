@@ -78,9 +78,10 @@
                 <Label x:Name="ErrorDetailLabel"
                        Style="{StaticResource Body2}"
                        HorizontalTextAlignment="Center"/>
-                <Button Text="Try again"
-                        Style="{StaticResource SecondaryOutlineButton}"
-                        Clicked="OnRetryClicked"/>
+                <controls:AppButton Text="Try again"
+                                    Clicked="OnRetryClicked"
+                                    Tone="Secondary"
+                                    Size="L"/>
             </VerticalStackLayout>
 
             <RefreshView x:Name="Refresher"
@@ -146,12 +147,12 @@
                                                 MaxLength="2000"
                                                 TextChanged="OnOfferChanged"/>
                                     </Border>
-                                    <Button x:Name="OfferSaveButton"
-                                            Text="Save"
-                                            Style="{StaticResource PrimaryGradientButton}"
-                                            HeightRequest="40"
-                                            IsEnabled="False"
-                                            Clicked="OnOfferSaveClicked"/>
+                                    <controls:AppButton x:Name="OfferSaveButton"
+                                                        Text="Save"
+                                                        IsEnabled="False"
+                                                        Clicked="OnOfferSaveClicked"
+                                                        Tone="Primary"
+                                                        Size="M"/>
                                 </VerticalStackLayout>
                             </Border>
 

@@ -183,10 +183,11 @@
                     <Label Text="Couldn't load your notification preferences."
                            Style="{StaticResource Body1SemiBoldDark}"
                            HorizontalTextAlignment="Center"/>
-                    <Button Text="Try again"
-                            Style="{StaticResource PrimaryGradientButton}"
-                            HorizontalOptions="Center"
-                            Clicked="OnRetryClicked"/>
+                    <controls:AppButton Text="Try again"
+                                        HorizontalOptions="Center"
+                                        Clicked="OnRetryClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>

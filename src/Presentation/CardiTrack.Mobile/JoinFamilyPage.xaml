@@ -62,10 +62,11 @@
                                    Completed="OnAskCompleted"
                                    SemanticProperties.Description="Family ID or invitation link"/>
                         </Border>
-                        <Button x:Name="AskButton"
-                                Text="Ask to join"
-                                Style="{StaticResource PrimaryGradientButton}"
-                                Clicked="OnAskClicked"/>
+                        <controls:AppButton x:Name="AskButton"
+                                            Text="Ask to join"
+                                            Clicked="OnAskClicked"
+                                            Tone="Primary"
+                                            Size="L"/>
                     </VerticalStackLayout>
                 </Border>
 

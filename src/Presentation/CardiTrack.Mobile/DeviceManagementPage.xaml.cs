@@ -46,6 +46,7 @@ public partial class DeviceManagementPage : ContentPage
     public DeviceManagementPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _feedback = new RefreshFeedback(SavedBanner, Updating);

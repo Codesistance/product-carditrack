@@ -1,3 +1,4 @@
+using CardiTrack.Mobile.Controls;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
@@ -199,10 +200,11 @@ public partial class CaregiverInvitesPage : ContentPage
 
         if (FamilyCopy.IsLive(invite))
         {
-            var revoke = new Button
+            var revoke = new AppButton
             {
                 Text = "Cancel this invitation",
-                Style = Named("SecondaryOutlineButton"),
+                Tone = AppButtonTone.Secondary,
+                Size = AppButtonSize.M,
             };
             revoke.Clicked += (_, _) => _ = RevokeAsync(invite);
             stack.Add(revoke);

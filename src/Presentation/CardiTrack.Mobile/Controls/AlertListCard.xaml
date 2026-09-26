@@ -139,14 +139,14 @@
 
                     <Border x:Name="CallButton"
                             Grid.Column="2"
-                            WidthRequest="28" HeightRequest="28"
+                            WidthRequest="32" HeightRequest="32"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource AlertActionBackground}"
                             VerticalOptions="Center"
                             SemanticProperties.Description="Call the CardiMember"
                             SemanticProperties.Hint="Dials their own phone, not the emergency contact">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="16"/>
+                            <RoundRectangle CornerRadius="10"/>
                         </Border.StrokeShape>
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnCallTapped"/>
@@ -163,7 +163,7 @@
                          tap can say why (the dim-not-hide pattern from issue #67). -->
                     <Border x:Name="SosButton"
                             Grid.Column="3"
-                            WidthRequest="28" HeightRequest="28"
+                            WidthRequest="32" HeightRequest="32"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource QuickActionTintRed}"
                             VerticalOptions="Center"
@@ -171,7 +171,7 @@
                             SemanticProperties.Description="SOS: call emergency contact"
                             SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="16"/>
+                            <RoundRectangle CornerRadius="10"/>
                         </Border.StrokeShape>
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnSosTapped"/>
@@ -181,12 +181,12 @@
 
                     <Border x:Name="AcknowledgeButton"
                             Grid.Column="4"
-                            WidthRequest="28" HeightRequest="28"
+                            WidthRequest="32" HeightRequest="32"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource AlertActionBackground}"
                             VerticalOptions="Center">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="16"/>
+                            <RoundRectangle CornerRadius="10"/>
                         </Border.StrokeShape>
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnAcknowledgeTapped"/>
@@ -206,13 +206,13 @@
                     <Border x:Name="DeleteButton"
                             Grid.Column="5"
                             HorizontalOptions="End"
-                            WidthRequest="28" HeightRequest="28"
+                            WidthRequest="32" HeightRequest="32"
                             StrokeThickness="0"
-                            BackgroundColor="{StaticResource AlertActionBackground}"
+                            BackgroundColor="{StaticResource ActionTintRedBackground}"
                             VerticalOptions="Center"
                             SemanticProperties.Description="Remove this alert">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="16"/>
+                            <RoundRectangle CornerRadius="10"/>
                         </Border.StrokeShape>
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnDeleteTapped"/>

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.MedicalEntryEditPopupPage"
              BackgroundColor="Transparent">
 
@@ -37,7 +38,7 @@
                 <Label x:Name="DescriptionLabel"
                        Margin="0,6,0,0"
                        Style="{StaticResource Body2}"
-                       HorizontalTextAlignment="Center"
+                       HorizontalTextAlignment="Start"
                        LineBreakMode="WordWrap"/>
 
                 <!-- The four kinds as a segmented row, the set one filled. A row rather than a
@@ -72,17 +73,19 @@
                 </VerticalStackLayout>
 
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,20,0,0">
-                    <Button Grid.Column="0"
-                            Text="Cancel"
-                            Style="{StaticResource ActionButtonDark}"
-                            ImageSource="icon_btn_close.svg"
-                            Clicked="OnCancelClicked"/>
-                    <Button x:Name="SaveBtn"
-                            Grid.Column="1"
-                            Text="Save"
-                            Style="{StaticResource ActionButtonBlue}"
-                            ImageSource="icon_btn_save.svg"
-                            Clicked="OnSaveClicked"/>
+                    <controls:AppButton Grid.Column="0"
+                                        Text="Cancel"
+                                        Icon="icon_btn_close.svg"
+                                        Clicked="OnCancelClicked"
+                                        Tone="Neutral"
+                                        Size="M"/>
+                    <controls:AppButton x:Name="SaveBtn"
+                                        Grid.Column="1"
+                                        Text="Save"
+                                        Icon="icon_btn_save.svg"
+                                        Clicked="OnSaveClicked"
+                                        Tone="Primary"
+                                        Size="M"/>
                 </Grid>
             </VerticalStackLayout>
         </Border>

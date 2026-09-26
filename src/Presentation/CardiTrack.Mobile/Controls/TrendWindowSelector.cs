@@ -10,7 +10,7 @@ namespace CardiTrack.Mobile.Controls;
 /// axis, not independent filters, and only one can ever be on.
 /// </summary>
 /// <remarks>
-/// Built in code rather than XAML, like <see cref="FilterChipBar"/> — it is the same segment three
+/// Built in code rather than XAML, like <see cref="AlertFilterSheetPage"/>'s chips — it is the same segment three
 /// times over, and the selected one swaps its whole fill.
 /// </remarks>
 public sealed class TrendWindowSelector : ContentView
@@ -55,7 +55,7 @@ public sealed class TrendWindowSelector : ContentView
                 HeightRequest = SegmentHeight,
                 StrokeThickness = 0,
                 Padding = 0,
-                StrokeShape = new RoundRectangle { CornerRadius = 11 },
+                StrokeShape = new RoundRectangle { CornerRadius = 10 },
                 Content = text,
             };
             SemanticProperties.SetDescription(segment, $"Show the last {days} days");
@@ -70,7 +70,7 @@ public sealed class TrendWindowSelector : ContentView
             Padding = 4,
             StrokeThickness = 0,
             BackgroundColor = MetricStatus.Resource("InputBackground", Colors.WhiteSmoke),
-            StrokeShape = new RoundRectangle { CornerRadius = 15 },
+            StrokeShape = new RoundRectangle { CornerRadius = 14 },
             Content = row,
         };
 

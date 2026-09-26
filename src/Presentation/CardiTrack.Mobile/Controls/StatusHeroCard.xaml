@@ -20,12 +20,12 @@
             <TapGestureRecognizer Tapped="OnCardTapped"/>
         </Grid.GestureRecognizers>
 
-        <!-- MinimumHeightRequest, not a fixed height: the row is 42 tall whether or not the Q&amp;A
-             cluster (42) is showing beside the 36 buttons, so the card doesn't jolt when a
+        <!-- MinimumHeightRequest, not a fixed height: the row is 46 tall whether or not the Q&amp;A
+             cluster (46) is showing beside the 40 buttons, so the card doesn't jolt when a
              question arrives — but it still grows if a larger system font needs it to. -->
         <Grid Grid.Row="0" Grid.Column="1"
               ColumnDefinitions="*,Auto" ColumnSpacing="8"
-              MinimumHeightRequest="42">
+              MinimumHeightRequest="46">
             <!-- The name is the title; what kind of person they are goes under it. Splitting
                  "Dad, 66" this way is what frees the row below: the avatar can come up beside
                  the name, and the summary underneath gets the card's whole width instead of
@@ -76,14 +76,14 @@
                 <!-- Pin to the top of the dashboard: only while several members stack, since one
                      card has nowhere else to go (SetPinning). Filled blue while pinned. -->
                 <Border x:Name="PinButton"
-                        WidthRequest="36" HeightRequest="36"
+                        WidthRequest="40" HeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource SelectedOptionBackground}"
                         VerticalOptions="Center"
                         IsVisible="False"
                         SemanticProperties.Description="Pin to the top">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="18"/>
+                        <RoundRectangle CornerRadius="10"/>
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnPinTapped"/>
@@ -101,7 +101,7 @@
                      below, and the glyph swaps between its grey and coloured assets rather than
                      being tinted — MAUI's Image has no tint of its own. -->
                 <Grid x:Name="DaybookCluster"
-                      WidthRequest="36" HeightRequest="36"
+                      WidthRequest="40" HeightRequest="40"
                       VerticalOptions="Center"
                       SemanticProperties.Description="CardiJournal"
                       SemanticProperties.Hint="Opens this CardiMember's CardiJournal">
@@ -109,13 +109,13 @@
                         <TapGestureRecognizer Tapped="OnDaybookTapped"/>
                     </Grid.GestureRecognizers>
 
-                    <Border WidthRequest="36" HeightRequest="36"
+                    <Border WidthRequest="40" HeightRequest="40"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource SelectedOptionBackground}"
                             HorizontalOptions="Center" VerticalOptions="Center"
                             InputTransparent="True">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="18"/>
+                            <RoundRectangle CornerRadius="10"/>
                         </Border.StrokeShape>
                         <Image x:Name="DaybookIcon"
                                Source="icon_tab_journal.svg"
@@ -125,29 +125,29 @@
                 </Grid>
 
                 <!-- Beside the Daybook button, only while a question is waiting on this family (see
-                     Apply/ApplyPendingQuestionnaire). Button and count badge share one 42x42 cell so
+                     Apply/ApplyPendingQuestionnaire). Button and count badge share one 46x46 cell so
                      the badge can sit proud of the button's top-right corner without any of it
                      crossing this control's own top edge — a superscript hung outside the layout
                      with a negative translation was drawn half-cut, because the row it sits in is
                      the first thing in the card and there is nothing above it to overflow into.
-                     The -3 margin is that 42 paying for itself: the cell is 3 wider than the 36
+                     The -3 margin is that 46 paying for itself: the cell is 3 wider than the 40
                      face on each side, so without it this button's face would sit 11 from its
                      neighbours where every other pair sits 8. The badge has 5 of the gap left to
                      hang into, which is more than it uses. -->
                 <Grid x:Name="QaCluster"
-                      WidthRequest="42" HeightRequest="42"
+                      WidthRequest="46" HeightRequest="46"
                       Margin="-3,0"
                       VerticalOptions="Center"
                       IsVisible="False">
                     <Border x:Name="QaBorder"
-                            WidthRequest="36" HeightRequest="36"
+                            WidthRequest="40" HeightRequest="40"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource SelectedOptionBackground}"
                             HorizontalOptions="Center" VerticalOptions="Center"
                             SemanticProperties.Description="Questions"
                             SemanticProperties.Hint="Opens the question waiting on this CardiMember">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="18"/>
+                            <RoundRectangle CornerRadius="10"/>
                         </Border.StrokeShape>
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnQaTapped"/>
@@ -181,13 +181,13 @@
 
                 <!-- Alerts, pulsing while this CardiMember has one nobody has answered yet (see
                      ApplyOpenAlerts). Same construction and same bounds as AdviseCluster below —
-                     the ring blooms over the button's own 36 rather than behind it, because a
-                     36 face is opaque and there is a neighbour on either side with nothing to
+                     the ring blooms over the button's own 40 rather than behind it, because a
+                     40 face is opaque and there is a neighbour on either side with nothing to
                      spare. Unlike Advise and Q&amp;A this button is always here: it is the way to
                      this member's alerts whether or not any are open, so only the ring comes and
                      goes. A tap opens the list filtered to this member. -->
                 <Grid x:Name="AlertsCluster"
-                      WidthRequest="36" HeightRequest="36"
+                      WidthRequest="40" HeightRequest="40"
                       VerticalOptions="Center"
                       SemanticProperties.Description="Alerts"
                       SemanticProperties.Hint="Opens the alerts list for this CardiMember">
@@ -195,13 +195,13 @@
                         <TapGestureRecognizer Tapped="OnAlertsTapped"/>
                     </Grid.GestureRecognizers>
 
-                    <Border WidthRequest="36" HeightRequest="36"
+                    <Border WidthRequest="40" HeightRequest="40"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource SelectedOptionBackground}"
                             HorizontalOptions="Center" VerticalOptions="Center"
                             InputTransparent="True">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="18"/>
+                            <RoundRectangle CornerRadius="10"/>
                         </Border.StrokeShape>
                         <Image x:Name="AlertsIcon"
                                Source="icon_tab_alerts.svg"
@@ -217,7 +217,7 @@
                      being watched" at the size of the other buttons, and a tap opens the full
                      no-device card with the Connect button for anybody ready to act on it. -->
                 <Border x:Name="NoDeviceButton"
-                        WidthRequest="36" HeightRequest="36"
+                        WidthRequest="40" HeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource PillRedBackground}"
                         VerticalOptions="Center"
@@ -225,7 +225,7 @@
                         SemanticProperties.Description="No device connected"
                         SemanticProperties.Hint="Shows how to connect this CardiMember's device">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="18"/>
+                        <RoundRectangle CornerRadius="10"/>
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnNoDeviceTapped"/>
@@ -238,14 +238,14 @@
                 <!-- Advise: last in the row, only while this member has a fresh "Something to try"
                      suggestion waiting (DashboardResponse.HasAdvise). It was a corner badge on the avatar until
                      now — a dot that drew the eye without saying what at, and with nothing to tap.
-                     As a button it says both: the same 36 face and 20 glyph as CardiJournal and Alerts
+                     As a button it says both: the same 40 face and 20 glyph as CardiJournal and Alerts
                      beside it, and a tap that lands on the suggestion itself.
 
-                     The cell is 36, the face's own size — there is no badge to hang, so it needs
+                     The cell is 40, the face's own size — there is no badge to hang, so it needs
                      no margin of its own to sit 8 from Alerts and flush with the card's right
                      edge. -->
                 <Grid x:Name="AdviseCluster"
-                      WidthRequest="36" HeightRequest="36"
+                      WidthRequest="40" HeightRequest="40"
                       VerticalOptions="Center"
                       IsVisible="False"
                       SemanticProperties.Description="Something to try"
@@ -254,13 +254,13 @@
                         <TapGestureRecognizer Tapped="OnAdviseTapped"/>
                     </Grid.GestureRecognizers>
 
-                    <Border WidthRequest="36" HeightRequest="36"
+                    <Border WidthRequest="40" HeightRequest="40"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource SelectedOptionBackground}"
                             HorizontalOptions="Center" VerticalOptions="Center"
                             InputTransparent="True">
                         <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="18"/>
+                            <RoundRectangle CornerRadius="10"/>
                         </Border.StrokeShape>
                         <Image x:Name="AdviseIcon"
                                Source="icon_advise.svg"

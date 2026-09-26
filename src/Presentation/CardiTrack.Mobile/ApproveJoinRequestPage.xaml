@@ -60,10 +60,11 @@
                     <Label x:Name="ErrorDetailLabel"
                            Style="{StaticResource Body2}"
                            HorizontalTextAlignment="Center"/>
-                    <Button Text="Try again"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            HorizontalOptions="Center"
-                            Clicked="OnRetryClicked"/>
+                    <controls:AppButton Text="Try again"
+                                        HorizontalOptions="Center"
+                                        Clicked="OnRetryClicked"
+                                        Tone="Secondary"
+                                        Size="L"/>
                 </VerticalStackLayout>
 
                 <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
@@ -139,14 +140,16 @@
                              Spacing="10"
                              IsVisible="False"
                              BackgroundColor="{StaticResource PageGround}">
-            <Button x:Name="ApproveButton"
-                    Text="Let them in"
-                    Style="{StaticResource PrimaryGradientButton}"
-                    Clicked="OnApproveClicked"/>
-            <Button x:Name="DeclineButton"
-                    Text="Decline"
-                    Style="{StaticResource SecondaryOutlineButton}"
-                    Clicked="OnDeclineClicked"/>
+            <controls:AppButton x:Name="ApproveButton"
+                                Text="Let them in"
+                                Clicked="OnApproveClicked"
+                                Tone="Primary"
+                                Size="L"/>
+            <controls:AppButton x:Name="DeclineButton"
+                                Text="Decline"
+                                Clicked="OnDeclineClicked"
+                                Tone="Secondary"
+                                Size="L"/>
         </VerticalStackLayout>
     </Grid>
 </ContentPage>

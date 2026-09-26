@@ -165,6 +165,7 @@ public partial class CardiMemberDetailPage : ContentPage
         IGeneratedContentSchedule schedule)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _questionValidity = questionValidity;

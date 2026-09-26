@@ -277,80 +277,9 @@
          NAMED BUTTON STYLES
          ════════════════════════════════════════════ -->
 
-    <!-- 16, not 18: at 18 the label was the largest bold text on most screens that carry one
-         of these, outweighing the Heading3 titles above it. Every gradient button takes its
-         size from here — no per-instance FontSize — so they all read as one control. -->
-    <Style x:Key="PrimaryGradientButton" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource GradientButtonBrush}"/>
-        <Setter Property="TextColor" Value="{StaticResource White}"/>
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="16"/>
-        <Setter Property="CornerRadius" Value="25"/>
-        <Setter Property="HeightRequest" Value="52"/>
-        <Setter Property="Padding" Value="24,0"/>
-        <Setter Property="BorderWidth" Value="0"/>
-    </Style>
-
-    <!-- Full gradient by default; the light gradient signals "not actionable".
-         Disabled buttons dim via the trigger; pages that keep the button enabled
-         while a form is incomplete (so taps can surface validation errors) swap
-         the Background locally instead, which overrides the trigger. -->
-    <Style x:Key="AuthGradientButton" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource GradientButtonBrush}"/>
-        <Setter Property="TextColor" Value="{StaticResource White}"/>
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="16"/>
-        <Setter Property="CornerRadius" Value="25"/>
-        <Setter Property="HeightRequest" Value="52"/>
-        <Setter Property="Padding" Value="24,0"/>
-        <Setter Property="BorderWidth" Value="0"/>
-        <Style.Triggers>
-            <Trigger TargetType="Button" Property="IsEnabled" Value="False">
-                <Setter Property="Background" Value="{StaticResource GradientButtonLightBrush}"/>
-            </Trigger>
-        </Style.Triggers>
-    </Style>
-
-    <Style x:Key="SecondaryOutlineButton" TargetType="Button">
-        <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
-        <Setter Property="TextColor" Value="{StaticResource Primary}"/>
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="16"/>
-        <Setter Property="CornerRadius" Value="25"/>
-        <Setter Property="HeightRequest" Value="52"/>
-        <Setter Property="BorderColor" Value="{StaticResource PrimaryDark}"/>
-        <Setter Property="BorderWidth" Value="1"/>
-        <Setter Property="Padding" Value="24,0"/>
-    </Style>
-
-    <!-- The action on a card that is one of several. An outlined blue pill was the first try
-         and it was wrong twice over: at 52 high with 16px type it outweighed the sentence it
-         belonged to, and repeated down a stack of cards the border made every card look like a
-         form. This is the quick-action tint the dashboard already uses for a quiet blue action,
-         with no border at all — the tint is the affordance — at a corner that matches the card
-         around it rather than a page-footer pill. -->
-    <Style x:Key="CardActionButton" TargetType="Button">
-        <Setter Property="BackgroundColor" Value="{StaticResource QuickActionTint}"/>
-        <Setter Property="TextColor" Value="{StaticResource PrimaryDark}"/>
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="13"/>
-        <Setter Property="CornerRadius" Value="10"/>
-        <Setter Property="HeightRequest" Value="34"/>
-        <Setter Property="BorderWidth" Value="0"/>
-        <Setter Property="Padding" Value="14,0"/>
-    </Style>
-
-    <!-- The secondary button for an action that stops something: leaving, disconnecting,
-         ending. Same shape and weight as SecondaryOutlineButton — it is still the quieter of
-         two choices — but in the red of the banner that follows it, so the button and its
-         consequence look like one another. Not for ordinary secondaries ("Try again",
-         "Connect a device"): red everywhere is red nowhere. -->
-    <Style x:Key="DangerOutlineButton" TargetType="Button" BasedOn="{StaticResource SecondaryOutlineButton}">
-        <!-- DangerRed, not ErrorRed: this is 16px label text on white and has to clear 4.5:1,
-             which is the whole reason the darker token exists. ErrorRed is for fills and dots. -->
-        <Setter Property="TextColor" Value="{StaticResource DangerRed}"/>
-        <Setter Property="BorderColor" Value="{StaticResource DangerRed}"/>
-    </Style>
+    <!-- Buttons are one control, not styles: Controls/AppButton (six tones, three sizes). The
+         gradient, outline, danger-outline, card-action and popup action styles that stood
+         here were retired into it (2026-09-26 button audit). -->
 
     <Style x:Key="GoogleButton" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
@@ -410,83 +339,7 @@
         <Setter Property="TextDecorations" Value="Underline"/>
     </Style>
 
-    <!-- The quiet second action on a signed-out screen: resend, go back. It reads as the
-         links Forgot Password uses, but stays a Button so a screen reader still announces a
-         button and the target stays 44 points. Verify Email spelled these setters out
-         inline, which is how it drifted from the screens either side of it. -->
-    <!-- ── Action buttons ──
-         The app's compact button: 40 tall, 14pt, an icon and one word, corners at the card
-         radius. Replacing the 52-tall full-width pills in popups, dialogs and action rows, which
-         were the biggest thing on every screen they sat on. The colour is the meaning — see the
-         ActionBrush block in Colors.xaml — so a row of them reads at a glance: Cancel dark, the
-         step forward blue, Yes green, No and Delete red, Undo amber. Set side by side in a Grid
-         of equal columns, the way out on the left and the step forward on the right. The icon
-         goes in ImageSource (the icon_btn_* set, white; amber's is dark). -->
-    <Style x:Key="ActionButton" TargetType="Button">
-        <Setter Property="TextColor" Value="{StaticResource White}"/>
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="14"/>
-        <Setter Property="CornerRadius" Value="10"/>
-        <Setter Property="HeightRequest" Value="40"/>
-        <Setter Property="MinimumWidthRequest" Value="44"/>
-        <Setter Property="Padding" Value="12,0"/>
-        <Setter Property="BorderWidth" Value="0"/>
-        <Setter Property="ContentLayout" Value="Left,6"/>
-        <Setter Property="VisualStateManager.VisualStateGroups">
-            <VisualStateGroupList>
-                <VisualStateGroup x:Name="CommonStates">
-                    <VisualState x:Name="Normal"/>
-                    <VisualState x:Name="Pressed">
-                        <VisualState.Setters>
-                            <Setter Property="Opacity" Value="0.85"/>
-                        </VisualState.Setters>
-                    </VisualState>
-                    <VisualState x:Name="Disabled">
-                        <VisualState.Setters>
-                            <Setter Property="Opacity" Value="0.45"/>
-                        </VisualState.Setters>
-                    </VisualState>
-                </VisualStateGroup>
-            </VisualStateGroupList>
-        </Setter>
-    </Style>
-    <Style x:Key="ActionButtonBlue" TargetType="Button" BasedOn="{StaticResource ActionButton}">
-        <Setter Property="Background" Value="{StaticResource ActionBlueBrush}"/>
-    </Style>
-    <Style x:Key="ActionButtonGreen" TargetType="Button" BasedOn="{StaticResource ActionButton}">
-        <Setter Property="Background" Value="{StaticResource ActionGreenBrush}"/>
-    </Style>
-    <Style x:Key="ActionButtonRed" TargetType="Button" BasedOn="{StaticResource ActionButton}">
-        <Setter Property="Background" Value="{StaticResource ActionRedBrush}"/>
-    </Style>
-    <Style x:Key="ActionButtonDark" TargetType="Button" BasedOn="{StaticResource ActionButton}">
-        <Setter Property="Background" Value="{StaticResource ActionDarkBrush}"/>
-    </Style>
-    <Style x:Key="ActionButtonAmber" TargetType="Button" BasedOn="{StaticResource ActionButton}">
-        <Setter Property="Background" Value="{StaticResource ActionAmberBrush}"/>
-        <Setter Property="TextColor" Value="{StaticResource ActionAmberInk}"/>
-    </Style>
-
-    <Style x:Key="QuietActionLink" TargetType="Button">
-        <Setter Property="BackgroundColor" Value="Transparent"/>
-        <Setter Property="TextColor" Value="{StaticResource Primary}"/>
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="16"/>
-        <Setter Property="HeightRequest" Value="44"/>
-        <Setter Property="Padding" Value="12,8"/>
-        <Setter Property="BorderWidth" Value="0"/>
-        <Setter Property="HorizontalOptions" Value="Center"/>
-    </Style>
-
-    <Style x:Key="AuthActionLink" TargetType="Button" BasedOn="{StaticResource QuietActionLink}"/>
-
-    <!-- The same quiet link in the destructive red, for an irreversible action that should be
-         findable but never sit in the row of ordinary ones (Alert Details' "Remove this alert"). -->
-    <Style x:Key="DangerActionLink" TargetType="Button" BasedOn="{StaticResource QuietActionLink}">
-        <Setter Property="TextColor" Value="{StaticResource DangerRed}"/>
-    </Style>
-
-    <Style x:Key="DividerLine" TargetType="BoxView">
+<Style x:Key="DividerLine" TargetType="BoxView">
         <Setter Property="HeightRequest" Value="1"/>
         <Setter Property="BackgroundColor" Value="{StaticResource Divider}"/>
         <Setter Property="VerticalOptions" Value="Center"/>
@@ -510,22 +363,19 @@
          Tighter than a card, too — these are four controls in a row, not four surfaces, and the
          row reads better when they do not each claim a card's worth of height. Each tile brings
          its own BackgroundColor; only the emergency action wears red. -->
-    <!-- The icon-only member of the quick-action family: a page's own actions (Member Details'
-         alerts and edit, CardiJournal's export). Same tint and the same soft halo as the labelled
-         tiles above, so an action reads as an action wherever it sits; 12 rather than 18 because
-         a radius drawn for a 60-tall tile turns a 40 square into a circle, and these are chips,
-         not pills. One style, so the next page's action cannot invent a third shape. -->
-    <Style x:Key="IconActionChip" TargetType="Border">
+    <!-- A header's icon-only action: the Dashboard's bell, Member Details' bell and pencil,
+         Connected Devices' add, the Alerts filter. A white 40 square at the unified control
+         radius, no shadow, the whole square the tap target. One style, so the same slot cannot
+         read differently from one header to the next — it did, three ways, before the
+         2026-09-26 button audit. -->
+    <Style x:Key="HeaderActionSquare" TargetType="Border">
         <Setter Property="WidthRequest" Value="40"/>
         <Setter Property="HeightRequest" Value="40"/>
         <Setter Property="StrokeThickness" Value="0"/>
-        <Setter Property="BackgroundColor" Value="{StaticResource QuickActionTint}"/>
-        <Setter Property="VerticalOptions" Value="Center"/>
+        <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
+        <Setter Property="VerticalOptions" Value="Start"/>
         <Setter Property="StrokeShape">
-            <RoundRectangle CornerRadius="12"/>
-        </Setter>
-        <Setter Property="Shadow">
-            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.30" Radius="10" Offset="0,3"/>
+            <RoundRectangle CornerRadius="10"/>
         </Setter>
     </Style>
 

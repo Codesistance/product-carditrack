@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
+using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Members;
 using CardiTrack.Mobile.Core.Offline;
@@ -16,11 +17,11 @@ namespace CardiTrack.Mobile;
 /// handed the whole household's alerts to sift back through.
 /// </para>
 /// <para>
-/// That narrowing stays until the caregiver clears it on the chip, rather than lapsing on the next
-/// visit. It is deliberately not self-clearing: this screen is reached from a tab, a bell and a
-/// card, and a filter that quietly dropped itself somewhere between them would leave a caregiver
-/// unsure which set they were looking at. The chip is on screen for exactly as long as the filter
-/// is, and one tap ends both.
+/// That narrowing — like every part of the filter — stays until the caregiver clears it, rather
+/// than lapsing on the next visit. It is deliberately not self-clearing: this screen is reached
+/// from a tab, a bell and a card, and a filter that quietly dropped itself somewhere between them
+/// would leave a caregiver unsure which set they were looking at. The strip under the header is on
+/// screen for exactly as long as a filter is, and each of its pills ends its own part.
 /// </para>
 /// </remarks>
 [QueryProperty(nameof(FilterMemberId), "memberId")]
@@ -29,29 +30,16 @@ public partial class AlertsPage : ContentPage
 {
     /// <summary>
     /// Gap above the empty card, matching Figma. Two values because the card sits at the same
-    /// y in both frames while the chip row above it is only present in one.
+    /// y in both frames while the row above it (the filter strip, where Figma drew chips) is only
+    /// present in one.
     /// </summary>
     private const double EmptyTopWithoutChips = 182;
     private const double EmptyTopWithChips = 124;
 
-    /// <summary>
-    /// What the member chip says when the route narrowed the list but carried no name — a member
-    /// whose profile has none, or a deep link that omitted it.
-    /// </summary>
-    private const string UnnamedMemberChipLabel = "This CardiMember";
+    /// <summary>What the header says under the title while nothing is narrowing the list.</summary>
+    private const string DefaultSubtitle = "Everything that asked for your attention";
 
-    /// <summary>
-    /// The two halves this screen splits alerts into, as the <c>status</c> filter names them
-    /// (<c>AlertStatusFilter</c>): everything nobody has closed, and everything that is closed.
-    /// Together they are every alert, and no alert is in both — which is what the "View Archived
-    /// Alerts" / "Back to current alerts" toggle promises.
-    /// </summary>
-    private const string OpenStatus = OfflineReadDefaults.OpenAlertStatus;
-
-    private const string ArchivedStatus = "resolved";
-
-    /// <summary>The Unread chip: open, and not yet acknowledged. Narrower than <see cref="OpenStatus"/>.</summary>
-    private const string UnreadStatus = "new";
+    private const string ArchiveSubtitle = "Alerts whose episode is over";
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
@@ -72,9 +60,15 @@ public partial class AlertsPage : ContentPage
     private AlertListResponse? _lastData;
     private readonly HashSet<Guid> _pendingDeletes = [];
 
-    /// <summary>Which CardiMember the list is narrowed to, and the name the chip wears.</summary>
-    private Guid? _memberFilterId;
-    private string? _memberFilterName;
+    /// <summary>
+    /// What the list is narrowed to. Open alerts only outside the archive, whatever else is set:
+    /// every view here is of the <em>current</em> alerts, so a resolved one never shows both here
+    /// and under "View Archived Alerts" (see <see cref="AlertListFilter.ToQuery"/>).
+    /// </summary>
+    private AlertListFilter _filter = AlertListFilter.None;
+
+    /// <summary>Whom the sheet last offered — the fallback when a fresh read fails.</summary>
+    private IReadOnlyList<AlertFilterMember>? _members;
 
     /// <summary>
     /// Set by the query properties during navigation and spent on the next <c>OnAppearing</c>.
@@ -108,7 +102,7 @@ public partial class AlertsPage : ContentPage
     }
 
     /// <summary>
-    /// What the chip says. Only ever a label: the id above is what the query is built from, so a
+    /// What the strip says. Only ever a label: the id above is what the query is built from, so a
     /// missing or mangled name costs the chip its wording, never the filter its meaning.
     /// </summary>
     public string FilterMemberName
@@ -119,12 +113,12 @@ public partial class AlertsPage : ContentPage
     public AlertsPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _feedback = new RefreshFeedback(SavedBanner, Updating);
-        Filters.FilterChanged += OnFilterChanged;
-        Filters.MemberFilterCleared += OnMemberFilterCleared;
         ApplyArchiveButtonText();
+        PaintFilterChrome();
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
         // This screen had no timer at all — it only refreshed on re-entry and on resume, which
@@ -161,37 +155,182 @@ public partial class AlertsPage : ContentPage
     }
 
     /// <summary>
-    /// Narrows the list to one CardiMember, or — with a null id — widens it back to all of them.
-    /// Either way the cached page is dropped first: it answers a different question, and leaving
-    /// it under a chip that has just changed is the same stale-rows bug the filter chips had (#308).
+    /// Narrows the list to the CardiMember a route named, keeping whatever else the filter has.
     /// </summary>
     /// <remarks>
-    /// A narrowing always gets a chip, even when no name came with it — the chip is the only way
-    /// to undo one, so hiding it for want of a label would leave a caregiver on a list quietly
-    /// missing most of their alerts with nothing to tap. The stand-in is the one
-    /// <see cref="Controls.StatusHeroCard"/> already uses for a member it cannot name.
+    /// A narrowing always gets a pill, even when no name came with it — the pill is how it is
+    /// undone, so hiding it for want of a label would leave a caregiver on a list quietly missing
+    /// most of their alerts with nothing to tap. The name stays null here, so the copy that speaks
+    /// it — the empty state below — names nobody rather than addressing the caregiver about "This
+    /// CardiMember"; only the pill wears the stand-in (<see cref="AlertListFilter.Parts"/>).
     /// </remarks>
-    private void ApplyMemberFilter(Guid? memberId, string? memberName)
+    private void ApplyMemberFilter(Guid memberId, string? memberName) =>
+        ApplyFilter(_filter with
+        {
+            MemberId = memberId,
+            MemberName = string.IsNullOrWhiteSpace(memberName) ? null : memberName,
+        });
+
+    /// <summary>
+    /// Shows the list under <paramref name="filter"/>. The cached page is dropped first: it
+    /// answers a different question, and leaving it under a filter that has just changed is the
+    /// stale-rows bug the old chips had (#308). LoadAsync then shows the device's saved page for
+    /// the new query if it has one, and the loading card only if it has not.
+    /// </summary>
+    private void ApplyFilter(AlertListFilter filter)
     {
-        _memberFilterId = memberId;
-
-        // The name stays null when none came with the id, so the copy that speaks it — the empty
-        // state below — falls back to wording that names nobody rather than addressing the
-        // caregiver about "This CardiMember". Only the chip, which must exist either way, wears
-        // the stand-in.
-        _memberFilterName = memberId is null || string.IsNullOrWhiteSpace(memberName)
-            ? null
-            : memberName;
-        Filters.SetMemberFilter(
-            memberId is null ? null : _memberFilterName ?? UnnamedMemberChipLabel);
-
-        // LoadAsync decides between the saved page for the new filter and the loading card.
+        _filter = filter;
+        PaintFilterChrome();
         _lastData = null;
         _ = LoadAsync(force: true);
     }
 
-    private void OnMemberFilterCleared(object? sender, EventArgs e) =>
-        ApplyMemberFilter(null, null);
+    /// <summary>
+    /// The header button, its count, the subtitle, and the strip — everything that says what the
+    /// list is narrowed to. The status part drops out in the archive, where it does not apply.
+    /// </summary>
+    private void PaintFilterChrome()
+    {
+        var parts = _filter.Parts(_showArchived);
+        var narrowed = parts.Count > 0;
+
+        FilterButton.BackgroundColor = Resource<Color>(narrowed ? "PrimaryDark" : "White");
+        FilterIcon.Source = narrowed ? "icon_filter_white.svg" : "icon_filter.svg";
+        FilterCountBadge.IsVisible = narrowed;
+        FilterCountLabel.Text = parts.Count.ToString(System.Globalization.CultureInfo.CurrentCulture);
+        SemanticProperties.SetDescription(
+            FilterButton,
+            narrowed ? $"Filter alerts, {parts.Count} on" : "Filter alerts");
+
+        var subtitle = string.Join(" · ", parts.Select(p => p.Label));
+        SubtitleLabel.Text = (_showArchived, narrowed) switch
+        {
+            (true, true) => $"Archive · {subtitle}",
+            (true, false) => ArchiveSubtitle,
+            (false, true) => subtitle,
+            _ => DefaultSubtitle,
+        };
+
+        FilterStripHost.Clear();
+        foreach (var (part, label) in parts)
+            FilterStripHost.Add(FilterPill(label, () => ApplyFilter(_filter.Without(part))));
+        if (parts.Count > 1)
+            FilterStripHost.Add(ClearAllLink());
+        FilterStrip.IsVisible = narrowed;
+    }
+
+    /// <summary>One applied part: its words and a ✕, the whole pill a tap that removes it.</summary>
+    private static View FilterPill(string label, Action remove)
+    {
+        var pill = new Border
+        {
+            Padding = new Thickness(12, 6, 10, 6),
+            StrokeThickness = 0,
+            BackgroundColor = Resource<Color>("SelectedOptionBackground"),
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
+            Content = new HorizontalStackLayout
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new Label
+                    {
+                        Text = label,
+                        FontFamily = "QuicksandSemiBold",
+                        FontSize = 13,
+                        TextColor = Resource<Color>("PrimaryDark"),
+                        VerticalTextAlignment = TextAlignment.Center,
+                        LineBreakMode = LineBreakMode.TailTruncation,
+                        MaximumWidthRequest = 160,
+                    },
+                    new Label
+                    {
+                        Text = "✕",
+                        FontFamily = "QuicksandSemiBold",
+                        FontSize = 11,
+                        TextColor = Resource<Color>("PrimaryDark"),
+                        VerticalTextAlignment = TextAlignment.Center,
+                    },
+                },
+            },
+        };
+        SemanticProperties.SetDescription(pill, $"{label} filter");
+        SemanticProperties.SetHint(pill, "Double tap to remove");
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += (_, _) => remove();
+        pill.GestureRecognizers.Add(tap);
+        return pill;
+    }
+
+    private View ClearAllLink()
+    {
+        var link = new Label
+        {
+            Text = "Clear all",
+            Style = Resource<Style>("SectionLink"),
+            VerticalTextAlignment = TextAlignment.Center,
+            Padding = new Thickness(4, 6),
+        };
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += (_, _) => ApplyFilter(AlertListFilter.None);
+        link.GestureRecognizers.Add(tap);
+        return link;
+    }
+
+    /// <summary>
+    /// Opens the filter sheet on the current filter and applies what comes back. The members are
+    /// read on the first open only; a failure leaves the sheet offering "Everyone" and whoever the
+    /// list is already narrowed to, which is still every choice that can be made correctly.
+    /// </summary>
+    private async void OnFilterTapped(object? sender, TappedEventArgs e)
+    {
+        var members = await MembersAsync();
+        var chosen = await _popups.ChooseAlertFilterAsync(_filter, members, _showArchived, CountAsync);
+        if (chosen is not null && chosen != _filter)
+            ApplyFilter(chosen);
+    }
+
+    /// <summary>
+    /// Read on every open, not once: Shell keeps this page for the app's life, and a member added
+    /// or removed since the last open has to be offered — or not — in the sheet. A failed read
+    /// falls back to the last list this page had, and to none before the first.
+    /// </summary>
+    private async Task<IReadOnlyList<AlertFilterMember>> MembersAsync()
+    {
+        try
+        {
+            var members = await _api.GetCardiMembersAsync();
+            return _members = members
+                .Select(m => new AlertFilterMember(
+                    m.Id, string.IsNullOrWhiteSpace(m.FirstName) ? m.Name : m.FirstName))
+                .ToList();
+        }
+        catch (ApiException)
+        {
+            return _members ?? [];
+        }
+    }
+
+    /// <summary>
+    /// How many alerts <paramref name="filter"/> would list, for the sheet's button. One row asked
+    /// for, since only the total is wanted — the API counts the whole match whatever the page size.
+    /// </summary>
+    private async Task<int?> CountAsync(AlertListFilter filter, CancellationToken ct)
+    {
+        try
+        {
+            var (severity, status, from) = filter.ToQuery(DateTime.Today, _showArchived);
+            var page = await _api.GetAlertsAsync(severity, status, from, limit: 1, cardiMemberId: filter.MemberId, ct: ct);
+            return page.Total;
+        }
+        catch (ApiException)
+        {
+            return null;
+        }
+    }
+
+    private static T Resource<T>(string key) =>
+        (T)Microsoft.Maui.Controls.Application.Current!.Resources[key];
 
     /// <summary>
     /// The quiet reload behind all three unattended paths — arriving on the screen, the app
@@ -209,7 +348,7 @@ public partial class AlertsPage : ContentPage
 
     /// <param name="force">
     /// Supersedes a request already in flight rather than skipping. Anything the user asked
-    /// for by hand — Refresh Now, pull-to-refresh, a different chip — must not be swallowed
+    /// for by hand — Refresh Now, pull-to-refresh, a different filter — must not be swallowed
     /// because a slow load happens to be running; that is the state the loading card is on
     /// screen for, so its own button would otherwise do nothing.
     /// </param>
@@ -221,30 +360,29 @@ public partial class AlertsPage : ContentPage
         if (_isLoading && !force)
             return;
 
-        // Begin supersedes whatever is in flight — a chip tap must win over a slow load (#308) —
+        // Begin supersedes whatever is in flight — a new filter must win over a slow load (#308) —
         // and the gate's own check after every await is what stops the loser painting. It used to
         // be a hand-rolled generation counter and a CTS this page disposed itself, which could
         // abort the new load before SetState (#307, #308); the gate owns that now.
         var ticket = _gate.Begin();
         _isLoading = true;
 
-        // Capture the chip at request start so a later tap cannot let this response paint under
-        // a different filter — the gate drops the whole load if it was superseded.
-        var requestedFilter = Filters.Selected;
-        var showArchived = _showArchived;
-        var (severity, status, from) = QueryFor(requestedFilter, showArchived);
-        var memberFilterId = _memberFilterId;
+        // Capture the filter at request start so a later change cannot let this response paint
+        // under a different one — the gate drops the whole load if it was superseded. Local
+        // midnight, not UTC: "Today" has to mean the caregiver's today.
+        var (severity, status, from) = _filter.ToQuery(DateTime.Today, _showArchived);
+        var memberFilterId = _filter.MemberId;
 
         var loadNudges = false;
         try
         {
-            // Nothing on the wall yet — a cold start, or a chip or member filter that has just
+            // Nothing on the wall yet — a cold start, or a filter that has just
             // changed the question. The page the device last saved for this exact query goes up
             // first and the live one is fetched behind it; the loading card is only for a query
             // the device has never answered. The saved rows can only be the new query's, because
-            // the cache is keyed by it, so this is not the stale-rows-under-a-new-chip bug (#308)
+            // the cache is keyed by it, so this is not the stale-rows-under-a-new-filter bug (#308)
             // coming back. Loading first, before the peek: the previous query's rows (or its
-            // error) must not sit under the newly chosen chip for even the frame the cache read
+            // error) must not sit under the newly chosen filter for even the frame the cache read
             // takes.
             if (_lastData is null)
                 SetState(AlertsState.Loading);
@@ -294,7 +432,7 @@ public partial class AlertsPage : ContentPage
         finally
         {
             // Release the list's loading state before housekeeping. Nudges used to sit inside the
-            // try, so a hung summary call left pull-to-refresh spinning and blocked the next chip
+            // try, so a hung summary call left pull-to-refresh spinning and blocked the next filter
             // load's finally from looking like the owner of the spinner (#307 / #308). The gate
             // itself is released only after the nudges, so a newer load can still cancel them.
             if (_gate.IsCurrent(ticket))
@@ -312,7 +450,7 @@ public partial class AlertsPage : ContentPage
 
         // After the alerts, and isolated from them: this screen's job is health events, and a
         // failure fetching housekeeping must never cost the caregiver the list they came for.
-        // Still uses this load's ticket so a newer chip tap cancels the summary in flight.
+        // Still uses this load's ticket so a newer filter cancels the summary in flight.
         try
         {
             if (_gate.IsCurrent(ticket))
@@ -322,36 +460,6 @@ public partial class AlertsPage : ContentPage
         {
             _gate.Release(ticket);
         }
-    }
-
-    /// <summary>
-    /// The chip selection as wire filters. Archived overrides the chips entirely — it is a
-    /// different list, not a narrower one.
-    /// </summary>
-    private static (string? Severity, string? Status, DateTime? From) QueryFor(
-        AlertFilter filter, bool showArchived)
-    {
-        if (showArchived)
-            return (null, ArchivedStatus, null);
-
-        // Local midnight, not UTC: "Today" has to mean the caregiver's today.
-        var todayStart = DateTime.Today;
-
-        // Every chip outside the archive is a view of the *current* alerts, so each one asks for
-        // the open set rather than for everything. They used to send no status at all, which is
-        // "every lifecycle position" — so a resolved alert appeared both here and under "View
-        // Archived Alerts", and, sharing this one page of rows with the open ones, could push an
-        // open alert off the list while it was still colouring that member's dashboard hero. A
-        // caregiver following the summary card's "Alerts has what's still standing" then arrived
-        // at a list the alert was not on. Unread is already narrower than open and stays as it is.
-        return filter switch
-        {
-            AlertFilter.Unread => (null, UnreadStatus, null),
-            AlertFilter.Critical => ("red", OpenStatus, null),
-            AlertFilter.Today => (null, OpenStatus, todayStart),
-            AlertFilter.ThisWeek => (null, OpenStatus, todayStart.AddDays(-6)),
-            _ => (null, OpenStatus, null),
-        };
     }
 
     private void Render(AlertListResponse data)
@@ -369,37 +477,29 @@ public partial class AlertsPage : ContentPage
         GroupsStack.IsVisible = hasAlerts;
         EmptyPanel.IsVisible = !hasAlerts;
 
-        // Nothing to filter when the unfiltered list is genuinely empty — Figma's M1-10b drops
-        // the chip row entirely, and an archive listing isn't chip-filtered at all. A member
-        // filter is the exception on both counts: it is the one filter that survives into the
-        // archive, so the row stays for its chip alone (StandardChipsVisible) rather than leaving
-        // the archive quietly narrowed to one person with nothing on screen saying so.
-        var isUnfiltered = Filters.Selected == AlertFilter.All
-            && !_showArchived
-            && _memberFilterId is null;
-        Filters.StandardChipsVisible = !_showArchived;
-        Filters.IsVisible = (!_showArchived || _memberFilterId is not null)
-            && !(isUnfiltered && !hasAlerts);
-
         if (!hasAlerts)
         {
-            var (title, detail) = (isUnfiltered, _memberFilterName) switch
+            var parts = _filter.Parts(_showArchived);
+            var onlyMember = parts.Count == 1 && parts[0].Part == AlertFilterPart.Member;
+            var (title, detail) = (_showArchived, parts.Count > 0, onlyMember, _filter.MemberName) switch
             {
-                (true, _) => ("Nothing to worry about",
+                (false, false, _, _) => ("Nothing to worry about",
                     "CardiTrack is keeping an eye on things — we'll let you know if anything comes up"),
+                (true, false, _, _) => ("Nothing in the archive yet",
+                    "Alerts move here once their episode is over"),
                 // Naming them is the difference between "there is nothing" and "there is nothing
                 // for this one person", and a caregiver who narrowed the list by tapping a card
                 // may not remember they did.
-                (false, { } name) => ($"Nothing for {name} here",
-                    "Tap their name above to see everyone's alerts, or try a different filter"),
-                _ => ("No alerts match this filter",
-                    "Try selecting a different filter to see more alerts"),
+                (_, true, true, { } name) => ($"Nothing for {name} here",
+                    "Remove their name above to see everyone's alerts"),
+                _ => ("No alerts match these filters",
+                    "Remove a filter above, or change it, to see more alerts"),
             };
 
             EmptyTitleLabel.Text = title;
             EmptyDetailLabel.Text = detail;
             EmptyPanel.Margin = new Thickness(
-                0, Filters.IsVisible ? EmptyTopWithChips : EmptyTopWithoutChips, 0, 0);
+                0, FilterStrip.IsVisible ? EmptyTopWithChips : EmptyTopWithoutChips, 0, 0);
             return;
         }
 
@@ -465,27 +565,6 @@ public partial class AlertsPage : ContentPage
         SkeletonPanel.IsVisible = state == AlertsState.Loading;
         ErrorPanel.IsVisible = state == AlertsState.Error;
         ContentPanel.IsVisible = state == AlertsState.Loaded;
-
-        // The chip row belongs to the list, not to the error or the first load — except for the
-        // member chip, which says what the load about to land is even a list of. The five behind
-        // it follow the archive the same way Render has them do, so a load into the archive does
-        // not flash chips that will be gone the moment it lands.
-        if (state != AlertsState.Loaded)
-        {
-            Filters.StandardChipsVisible = !_showArchived;
-            Filters.IsVisible = state == AlertsState.Loading
-                && (!_showArchived || _memberFilterId is not null);
-        }
-    }
-
-    private void OnFilterChanged(object? sender, AlertFilter filter)
-    {
-        // A filter change is a different query, so the page on screen no longer applies —
-        // it is dropped rather than left under the newly highlighted chip while the request is
-        // in flight (#308). LoadAsync then shows the device's saved page for the new query if it
-        // has one, and the skeleton only if it has not.
-        _lastData = null;
-        _ = LoadAsync(force: true);
     }
 
     private async void OnArchiveClicked(object? sender, EventArgs e)
@@ -493,8 +572,9 @@ public partial class AlertsPage : ContentPage
         _showArchived = !_showArchived;
         _lastData = null;
         ApplyArchiveButtonText();
-        if (!_showArchived)
-            Filters.SetSelectedSilently(AlertFilter.All);
+        // The filter carries over both ways — Pop's alerts stay Pop's in the archive — and only
+        // its status part drops out there, so the chrome is repainted for that.
+        PaintFilterChrome();
         await LoadAsync(force: true);
     }
 
@@ -585,10 +665,10 @@ public partial class AlertsPage : ContentPage
             if (_lastData is not null)
                 _lastData.UnreadCount = result.UnreadCount;
 
-            // Under Unread, an acknowledged row no longer matches the chip — drop it the same
+            // Under "Needs response", an acknowledged row no longer matches — drop it the same
             // way a delete does, rather than re-applying in place and leaving a handled card
             // under a filter that promised only new ones (#308).
-            if (Filters.Selected == AlertFilter.Unread && !_showArchived)
+            if (_filter.Status == AlertStatusChoice.NeedsResponse && !_showArchived)
             {
                 RemoveAlertFromCache(alert.AlertId);
                 if (_lastData is not null)
@@ -723,34 +803,43 @@ public partial class AlertsPage : ContentPage
     // ------------------------------------------------------------------ completeness section
 
     /// <summary>
-    /// Fills the "Also needs your attention" section — data-completeness items, kept in their own
-    /// block below the health alerts rather than mixed into them.
+    /// Fills the housekeeping section under the alerts: safety banners, then the shared
+    /// "Complete the picture" card — kept in their own block rather than mixed into the alerts.
     /// </summary>
     private async Task LoadNudgeSectionAsync(LoadTicket ticket)
     {
         try
         {
+            // The saved answer first, when the card has nothing yet; the skeleton only when the
+            // device has never had one. Inside the try: a newer load cancels this ticket, and the
+            // peek's cancellation has to land in the handlers below rather than escape the load.
+            if (!CompleteThePicture.HasContent)
+            {
+                if (await _api.PeekNotificationSummaryAsync(ticket.Token) is { } saved)
+                    CompleteThePicture.ShowSaved(saved);
+                else
+                    CompleteThePicture.ShowLoading();
+                NudgeSection.IsVisible = CompleteThePicture.IsVisible;
+            }
+
             var summary = await _api.GetNotificationSummaryAsync(ticket.Token);
             if (!_gate.IsCurrent(ticket))
                 return;
 
-            NudgeStack.Clear();
-
-            // Safety items first — they mean monitoring is degraded, which is the closest this
-            // section gets to being about the person.
-            var items = summary.SafetyBanners
-                .Concat(summary.DashboardCards)
-                .ToList();
-
-            foreach (var item in items)
+            SafetyBannerList.Clear();
+            foreach (var banner in summary.SafetyBanners)
             {
-                var row = new NudgeMiniRow(item, asSafetyBanner: item.Category == NotificationCategory.Safety);
+                var row = new NudgeMiniRow(banner, asSafetyBanner: true);
                 row.Tapped += OnNudgeTapped;
-                NudgeStack.Add(row);
+                SafetyBannerList.Add(row);
             }
+            SafetyBannerList.IsVisible = summary.SafetyBanners.Count > 0;
 
-            NudgeSection.IsVisible = items.Count > 0;
-            NudgeSeeAllLink.IsVisible = summary.OpenCount > items.Count;
+            await CompleteThePicture.LoadAsync(_api, summary, ticket.Token);
+            if (!_gate.IsCurrent(ticket))
+                return;
+
+            NudgeSection.IsVisible = SafetyBannerList.IsVisible || CompleteThePicture.IsVisible;
         }
         catch (OperationCanceledException) when (!_gate.IsCurrent(ticket))
         {
@@ -765,13 +854,11 @@ public partial class AlertsPage : ContentPage
             if (!_gate.IsCurrent(ticket))
                 return;
 
-            NudgeSection.IsVisible = false;
+            CompleteThePicture.EndLoadingWithoutAnswer();
+            NudgeSection.IsVisible = SafetyBannerList.IsVisible || CompleteThePicture.IsVisible;
         }
     }
 
     private async void OnNudgeTapped(object? sender, NotificationResponse notification) =>
-        await Shell.Current.GoToAsync(NotificationsPage.Route);
-
-    private async void OnSeeAllNudgesTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync(NotificationsPage.Route);
 }

@@ -111,10 +111,10 @@
                             <ImageButton x:Name="PasswordToggle"
                                          Grid.Column="1"
                                          Source="icon_eye_off.svg"
-                                         WidthRequest="24" HeightRequest="24"
+                                         WidthRequest="44" HeightRequest="44" Padding="10"
                                          BackgroundColor="Transparent"
                                          VerticalOptions="Center"
-                                         Margin="0,0,4,0"
+                                         Margin="0"
                                          Clicked="OnPasswordToggleClicked"/>
                         </Grid>
                     </Border>
@@ -152,10 +152,10 @@
                             <ImageButton x:Name="ConfirmToggle"
                                          Grid.Column="1"
                                          Source="icon_eye_off.svg"
-                                         WidthRequest="24" HeightRequest="24"
+                                         WidthRequest="44" HeightRequest="44" Padding="10"
                                          BackgroundColor="Transparent"
                                          VerticalOptions="Center"
-                                         Margin="0,0,4,0"
+                                         Margin="0"
                                          Clicked="OnConfirmToggleClicked"/>
                         </Grid>
                     </Border>
@@ -208,12 +208,13 @@
                     </controls:CheckField>
 
                     <!-- Create Account button -->
-                    <Button x:Name="CreateBtn"
-                            Text="Create Account"
-                            Style="{StaticResource AuthGradientButton}"
-                            HorizontalOptions="Fill"
-                            Margin="0,16,0,0"
-                            Clicked="OnCreateAccountClicked"/>
+                    <controls:AppButton x:Name="CreateBtn"
+                                        Text="Create Account"
+                                        HorizontalOptions="Fill"
+                                        Margin="0,16,0,0"
+                                        Clicked="OnCreateAccountClicked"
+                                        Tone="Primary"
+                                        Size="L"/>
 
                     <!-- Divider -->
                     <Grid ColumnDefinitions="*,Auto,*"

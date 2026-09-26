@@ -21,7 +21,11 @@
                         MinimumHeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource HeaderButtonTint}"
-                        VerticalOptions="Fill">
+                        VerticalOptions="Fill"
+                                       SemanticProperties.Description="Back">
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackClicked"/>
+                    </controls:SquareBorder.GestureRecognizers>
                     <!-- Fill + width-bound-to-height: the circle runs from the title's top to
                          the description's bottom and stays square at whatever that is, so every
                          header's icon matches its own text block exactly. The 40 floor keeps the
@@ -29,10 +33,9 @@
                     <controls:SquareBorder.StrokeShape>
                         <RoundRectangle CornerRadius="99"/>
                     </controls:SquareBorder.StrokeShape>
-                    <ImageButton Source="icon_back_white.svg"
-                                 WidthRequest="20" HeightRequest="20"
-                                 BackgroundColor="Transparent"
-                                 Clicked="OnBackClicked"/>
+                    <Image Source="icon_back_white.svg"
+                           WidthRequest="20"
+                           HeightRequest="20"/>
                 </controls:SquareBorder>
 
                 <!-- Title with what the page is tight beneath it — one stack, top-aligned
@@ -54,18 +57,14 @@
                      their single action (CardiMemberDetailPage's edit pencil) — the pill this
                      replaced was the one header action wearing a label. -->
                 <Border Grid.Column="2"
-                        WidthRequest="40" HeightRequest="40"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource White}"
-                        VerticalOptions="Start">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="12"/>
-                    </Border.StrokeShape>
-                    <ImageButton Source="icon_plus.svg"
-                                 WidthRequest="20" HeightRequest="20"
-                                 BackgroundColor="Transparent"
-                                 SemanticProperties.Description="Add device"
-                                 Clicked="OnAddDeviceClicked"/>
+                        SemanticProperties.Description="Add device"
+                        Style="{StaticResource HeaderActionSquare}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnAddDeviceClicked"/>
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_plus.svg"
+                           WidthRequest="20"
+                           HeightRequest="20"/>
                 </Border>
             </Grid>
         </controls:HeaderBand>
@@ -93,10 +92,11 @@
                         <Label x:Name="ErrorDetailLabel"
                                Style="{StaticResource Body2}"
                                HorizontalTextAlignment="Center"/>
-                        <Button Text="Try again"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                HorizontalOptions="Center"
-                                Clicked="OnRetryClicked"/>
+                        <controls:AppButton Text="Try again"
+                                            HorizontalOptions="Center"
+                                            Clicked="OnRetryClicked"
+                                            Tone="Secondary"
+                                            Size="L"/>
                     </VerticalStackLayout>
 
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
@@ -125,12 +125,13 @@
                                 <Label x:Name="EmptyDetailLabel"
                                        Style="{StaticResource Body2}"
                                        HorizontalTextAlignment="Center"/>
-                                <Button Text="Connect"
-                                        Margin="0,10,0,0"
-                                        Style="{StaticResource ActionButtonBlue}"
-                                        ImageSource="icon_btn_connect.svg"
-                                        HorizontalOptions="Center"
-                                        Clicked="OnAddDeviceClicked"/>
+                                <controls:AppButton Text="Connect"
+                                                    Margin="0,10,0,0"
+                                                    Icon="icon_btn_connect.svg"
+                                                    HorizontalOptions="Center"
+                                                    Clicked="OnAddDeviceClicked"
+                                                    Tone="Primary"
+                                                    Size="M"/>
                             </VerticalStackLayout>
                         </Border>
 

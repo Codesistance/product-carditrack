@@ -38,6 +38,7 @@ public partial class AlertDetailPage : ContentPage
     public AlertDetailPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
+        this.HoldUntilInsetsApplied();
         _api = api;
         _popups = popups;
         _feedback = new RefreshFeedback(SavedBanner, Updating);
@@ -450,7 +451,7 @@ public partial class AlertDetailPage : ContentPage
     /// </summary>
     private void PackActionRow(bool acknowledged)
     {
-        Button[] order = acknowledged
+        AppButton[] order = acknowledged
             ? [CloseButton, UndoAcknowledgeButton, AcknowledgeButton, RemoveButton]
             : [AcknowledgeButton, CloseButton, UndoAcknowledgeButton, RemoveButton];
         var shown = order.Where(button => button.IsVisible).ToList();

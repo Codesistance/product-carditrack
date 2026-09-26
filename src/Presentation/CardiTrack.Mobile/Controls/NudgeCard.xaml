@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.NudgeCard">
 
     <!-- One row of the notification inbox: what is missing, what supplying it unlocks, and the
@@ -71,34 +72,25 @@
                       ColumnSpacing="8"
                       Margin="0,2,0,0">
 
-                    <Button x:Name="ComplyButton"
-                            Grid.Column="0"
-                            Style="{StaticResource PrimaryGradientButton}"
-                            HeightRequest="40"
-                            Clicked="OnComplyClicked"/>
+                    <controls:AppButton x:Name="ComplyButton"
+                                        Grid.Column="0"
+                                        Clicked="OnComplyClicked"
+                                        Tone="Primary"
+                                        Size="M"/>
 
-                    <Button x:Name="SnoozeButton"
-                            Grid.Column="1"
-                            Text="Not now"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            HeightRequest="40"
-                            FontSize="13"
-                            Padding="14,0"
-                            Clicked="OnSnoozeClicked"/>
+                    <controls:AppButton x:Name="SnoozeButton"
+                                        Grid.Column="1"
+                                        Text="Not now"
+                                        Clicked="OnSnoozeClicked"
+                                        Tone="Secondary"
+                                        Size="M"/>
 
                     <!-- Hidden entirely for safety rules rather than shown-and-disabled: an
                          affordance that refuses to work reads as a bug, and these are the two
                          cases where silence would mean nobody is watching. -->
-                    <Button x:Name="DismissButton"
-                            Grid.Column="2"
-                            Text="✕"
-                            FontFamily="QuicksandSemiBold"
-                            FontSize="15"
-                            TextColor="{StaticResource MutedText}"
-                            BackgroundColor="Transparent"
-                            WidthRequest="40"
-                            HeightRequest="40"
-                            Clicked="OnDismissClicked"/>
+                    <controls:DismissButton x:Name="DismissButton"
+                                            Grid.Column="2"
+                                            Clicked="OnDismissClicked"/>
                 </Grid>
             </VerticalStackLayout>
         </Border>

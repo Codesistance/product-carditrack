@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.ChoiceSheetPage"
              BackgroundColor="Transparent">
 
@@ -36,7 +37,7 @@
                        HorizontalTextAlignment="Center"/>
                 <Label x:Name="HintLabel"
                        Style="{StaticResource Body2}"
-                       HorizontalTextAlignment="Center"
+                       HorizontalTextAlignment="Start"
                        Margin="0,2,0,0"
                        IsVisible="False"/>
 
@@ -52,13 +53,10 @@
                     <VerticalStackLayout x:Name="OptionsHost" Spacing="6"/>
                 </ScrollView>
 
-                <Button x:Name="CancelBtn"
+                <controls:AppButton x:Name="CancelBtn"
                         Text="Cancel"
-                        BackgroundColor="Transparent"
-                        TextColor="{StaticResource MutedText}"
-                        FontFamily="QuicksandSemiBold"
-                        FontSize="16"
-                        HeightRequest="44"
+                        Tone="Text"
+                        Size="M"
                         Margin="0,8,0,0"
                         Clicked="OnCancelClicked"/>
             </VerticalStackLayout>

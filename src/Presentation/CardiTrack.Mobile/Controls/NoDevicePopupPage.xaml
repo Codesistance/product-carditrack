@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.NoDevicePopupPage"
              BackgroundColor="Transparent">
 
@@ -40,19 +41,21 @@
                        Margin="0,4,0,0"/>
                 <Label x:Name="MessageLabel"
                        Style="{StaticResource Body2}"
-                       HorizontalTextAlignment="Center"/>
+                       HorizontalTextAlignment="Start"/>
 
                 <!-- Later on the left, the way out; Connect on the right, the step forward. -->
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,14,0,8">
-                    <Button Text="Later"
-                            Style="{StaticResource ActionButtonDark}"
-                            ImageSource="icon_btn_later.svg"
-                            Clicked="OnLaterClicked"/>
-                    <Button Grid.Column="1"
-                            Text="Connect"
-                            Style="{StaticResource ActionButtonBlue}"
-                            ImageSource="icon_btn_connect.svg"
-                            Clicked="OnConnectClicked"/>
+                    <controls:AppButton Text="Later"
+                                        Icon="icon_btn_later.svg"
+                                        Clicked="OnLaterClicked"
+                                        Tone="Neutral"
+                                        Size="M"/>
+                    <controls:AppButton Grid.Column="1"
+                                        Text="Connect"
+                                        Icon="icon_btn_connect.svg"
+                                        Clicked="OnConnectClicked"
+                                        Tone="Primary"
+                                        Size="M"/>
                 </Grid>
             </VerticalStackLayout>
         </Border>

@@ -167,7 +167,6 @@ public partial class VerifyEmailPage : ContentPage
 
         _resendOnCooldown = true;
         ResendBtn.IsEnabled = false;
-        ResendBtn.TextColor = (Color)App.Current!.Resources["MutedText"];
 
         try
         {
@@ -186,7 +185,6 @@ public partial class VerifyEmailPage : ContentPage
 
         _resendOnCooldown = false;
         ResendBtn.Text = "Resend verification email";
-        ResendBtn.TextColor = (Color)App.Current!.Resources["Primary"];
         ResendBtn.IsEnabled = !_isChecking;
         ResendStatus.IsVisible = false;
     }

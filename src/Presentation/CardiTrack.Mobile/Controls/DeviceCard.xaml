@@ -120,34 +120,41 @@
 
             <BoxView Style="{StaticResource DividerLine}"/>
 
-            <!-- Actions, as small tinted buttons (CompactActionButton) a size down from the app's
-                 ActionButton, so they sit in proportion with the pills above: the ones
-                 that do something in blue, Remove in red at the far end. The row's negative
+            <!-- Actions, as small tinted buttons (AppButton, Tonal and Danger at S), so they sit in
+                 proportion with the pills above: the ones that do something in blue, Remove in red
+                 at the far end. The row's negative
                  margin gives back the tap band each button carries around its pill. Reconnect takes Refresh's place when the provider
                  itself broke the token — retrying Refresh would repeat the same failure, so there
                  is one live action there, not one that works and one that silently can't. -->
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8" Margin="0,-7">
-                <controls:CompactActionButton x:Name="RefreshButton"
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8" Margin="0,-9">
+                <controls:AppButton x:Name="RefreshButton"
                         Text="Refresh"
-                        IconSource="icon_btn_refresh_tint.svg"
+                        Icon="icon_btn_refresh_tint.svg"
+                        Tone="Tonal"
+                        Size="S"
                         Clicked="OnRefreshClicked"/>
-                <controls:CompactActionButton x:Name="ReconnectButton"
+                <controls:AppButton x:Name="ReconnectButton"
                         Text="Reconnect"
-                        IconSource="icon_btn_connect_tint.svg"
+                        Icon="icon_btn_connect_tint.svg"
+                        Tone="Tonal"
+                        Size="S"
                         IsVisible="False"
                         Clicked="OnReconnectClicked"/>
                 <!-- Re-pull: asks the server to re-read a stretch of this device's past days to
                      fill gaps the routine sync left. Withheld while a request is open or cooling
                      down; its progress is the line under the buttons. -->
-                <controls:CompactActionButton x:Name="RepullButton"
+                <controls:AppButton x:Name="RepullButton"
                         Grid.Column="1"
                         Text="Re-pull"
-                        IconSource="icon_btn_history_tint.svg"
+                        Icon="icon_btn_history_tint.svg"
+                        Tone="Tonal"
+                        Size="S"
                         Clicked="OnRepullClicked"/>
-                <controls:CompactActionButton Grid.Column="3"
+                <controls:AppButton Grid.Column="3"
                         Text="Remove"
-                        Tone="Red"
-                        IconSource="icon_btn_delete_tint.svg"
+                        Icon="icon_btn_delete_tint.svg"
+                        Tone="Danger"
+                        Size="S"
                         Clicked="OnRemoveClicked"/>
             </Grid>
 
