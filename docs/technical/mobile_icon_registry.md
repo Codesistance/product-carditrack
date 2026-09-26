@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**151 icons**, **40 distinct colours**, **8 referenced nowhere**.
+**161 icons**, **40 distinct colours**, **10 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -24,15 +24,15 @@ lists every colour rather than only the common ones: a colour used once still pi
 | Colour | Icons | Also known as |
 | --- | --- | --- |
 | `#FFFFFF` | 44 | White |
+| `#174E86` | 29 | PrimaryDark |
 | `#153D66` | 28 | icons.json brand outer stroke |
 | `#3175B9` | 22 | icons.json brand and activity fill, steel blue |
-| `#174E86` | 21 | PrimaryDark |
 | `#939DAA` | 17 | MutedText |
 | `#C42F2F` | 15 | DangerRed |
 | `#1884DC` | 12 | Primary |
+| `#10659F` | 9 | DatasetActivityText |
 | `#1F8A72` | 9 | MetricTemperatureInk / DatasetBodyText |
 | `#36C09B` | 8 | StatusGreen |
-| `#10659F` | 7 | DatasetActivityText |
 | `#727272` | 7 | Body / Body2 ink |
 | `#FBE4E4` | 7 | derived: StatusRed at 14% over white |
 | `#D9DCE1` | 5 | — |
@@ -69,11 +69,13 @@ lists every colour rather than only the common ones: a colour used once still pi
 In the tree, used by nothing. Candidates for deletion — but check the history first: an
 icon can be staged ahead of a screen that has not shipped.
 
+- `icon_action_profile.svg`
 - `icon_btn_history.svg`
 - `icon_btn_refresh.svg`
 - `icon_caret_down.svg`
 - `icon_caution_danger.svg`
 - `icon_history_white.svg`
+- `icon_open.svg`
 - `icon_power_red.svg`
 - `icon_status_critical.svg`
 - `icon_status_urgent.svg`
@@ -84,18 +86,18 @@ icon can be staged ahead of a screen that has not shipped.
 
 | Icon | Colours | Used by |
 | --- | --- | --- |
-| `icon_tab_alerts.svg` | `#939DAA` | BottomNavBar, ChatSuggestionGlyph, StatusHeroCard |
+| `icon_tab_alerts.svg` | `#939DAA` | BottomNavBar, ChatSuggestionGlyph |
 | `icon_tab_alerts_active.svg` | `#1884DC` `#174E86` `#36C09B` | BottomNavBar |
-| `icon_tab_alerts_unread.svg` | `#F0A92E` | StatusHeroCard |
+| `icon_tab_alerts_unread.svg` | `#F0A92E` | MemberDashboardCard |
 | `icon_tab_family.svg` | `#939DAA` | BottomNavBar, CardiMemberDetailPage |
 | `icon_tab_family_active.svg` | `#174E86` `#1884DC` `#36C09B` | BottomNavBar |
 | `icon_tab_home.svg` | `#939DAA` | BottomNavBar |
 | `icon_tab_home_active.svg` | `#FFFFFF` `#174E86` `#1884DC` `#36C09B` | BottomNavBar |
-| `icon_tab_journal.svg` | `#939DAA` | BottomNavBar, ChatSuggestionGlyph, StatusHeroCard |
+| `icon_tab_journal.svg` | `#939DAA` | BottomNavBar, ChatSuggestionGlyph |
 | `icon_tab_journal_active.svg` | `#174E86` `#1884DC` `#36C09B` | BottomNavBar |
-| `icon_tab_journal_primary.svg` | `#1884DC` `#FFFFFF` | StatusHeroCard |
-| `icon_tab_qa.svg` | `#939DAA` | StatusHeroCard |
-| `icon_tab_qa_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | StatusHeroCard |
+| `icon_tab_journal_primary.svg` | `#1884DC` `#FFFFFF` | MemberDashboardCard |
+| `icon_tab_qa.svg` | `#939DAA` | MemberDashboardCard |
+| `icon_tab_qa_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | MemberDashboardCard |
 | `icon_tab_settings.svg` | `#939DAA` | BottomNavBar |
 | `icon_tab_settings_active.svg` | `#174E86` `#1884DC` `#36C09B` | BottomNavBar |
 
@@ -135,7 +137,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_action_call.svg` | `#153D66` `#3175B9` | AlertListCard, CardiMemberDetailPage, QuickActionRow |
 | `icon_action_check.svg` | `#153D66` | AcceptInvitePage, AlertListCard, FamilySwitcherPage, FindingsList, InviteWaitPage |
 | `icon_action_details.svg` | `#3175B9` `#153D66` | MemberDashboardCard |
-| `icon_action_profile.svg` | `#3175B9` `#153D66` | QuickActionRow |
+| `icon_action_profile.svg` | `#3175B9` `#153D66` | **nothing** |
 | `icon_action_sms.svg` | `#3175B9` `#153D66` `#FFFFFF` | CardiMemberDetailPage, QuickActionRow |
 | `icon_action_sos.svg` | `#861B1B` `#C42F2F` | QuickActionRow |
 
@@ -153,12 +155,12 @@ icon can be staged ahead of a screen that has not shipped.
 
 | Icon | Colours | Used by |
 | --- | --- | --- |
-| `icon_back_white.svg` | `#FFFFFF` | AcceptInvitePage, AlertDetailPage, AlertRespondPage, AlertSettingsPage, AlertsPage, ApproveJoinRequestPage, CardiMemberDetailPage, CaregiverInvitesPage, DeviceManagementPage, EditCardiMemberPage, ExportConsentsPage, ExportHealthDataPage, FamilyPage, JoinFamilyPage, JournalEntryPage, JournalPage, JournalTimingPage, LegalDocumentPage, MedicalInformationPage, MemberChatPage, MetricAlarmEditPage, MetricAlarmsPage, MetricTrendPage, NotificationPreferencesPage, NotificationsPage, QuestionnairesPage, SettingsPage, StartFamilyPage, TransferFamilyAdminPage, WizardHeader |
+| `icon_back_white.svg` | `#FFFFFF` | AcceptInvitePage, AlertDetailPage, AlertRespondPage, AlertSettingsPage, AlertsPage, ApproveJoinRequestPage, CardiMemberDetailPage, CaregiverInvitesPage, DeviceManagementPage, EditCardiMemberPage, ExportConsentsPage, ExportHealthDataPage, FamilyPage, JoinFamilyPage, JournalEntryPage, JournalPage, JournalTimingPage, MedicalInformationPage, MemberChatPage, MetricAlarmEditPage, MetricAlarmsPage, MetricTrendPage, NotificationPreferencesPage, NotificationsPage, QuestionnairesPage, SettingsPage, StartFamilyPage, TransferFamilyAdminPage, WizardHeader |
 | `icon_caret_down.svg` | `#343434` | **nothing** |
 | `icon_caret_down_white.svg` | `#FFFFFF` | FamilyPage, MemberChatPage |
 | `icon_chevron.svg` | `#939DAA` | AlertDetailPage, CardiMemberDetailPage, CompleteThePictureCard, FamilyPage, MemberChatPage |
 | `icon_chevron_down.svg` | `#939DAA` | AccordionSection, AlertListCard, ChoiceField, DeviceManagementPage, MedicalInformationPage, MemberDashboardCard |
-| `icon_chevron_down_white.svg` | `#FFFFFF` | MemberChatPage |
+| `icon_chevron_down_white.svg` | `#FFFFFF` | LegalDocumentPage, MemberChatPage |
 
 ### Brand and third party
 
@@ -172,8 +174,8 @@ icon can be staged ahead of a screen that has not shipped.
 | Icon | Colours | Used by |
 | --- | --- | --- |
 | `gradient_splash_bg.svg` | `#1A6CB0` `#1884DC` `#174E86` `#36C09B` `#2FA6C4` `#FFFFFF` | SplashPage |
-| `icon_advise.svg` | `#939DAA` | CardiMemberDetailPage, StatusHeroCard |
-| `icon_advise_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | StatusHeroCard |
+| `icon_advise.svg` | `#939DAA` | CardiMemberDetailPage |
+| `icon_advise_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | MemberDashboardCard |
 | `icon_battery_full.svg` | `#1F8A72` | DeviceCard |
 | `icon_battery_half.svg` | `#1F8A72` | DeviceCard |
 | `icon_battery_low.svg` | `#C42F2F` | DeviceCard |
@@ -182,11 +184,13 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
 | `icon_book_cog.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
-| `icon_btn_close.svg` | `#FFFFFF` | ActionLook, AlertRespondPage, AppPasswordPage, ContactEditPopupPage, MedicalEntryEditPopupPage, MedicalSortPopupPage, QuestionCard |
+| `icon_btn_chevron_left_tint.svg` | `#10659F` | MemberChatPage |
+| `icon_btn_chevron_right_tint.svg` | `#10659F` | MemberChatPage |
+| `icon_btn_close.svg` | `#FFFFFF` | ActionLook, AlertRespondPage, AppPasswordPage, ContactEditPopupPage, MedicalEntryEditPopupPage, MedicalSortPopupPage, QuestionCard, QuestionPopupPage |
 | `icon_btn_connect.svg` | `#FFFFFF` | ActionLook, DeviceManagementPage, NoDevicePopupPage |
 | `icon_btn_connect_tint.svg` | `#10659F` | DeviceCard |
 | `icon_btn_copy_tint.svg` | `#10659F` | FamilyPage |
-| `icon_btn_delete.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, MemberChatPage, MetricAlarmEditPage |
+| `icon_btn_delete.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, MemberChatPage, MetricAlarmEditPage, PostLoginRouter |
 | `icon_btn_delete_tint.svg` | `#C42F2F` | DeviceCard |
 | `icon_btn_edit.svg` | `#FFFFFF` | ActionLook |
 | `icon_btn_history.svg` | `#FFFFFF` | **nothing** |
@@ -198,7 +202,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_btn_refresh_tint.svg` | `#10659F` | DeviceCard |
 | `icon_btn_reset.svg` | `#FFFFFF` | FilterSheetPage |
 | `icon_btn_resolve.svg` | `#FFFFFF` | ActionLook, AlertDetailPage, AlertRespondPage, FilterSheetPage, MedicalInformationPage |
-| `icon_btn_save.svg` | `#FFFFFF` | ActionLook, ContactEditPopupPage, MedicalEntryEditPopupPage, MedicalSortPopupPage, QuestionCard |
+| `icon_btn_save.svg` | `#FFFFFF` | ActionLook, ContactEditPopupPage, MedicalEntryEditPopupPage, MedicalSortPopupPage, QuestionCard, QuestionPopupPage |
 | `icon_btn_share.svg` | `#FFFFFF` | FamilyPage |
 | `icon_btn_sort.svg` | `#5A3300` | MedicalInformationPage |
 | `icon_btn_undo.svg` | `#5A3300` | ActionLook |
@@ -217,7 +221,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_dataset_heart.svg` | `#B93A55` | ChatSuggestionGlyph, DeviceCard |
 | `icon_dataset_other.svg` | `#5C6672` | DeviceCard |
 | `icon_dataset_sleep.svg` | `#5A4EBF` | ChatSuggestionGlyph, DeviceCard |
-| `icon_device_off.svg` | `#C42F2F` | StatusHeroCard |
+| `icon_device_off.svg` | `#C42F2F` | MemberDashboardCard |
 | `icon_edit.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_expand.svg` | `#153D66` | MetricTrendCard |
 | `icon_export.svg` | `#174E86` | JournalPage |
@@ -246,7 +250,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_more_vertical.svg` | `#939DAA` | MedicalInformationPage |
 | `icon_movement_attention.svg` | `#FBE4E4` `#C42F2F` | MovementCards |
 | `icon_notification.svg` | `#FFFFFF` | FcmNotificationChannel, PushRegistrationCoordinator |
-| `icon_open.svg` | `#153D66` | ExportDeliveryPopupPage |
+| `icon_open.svg` | `#153D66` | **nothing** |
 | `icon_pause.svg` | `#B45309` | CardiMemberDetailPage |
 | `icon_person_remove.svg` | `#FBE4E4` `#C42F2F` | CardiMemberDetailPage, FamilyPage |
 | `icon_pin.svg` | `#939DAA` | StatusHeroCard |
@@ -254,6 +258,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_plus.svg` | `#153D66` | FamilyPage |
 | `icon_power_red.svg` | `#C42F2F` | **nothing** |
 | `icon_power_white.svg` | `#FFFFFF` | DashboardPage, SettingsPage |
+| `icon_question.svg` | `#174E86` | QuestionPopupPage |
 | `icon_refresh.svg` | `#939DAA` | AlertsPage, ConnectionSuccessPage |
 | `icon_refresh_white.svg` | `#FFFFFF` | AlertsPage |
 | `icon_save.svg` | `#3175B9` `#153D66` `#C9E1FF` `#FFFFFF` | ExportDeliveryPopupPage |
@@ -270,6 +275,13 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_trash.svg` | `#FBE4E4` `#C42F2F` | AlertListCard, QuestionCard |
 | `icon_user_bell.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_watch.svg` | `#D9DCE1` `#727272` `#FFFFFF` | CardiMemberDetailPage |
+| `icon_weather_cloud.svg` | `#174E86` | WeatherGlyph |
+| `icon_weather_fog.svg` | `#174E86` | WeatherGlyph |
+| `icon_weather_rain.svg` | `#174E86` | WeatherGlyph |
+| `icon_weather_snow.svg` | `#174E86` | WeatherGlyph |
+| `icon_weather_storm.svg` | `#174E86` | WeatherGlyph |
+| `icon_weather_sun.svg` | `#174E86` | WeatherGlyph |
+| `icon_weather_temperature.svg` | `#174E86` | WeatherGlyph |
 
 ## How "used by" is decided
 
